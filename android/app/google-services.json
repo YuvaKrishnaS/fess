@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "340569980442",
+    "project_id": "fess-v2",
+    "storage_bucket": "fess-v2.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:340569980442:android:6b84816913320a4baa9ba3",
+        "android_client_info": {
+          "package_name": "com.confes.fessv2"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC3uOM8ESTtQg6BFQxmLTuk9-F2Ez72fDs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
