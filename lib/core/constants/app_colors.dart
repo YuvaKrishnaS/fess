@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
 
+/// Design system color palette - DO NOT MODIFY
 class AppColors {
   AppColors._();
 
-  //Backgrounds
+  // Backgrounds
   static const Color backgroundMain = Color(0xFF000000);
   static const Color elevated = Color(0xFF303030);
-  
+
   // Text
   static const Color textPrimary = Color(0xFFE7E9EA);
   static const Color textSecondary = Color(0xFF9E9E9E);

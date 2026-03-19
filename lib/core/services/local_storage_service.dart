@@ -1,47 +1,68 @@
 import 'package:hive_flutter/hive_flutter.dart';
 
-class HiveService {
-  HiveService._();
-  static final HiveService instance = HiveService._();
+class LocalStorageService {
+  static const String _appBoxName = 'fess_app_data';
+  static const String _userBoxName = 'fess_user_data';
 
-  static const String _prefsBox = 'prefs';
-  static const String _cacheBox = 'cache';
+  static Box? _appBox;
+  static Box? _userBox;
 
-  late Box _preferencesBox;
-  late Box _cacheBox;
-
-  Future<void> initialized() async {
+  static Future<void> initialize() async {
     await Hive.initFlutter();
 
-    _preferencesBox = await Hive.openBox(_prefsBox);
-    _cacheBox = await Hive.openBox(_cacheBox);
+    _appBox = await Hive.openBox(_appBoxName);
+    _userBox = await Hive.openBox(_userBoxName);
+
+    print('✓ Hive boxes initialized');
   }
 
-  Box get prefs => _preferencesBox;
-  Box get cache => _cacheBox;
-
-  Future<void> setString(String key, String value) async {
-    await _preferencesBox.put(key, value);
+  static Box get appBox {
+    if (_appBox == null || !_appBox!.isOpen) {
+      throw Exception('App box not initialized');
+    }
+    return _appBox!;
   }
 
-  String? getString(String key) {
-    return _preferencesBox.get(key);
+  static Box get userBox {
+    if (_userBox == null || !_userBox!.isOpen) {
+      throw Exception('User box not initialized');
+    }
+    return _userBox!;
   }
 
-  Future<void> setBool(String key, bool value) async {
-    await _preferencesBox.put(key, value);
+  // Onboarding
+  static Future<void> setHasSeenOnboarding(bool value) async {
+    await appBox.put('has_seen_onboarding', value);
   }
 
-  bool? getBool(String key) {
-    return _preferencesBox.get(key);
+  static bool getHasSeenOnboarding() {
+    return appBox.get('has_seen_onboarding', defaultValue: false) as bool;
   }
 
-  Future<void> remove(String key) async {
-    await _preferencesBox.delete(key);
+  // Pending email for magic link
+  static const _pendingEmailKey = 'pending_email_for_link';
+
+  static Future<void> setPendingEmail(String email) async {
+    await userBox.put(_pendingEmailKey, email);
   }
 
-  Future<void> clearAll() async {
-    await _preferencesBox.clear();
-    await _cacheBox.clear();
+  static String? getPendingEmail() {
+    final value = userBox.get(_pendingEmailKey);
+    if (value is String && value.isNotEmpty) return value;
+    return null;
+  }
+
+  static Future<void> clearPendingEmail() async {
+    await userBox.delete(_pendingEmailKey);
+  }
+
+  // User-level data reset
+  static Future<void> clearUserData() async {
+    await userBox.clear();
+  }
+
+  static Future<void> clearAllData() async {
+    await appBox.clear();
+    await userBox.clear();
   }
 }

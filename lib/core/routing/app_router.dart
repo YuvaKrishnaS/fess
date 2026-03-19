@@ -1,29 +1,46 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import '../../features/home/screens/home_screen.dart';
+import '../../features/splash/splash_screen.dart';
+import '../../features/onboarding/onboarding_screen.dart';
+import '../../features/auth/email_verification_screen.dart';
+import '../../features/home/home_scaffold.dart';
 
 class AppRouter {
-  AppRouter._();
-
   static final GoRouter router = GoRouter(
-    initialLocation: '/home',
+    initialLocation: '/splash',
     debugLogDiagnostics: false,
     routes: [
       GoRoute(
+        path: '/splash',
+        name: 'splash',
+        builder: (context, state) => const SplashScreen(),
+      ),
+
+      GoRoute(
+        path: '/onboarding',
+        name: 'onboarding',
+        builder: (context, state) => const OnboardingScreen(),
+      ),
+
+      GoRoute(
+        path: '/auth/email-verification',
+        name: 'email-verification',
+        builder: (context, state) => const EmailVerificationScreen(),
+      ),
+
+      GoRoute(
         path: '/home',
         name: 'home',
-        pageBuilder: (context, state) => NoTransitionPage(
-          key: state.pageKey,
-          child: const HomeScreen(),
-        ),
+        builder: (context, state) => const HomeScaffold(),
       ),
-      // Additional routes will be added in later milestones
     ],
+
     errorBuilder: (context, state) => Scaffold(
+      backgroundColor: const Color(0xFF000000),
       body: Center(
         child: Text(
-          'Route not found: ${state.matchedLocation}',
-          style: Theme.of(context).textTheme.bodyLarge,
+          'Page not found',
+          style: const TextStyle(color: Color(0xFFE7E9EA)),
         ),
       ),
     ),

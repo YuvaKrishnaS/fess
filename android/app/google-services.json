@@ -12,7 +12,20 @@
           "package_name": "com.confes.fessv2"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "340569980442-aqgrbohvmh3n51n9j9f71cg0oko03efc.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.confes.fessv2",
+            "certificate_hash": "83dd12427584da48e2772e62ed57a67891e8de23"
+          }
+        },
+        {
+          "client_id": "340569980442-91mb9djhf1q648vrh896b5np8dnm4m1u.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyC3uOM8ESTtQg6BFQxmLTuk9-F2Ez72fDs"
@@ -20,7 +33,19 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "340569980442-91mb9djhf1q648vrh896b5np8dnm4m1u.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "340569980442-3s4k136gc19gio7v8pij0rn2fc8ditc4.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.confes.fessv2"
+              }
+            }
+          ]
         }
       }
     }
