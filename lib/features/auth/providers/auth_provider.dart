@@ -1,5 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:google_sign_in/google_sign_in.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../../core/services/firebase_service.dart';
 import '../../../core/services/local_storage_service.dart';
 
@@ -7,49 +9,75 @@ final authStateProvider = StreamProvider<User?>((ref) {
   return FirebaseService.authStateChanges;
 });
 
-final authServiceProvider = Provider<AuthService>((ref) {
-  return AuthService();
-});
+final authServiceProvider = Provider<AuthService>((ref) => AuthService());
+
+enum SignInResult { success, cancelled, error }
 
 class AuthService {
   final FirebaseAuth _auth = FirebaseService.auth;
+  final GoogleSignIn _googleSignIn = GoogleSignIn();
+  final FirebaseFirestore _firestore = FirebaseService.firestore;
 
-  Future<void> sendEmailLink(String email) async {
-    // Hosting-based email link URL – MUST match authorized domain
-    const continueUrl = 'https://fess-v2.firebaseapp.com/finishSignUp';
+  // ── Google Sign-In ──────────────────────────────────────────────────────────
+  Future<SignInResult> signInWithGoogle() async {
+    try {
+      final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
 
-    final actionCodeSettings = ActionCodeSettings(
-      url: continueUrl,
-      handleCodeInApp: true,
-      androidPackageName: 'com.confes.fessv2',
-      androidInstallApp: true,
-      androidMinimumVersion: '21',
-      // linkDomain is optional; default Hosting domain is used
-    );
+      // User cancelled the picker
+      if (googleUser == null) return SignInResult.cancelled;
 
-    await _auth.sendSignInLinkToEmail(
-      email: email,
-      actionCodeSettings: actionCodeSettings,
-    );
+      final GoogleSignInAuthentication googleAuth =
+      await googleUser.authentication;
 
-    // Store email locally for completing sign-in later
-    await LocalStorageService.setPendingEmail(email);
+      final credential = GoogleAuthProvider.credential(
+        accessToken: googleAuth.accessToken,
+        idToken: googleAuth.idToken,
+      );
+
+      await _auth.signInWithCredential(credential);
+      return SignInResult.success;
+    } catch (e) {
+      return SignInResult.error;
+    }
   }
 
-  bool isSignInLink(String link) {
-    return _auth.isSignInWithEmailLink(link);
+  // ── Check if user already has a persona ────────────────────────────────────
+  // Returns anonId if persona exists, null if not
+  Future<String?> getAnonId() async {
+    final user = _auth.currentUser;
+    if (user == null) return null;
+
+    // Check cache first
+    final cached = LocalStorageService.getCachedAnonId();
+    if (cached != null) return cached;
+
+    // Check Firestore
+    try {
+      final doc = await _firestore
+          .collection('private_users')
+          .doc(user.uid)
+          .get();
+
+      if (doc.exists) {
+        final anonId = doc.data()?['publicProfileId'] as String?;
+        if (anonId != null && anonId.isNotEmpty) {
+          // Cache it locally
+          await LocalStorageService.setCachedAnonId(anonId);
+          return anonId;
+        }
+      }
+    } catch (_) {
+      // If Firestore fails, treat as no persona (safe fallback)
+    }
+
+    return null;
   }
 
-  Future<UserCredential> signInWithEmailLink(String email, String link) async {
-    final credential =
-    await _auth.signInWithEmailLink(email: email, emailLink: link);
-    // Clear pending email after successful sign-in
-    await LocalStorageService.clearPendingEmail();
-    return credential;
-  }
-
+  // ── Sign out ─────────────────────────────────────────────────────────────────
   Future<void> signOut() async {
+    await _googleSignIn.signOut();
     await _auth.signOut();
+    await LocalStorageService.clearUserData();
   }
 
   User? get currentUser => _auth.currentUser;

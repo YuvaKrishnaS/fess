@@ -9,11 +9,8 @@ class LocalStorageService {
 
   static Future<void> initialize() async {
     await Hive.initFlutter();
-
     _appBox = await Hive.openBox(_appBoxName);
     _userBox = await Hive.openBox(_userBoxName);
-
-    print('✓ Hive boxes initialized');
   }
 
   static Box get appBox {
@@ -39,24 +36,17 @@ class LocalStorageService {
     return appBox.get('has_seen_onboarding', defaultValue: false) as bool;
   }
 
-  // Pending email for magic link
-  static const _pendingEmailKey = 'pending_email_for_link';
-
-  static Future<void> setPendingEmail(String email) async {
-    await userBox.put(_pendingEmailKey, email);
+  // Cached anonId so we don't hit Firestore on every launch
+  static Future<void> setCachedAnonId(String anonId) async {
+    await userBox.put('cached_anon_id', anonId);
   }
 
-  static String? getPendingEmail() {
-    final value = userBox.get(_pendingEmailKey);
+  static String? getCachedAnonId() {
+    final value = userBox.get('cached_anon_id');
     if (value is String && value.isNotEmpty) return value;
     return null;
   }
 
-  static Future<void> clearPendingEmail() async {
-    await userBox.delete(_pendingEmailKey);
-  }
-
-  // User-level data reset
   static Future<void> clearUserData() async {
     await userBox.clear();
   }

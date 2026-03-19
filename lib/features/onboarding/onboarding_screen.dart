@@ -54,7 +54,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   Future<void> _completeOnboarding() async {
     await LocalStorageService.setHasSeenOnboarding(true);
     if (mounted) {
-      context.go('/auth/email-verification');
+      context.go('/auth/login');
     }
   }
 

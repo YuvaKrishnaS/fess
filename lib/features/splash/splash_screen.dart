@@ -32,8 +32,8 @@ class _SplashScreenState extends State<SplashScreen> {
     }
 
     if (user == null) {
-      // Not authenticated → go to email verification
-      context.go('/auth/email-verification');
+      // Not authenticated - go to email verification
+      context.go('/auth/login');
     } else {
       // Authenticated (later we’ll also check persona)
       context.go('/home');

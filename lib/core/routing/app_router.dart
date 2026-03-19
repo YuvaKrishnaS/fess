@@ -1,9 +1,9 @@
-import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../features/splash/splash_screen.dart';
 import '../../features/onboarding/onboarding_screen.dart';
-import '../../features/auth/email_verification_screen.dart';
+import '../../features/auth/login_screen.dart';
 import '../../features/home/home_scaffold.dart';
+import 'package:flutter/material.dart';
 
 class AppRouter {
   static final GoRouter router = GoRouter(
@@ -15,26 +15,23 @@ class AppRouter {
         name: 'splash',
         builder: (context, state) => const SplashScreen(),
       ),
-
       GoRoute(
         path: '/onboarding',
         name: 'onboarding',
         builder: (context, state) => const OnboardingScreen(),
       ),
-
       GoRoute(
-        path: '/auth/email-verification',
-        name: 'email-verification',
-        builder: (context, state) => const EmailVerificationScreen(),
+        path: '/auth/login',
+        name: 'login',
+        builder: (context, state) => const LoginScreen(),
       ),
-
       GoRoute(
         path: '/home',
         name: 'home',
         builder: (context, state) => const HomeScaffold(),
       ),
+      // /persona/create will be added in next milestone
     ],
-
     errorBuilder: (context, state) => Scaffold(
       backgroundColor: const Color(0xFF000000),
       body: Center(
