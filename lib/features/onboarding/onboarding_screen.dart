@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/constants/app_colors.dart';
+import '../../core/constants/app_typography.dart';
 import '../../core/widgets/custom_button.dart';
 import '../../core/services/local_storage_service.dart';
 import 'widgets/onboarding_page_1.dart';
@@ -27,15 +29,13 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   ];
 
   void _onPageChanged(int page) {
-    setState(() {
-      _currentPage = page;
-    });
+    setState(() => _currentPage = page);
   }
 
   void _nextPage() {
     if (_currentPage < _pages.length - 1) {
       _pageController.nextPage(
-        duration: const Duration(milliseconds: 300),
+        duration: const Duration(milliseconds: 380),
         curve: Curves.easeInOut,
       );
     } else {
@@ -46,16 +46,14 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   void _skipToEnd() {
     _pageController.animateToPage(
       _pages.length - 1,
-      duration: const Duration(milliseconds: 400),
+      duration: const Duration(milliseconds: 420),
       curve: Curves.easeInOut,
     );
   }
 
   Future<void> _completeOnboarding() async {
     await LocalStorageService.setHasSeenOnboarding(true);
-    if (mounted) {
-      context.go('/auth/login');
-    }
+    if (mounted) context.go('/auth/login');
   }
 
   @override
@@ -68,70 +66,71 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   Widget build(BuildContext context) {
     final bool isFirstPage = _currentPage == 0;
     final bool isLastPage = _currentPage == _pages.length - 1;
-    final bool canSkip = _currentPage > 0 && _currentPage < _pages.length - 1;
+    final bool canSkip = !isFirstPage && !isLastPage;
 
     return Scaffold(
       backgroundColor: AppColors.backgroundMain,
       body: SafeArea(
         child: Column(
           children: [
-            // Top bar with logo and skip
+            // Top bar
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
+                  // Logo with fade-in
                   Image.asset(
                     'assets/images/logo.png',
                     width: 32,
                     height: 32,
-                  ),
-                  if (canSkip)
-                    TextButton(
-                      onPressed: _skipToEnd,
-                      child: const Text('Skip'),
-                    )
-                  else
-                    const SizedBox(width: 60),
-                ],
-              ),
-            ),
+                  )
+                      .animate()
+                      .fadeIn(duration: 500.ms),
 
-            // Page content
-            Expanded(
-              child: PageView(
-                controller: _pageController,
-                onPageChanged: _onPageChanged,
-                children: _pages,
-              ),
-            ),
-
-            // Bottom section: dots + button
-            Padding(
-              padding: const EdgeInsets.all(32),
-              child: Column(
-                children: [
-                  // Page indicators
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: List.generate(
-                      _pages.length,
-                          (index) => AnimatedContainer(
-                        duration: const Duration(milliseconds: 300),
-                        margin: const EdgeInsets.symmetric(horizontal: 4),
-                        width: _currentPage == index ? 32 : 8,
-                        height: 8,
-                        decoration: BoxDecoration(
-                          color: _currentPage == index
-                              ? AppColors.accentPrimary
-                              : AppColors.elevated,
-                          borderRadius: BorderRadius.circular(4),
+                  // Skip button — only on middle pages
+                  AnimatedOpacity(
+                    opacity: canSkip ? 1.0 : 0.0,
+                    duration: const Duration(milliseconds: 250),
+                    child: IgnorePointer(
+                      ignoring: !canSkip,
+                      child: TextButton(
+                        onPressed: _skipToEnd,
+                        child: Text(
+                          'Skip',
+                          style: AppTypography.labelMedium.copyWith(
+                            color: AppColors.textSecondary,
+                          ),
                         ),
                       ),
                     ),
                   ),
+                ],
+              ),
+            ),
 
-                  const SizedBox(height: 32),
+            // Pages
+            Expanded(
+              child: PageView(
+                controller: _pageController,
+                onPageChanged: _onPageChanged,
+                physics: const BouncingScrollPhysics(),
+                children: _pages,
+              ),
+            ),
+
+            // Bottom section
+            Padding(
+              padding: const EdgeInsets.fromLTRB(32, 16, 32, 32),
+              child: Column(
+                children: [
+                  // Animated dots
+                  _AnimatedDots(
+                    count: _pages.length,
+                    current: _currentPage,
+                  ),
+
+                  const SizedBox(height: 28),
 
                   // Action button
                   CustomButton(
@@ -149,6 +148,37 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           ],
         ),
       ),
+    );
+  }
+}
+
+// ─── Animated dots ────────────────────────────────────────────────────────────
+class _AnimatedDots extends StatelessWidget {
+  final int count;
+  final int current;
+
+  const _AnimatedDots({required this.count, required this.current});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: List.generate(count, (index) {
+        final bool isActive = index == current;
+        return AnimatedContainer(
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeInOut,
+          margin: const EdgeInsets.symmetric(horizontal: 4),
+          width: isActive ? 28 : 8,
+          height: 8,
+          decoration: BoxDecoration(
+            color: isActive
+                ? AppColors.accentPrimary
+                : AppColors.elevated,
+            borderRadius: BorderRadius.circular(4),
+          ),
+        );
+      }),
     );
   }
 }

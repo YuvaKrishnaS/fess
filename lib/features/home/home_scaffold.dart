@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../../core/constants/app_colors.dart';
+import '../../core/constants/app_typography.dart';
 import 'feed/feed_screen.dart';
 import 'create/create_placeholder_screen.dart';
 import 'world/world_placeholder_screen.dart';
@@ -22,51 +24,71 @@ class _HomeScaffoldState extends State<HomeScaffold> {
     ChatPlaceholderScreen(),
   ];
 
+  void _onTabTapped(int index) {
+    if (index == _currentIndex) return;
+    HapticFeedback.selectionClick();
+    setState(() => _currentIndex = index);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: IndexedStack(
-        index: _currentIndex,
-        children: _screens,
+      backgroundColor: AppColors.backgroundMain,
+      // Fade transition between screens
+      body: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 220),
+        switchInCurve: Curves.easeIn,
+        switchOutCurve: Curves.easeOut,
+        transitionBuilder: (child, animation) {
+          return FadeTransition(opacity: animation, child: child);
+        },
+        child: KeyedSubtree(
+          key: ValueKey<int>(_currentIndex),
+          child: _screens[_currentIndex],
+        ),
       ),
       bottomNavigationBar: Container(
         decoration: const BoxDecoration(
           border: Border(
-            top: BorderSide(
-              color: AppColors.elevated,
-              width: 1,
-            ),
+            top: BorderSide(color: AppColors.elevated, width: 1),
           ),
         ),
         child: BottomNavigationBar(
           currentIndex: _currentIndex,
-          onTap: (index) {
-            setState(() => _currentIndex = index);
-          },
-          items: const [
-            BottomNavigationBarItem(
-              icon: Icon(Icons.home_outlined),
-              activeIcon: Icon(Icons.home_rounded),
-              label: 'Home',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.add_circle_outline),
-              activeIcon: Icon(Icons.add_circle),
-              label: 'Spill',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.public_outlined),
-              activeIcon: Icon(Icons.public),
-              label: 'World',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.chat_bubble_outline),
-              activeIcon: Icon(Icons.chat_bubble),
-              label: 'Chat',
-            ),
+          onTap: _onTabTapped,
+          items: [
+            _buildNavItem(Icons.home_outlined, Icons.home_rounded, 'Home', 0),
+            _buildNavItem(Icons.add_circle_outline, Icons.add_circle, 'Spill', 1),
+            _buildNavItem(Icons.public_outlined, Icons.public, 'World', 2),
+            _buildNavItem(Icons.chat_bubble_outline, Icons.chat_bubble, 'Chat', 3),
           ],
         ),
       ),
+    );
+  }
+
+  BottomNavigationBarItem _buildNavItem(
+      IconData inactive,
+      IconData active,
+      String label,
+      int index,
+      ) {
+    final bool isActive = _currentIndex == index;
+
+    return BottomNavigationBarItem(
+      icon: AnimatedScale(
+        scale: isActive ? 1.15 : 1.0,
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOut,
+        child: Icon(inactive),
+      ),
+      activeIcon: AnimatedScale(
+        scale: isActive ? 1.15 : 1.0,
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOut,
+        child: Icon(active),
+      ),
+      label: label,
     );
   }
 }

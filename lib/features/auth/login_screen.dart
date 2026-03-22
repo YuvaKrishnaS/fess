@@ -162,7 +162,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 }
 
 // ─── Social button ────────────────────────────────────────────────────────────
-class _SocialButton extends StatelessWidget {
+class _SocialButton extends StatefulWidget {
   final String label;
   final Widget icon;
   final VoidCallback? onPressed;
@@ -176,48 +176,59 @@ class _SocialButton extends StatelessWidget {
   });
 
   @override
+  State<_SocialButton> createState() => _SocialButtonState();
+}
+
+class _SocialButtonState extends State<_SocialButton> {
+  bool _pressed = false;
+
+  @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: double.infinity,
-      height: 56,
-      child: OutlinedButton(
-        onPressed: onPressed,
-        style: OutlinedButton.styleFrom(
-          backgroundColor: AppColors.elevated,
-          foregroundColor: AppColors.textPrimary,
-          side: const BorderSide(
-            color: AppColors.elevated,
-            width: 1,
-          ),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-          padding: const EdgeInsets.symmetric(horizontal: 20),
-        ),
-        child: isLoading
-            ? const SizedBox(
-          width: 22,
-          height: 22,
-          child: CircularProgressIndicator(
-            strokeWidth: 2.5,
-            valueColor: AlwaysStoppedAnimation<Color>(
-              AppColors.accentPrimary,
+    return GestureDetector(
+      onTapDown: (_) => setState(() => _pressed = true),
+      onTapUp: (_) {
+        setState(() => _pressed = false);
+        widget.onPressed?.call();
+      },
+      onTapCancel: () => setState(() => _pressed = false),
+      child: AnimatedScale(
+        scale: _pressed ? 0.97 : 1.0,
+        duration: const Duration(milliseconds: 100),
+        child: SizedBox(
+          width: double.infinity,
+          height: 56,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: AppColors.elevated,
+              borderRadius: BorderRadius.circular(12),
             ),
-          ),
-        )
-            : Row(
-          children: [
-            icon,
-            const SizedBox(width: 14),
-            Expanded(
-              child: Text(
-                label,
-                style: AppTypography.labelLarge.copyWith(
-                  color: AppColors.textPrimary,
+            child: widget.isLoading
+                ? const Center(
+              child: SizedBox(
+                width: 22,
+                height: 22,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2.5,
+                  valueColor: AlwaysStoppedAnimation<Color>(
+                    AppColors.accentPrimary,
+                  ),
                 ),
               ),
+            )
+                : Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                widget.icon,
+                const SizedBox(width: 12),
+                Text(
+                  widget.label,
+                  style: AppTypography.labelLarge.copyWith(
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );
