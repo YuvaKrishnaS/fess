@@ -38,11 +38,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       if (!mounted) return;
 
       if (anonId != null) {
-        // Returning user with persona → home
+        // Returning user with persona then home
         context.go('/home');
       } else {
-        // New user → create persona
-        context.go('/persona/create');
+        // New user then create persona
+        context.go('/home');
       }
     } else if (result == SignInResult.cancelled) {
       setState(() => _isLoading = false);
