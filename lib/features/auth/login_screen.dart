@@ -121,7 +121,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               // Google sign-in button
               _SocialButton(
                 label: 'Continue with Google',
-                icon: _GoogleIcon(),
+                icon: Image.asset(
+                  'assets/images/icons/google_logo.png',
+                  width: 24,
+                  height: 24,
+                ),
                 onPressed: _isLoading ? null : _handleGoogleSignIn,
                 isLoading: _isLoading,
               ),
@@ -221,93 +225,93 @@ class _SocialButton extends StatelessWidget {
 }
 
 // ─── Google icon (painted, no asset needed) ───────────────────────────────────
-class _GoogleIcon extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: 24,
-      height: 24,
-      child: CustomPaint(
-        painter: _GoogleLogoPainter(),
-      ),
-    );
-  }
-}
-
-class _GoogleLogoPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final rect = Rect.fromLTWH(0, 0, size.width, size.height);
-    final center = Offset(size.width / 2, size.height / 2);
-    final radius = size.width / 2;
-
-    // Blue arc
-    canvas.drawArc(
-      rect,
-      -0.3,
-      4.0,
-      false,
-      Paint()
-        ..color = const Color(0xFF4285F4)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = size.width * 0.18,
-    );
-
-    // Red arc
-    canvas.drawArc(
-      rect,
-      3.7,
-      1.0,
-      false,
-      Paint()
-        ..color = const Color(0xFFEA4335)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = size.width * 0.18,
-    );
-
-    // Yellow arc
-    canvas.drawArc(
-      rect,
-      2.3,
-      1.4,
-      false,
-      Paint()
-        ..color = const Color(0xFFFBBC05)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = size.width * 0.18,
-    );
-
-    // Green arc
-    canvas.drawArc(
-      rect,
-      0.7,
-      1.6,
-      false,
-      Paint()
-        ..color = const Color(0xFF34A853)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = size.width * 0.18,
-    );
-
-    // White center cut for the G
-    canvas.drawCircle(
-      center,
-      radius * 0.55,
-      Paint()..color = AppColors.elevated,
-    );
-
-    // G horizontal bar (right side white block)
-    canvas.drawRect(
-      Rect.fromLTWH(
-        center.dx,
-        center.dy - size.height * 0.1,
-        radius * 0.75,
-        size.height * 0.2,
-      ),
-      Paint()..color = const Color(0xFF4285F4),
-    );
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}
+// class _GoogleIcon extends StatelessWidget {
+//   @override
+//   Widget build(BuildContext context) {
+//     return SizedBox(
+//       width: 24,
+//       height: 24,
+//       child: CustomPaint(
+//         painter: _GoogleLogoPainter(),
+//       ),
+//     );
+//   }
+// }
+//
+// class _GoogleLogoPainter extends CustomPainter {
+//   @override
+//   void paint(Canvas canvas, Size size) {
+//     final rect = Rect.fromLTWH(0, 0, size.width, size.height);
+//     final center = Offset(size.width / 2, size.height / 2);
+//     final radius = size.width / 2;
+//
+//     // Blue arc
+//     canvas.drawArc(
+//       rect,
+//       -0.3,
+//       4.0,
+//       false,
+//       Paint()
+//         ..color = const Color(0xFF4285F4)
+//         ..style = PaintingStyle.stroke
+//         ..strokeWidth = size.width * 0.18,
+//     );
+//
+//     // Red arc
+//     canvas.drawArc(
+//       rect,
+//       3.7,
+//       1.0,
+//       false,
+//       Paint()
+//         ..color = const Color(0xFFEA4335)
+//         ..style = PaintingStyle.stroke
+//         ..strokeWidth = size.width * 0.18,
+//     );
+//
+//     // Yellow arc
+//     canvas.drawArc(
+//       rect,
+//       2.3,
+//       1.4,
+//       false,
+//       Paint()
+//         ..color = const Color(0xFFFBBC05)
+//         ..style = PaintingStyle.stroke
+//         ..strokeWidth = size.width * 0.18,
+//     );
+//
+//     // Green arc
+//     canvas.drawArc(
+//       rect,
+//       0.7,
+//       1.6,
+//       false,
+//       Paint()
+//         ..color = const Color(0xFF34A853)
+//         ..style = PaintingStyle.stroke
+//         ..strokeWidth = size.width * 0.18,
+//     );
+//
+//     // White center cut for the G
+//     canvas.drawCircle(
+//       center,
+//       radius * 0.55,
+//       Paint()..color = AppColors.elevated,
+//     );
+//
+//     // G horizontal bar (right side white block)
+//     canvas.drawRect(
+//       Rect.fromLTWH(
+//         center.dx,
+//         center.dy - size.height * 0.1,
+//         radius * 0.75,
+//         size.height * 0.2,
+//       ),
+//       Paint()..color = const Color(0xFF4285F4),
+//     );
+//   }
+//
+//   @override
+//   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+// }
