@@ -10,7 +10,7 @@ class OnboardingPage2 extends StatelessWidget {
       imagePath: 'assets/images/onboarding/Onboarding-2.png',
       title: 'Keep It Safe & Clean',
       highlightWord: 'Safe',
-      body: 'No graphic violence, nudity, or illegal content. Keep shares emotional, not explicit. We strictly prohibit content that harms minors or promotes self-harm.',
+      body: 'No graphic violence, nudity, or illegal content. Keep confessions emotional, not explicit. We strictly prohibit content that harms minors',
       enableFloat: true,
     );
   }

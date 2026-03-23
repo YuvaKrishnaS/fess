@@ -18,17 +18,7 @@ class AuthService {
   final GoogleSignIn _googleSignIn = GoogleSignIn();
   final FirebaseFirestore _firestore = FirebaseService.firestore;
 
-  // Anonymous sign-in (primary)
-  Future<SignInResult> signInAnonymously() async {
-    try {
-      await _auth.signInAnonymously();
-      return SignInResult.success;
-    } catch (_) {
-      return SignInResult.error;
-    }
-  }
-
-  //Google sign-in (secondary)
+  // ── Google sign-in ─────────────────────────────────────────────────────────
   Future<SignInResult> signInWithGoogle() async {
     try {
       final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
@@ -42,16 +32,9 @@ class AuthService {
         idToken: googleAuth.idToken,
       );
 
-      // If currently signed in anonymously, link the account
-      final currentUser = _auth.currentUser;
-      if (currentUser != null && currentUser.isAnonymous) {
-        await currentUser.linkWithCredential(credential);
-      } else {
-        await _auth.signInWithCredential(credential);
-      }
-
+      await _auth.signInWithCredential(credential);
       return SignInResult.success;
-    } catch (e) {
+    } catch (_) {
       return SignInResult.error;
     }
   }

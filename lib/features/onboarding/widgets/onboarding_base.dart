@@ -9,6 +9,7 @@ class OnboardingBase extends StatefulWidget {
   final String? highlightWord;
   final String body;
   final bool enableFloat;
+  final double horizontalImagePadding;
 
   const OnboardingBase({
     super.key,
@@ -17,6 +18,7 @@ class OnboardingBase extends StatefulWidget {
     this.highlightWord,
     required this.body,
     this.enableFloat = true,
+    this.horizontalImagePadding = 28,
   });
 
   @override
@@ -60,11 +62,12 @@ class _OnboardingBaseState extends State<OnboardingBase>
       children: [
         const SizedBox(height: 8),
 
-        // Image
+        // Image — larger (flex 6)
         Expanded(
-          flex: 5,
+          flex: 6,
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 32),
+            padding: EdgeInsets.symmetric(
+                horizontal: widget.horizontalImagePadding),
             child: widget.enableFloat
                 ? AnimatedBuilder(
               animation: _floatAnimation,
@@ -78,7 +81,7 @@ class _OnboardingBaseState extends State<OnboardingBase>
           ),
         ),
 
-        const SizedBox(height: 28),
+        const SizedBox(height: 24),
 
         // Text
         Expanded(
@@ -109,13 +112,12 @@ class _OnboardingBaseState extends State<OnboardingBase>
                     .animate()
                     .fadeIn(delay: 180.ms, duration: 380.ms)
                     .slideY(
-                  begin: 0.14,
-                  end: 0,
-                  delay: 180.ms,
-                  duration: 380.ms,
-                  curve: Curves.easeOut,
-                ),
-                const SizedBox(height: 14),
+                    begin: 0.14,
+                    end: 0,
+                    delay: 180.ms,
+                    duration: 380.ms,
+                    curve: Curves.easeOut),
+                const SizedBox(height: 12),
                 Text(
                   widget.body,
                   style: AppTypography.bodyMedium.copyWith(
@@ -127,12 +129,11 @@ class _OnboardingBaseState extends State<OnboardingBase>
                     .animate()
                     .fadeIn(delay: 280.ms, duration: 380.ms)
                     .slideY(
-                  begin: 0.1,
-                  end: 0,
-                  delay: 280.ms,
-                  duration: 380.ms,
-                  curve: Curves.easeOut,
-                ),
+                    begin: 0.1,
+                    end: 0,
+                    delay: 280.ms,
+                    duration: 380.ms,
+                    curve: Curves.easeOut),
               ],
             ),
           ),

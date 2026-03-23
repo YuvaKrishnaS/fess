@@ -12,6 +12,7 @@ class OnboardingPage3 extends StatelessWidget {
       highlightWord: 'Everything',
       body: 'Share authentically, but never bully or discriminate. Hate speech, insults, and threats have no place here. We are here to support, not to hurt.',
       enableFloat: false,
+      horizontalImagePadding: 0,
     );
   }
 }

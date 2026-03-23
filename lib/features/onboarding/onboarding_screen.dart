@@ -20,12 +20,11 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   final PageController _pageController = PageController();
   int _currentPage = 0;
 
-  // Per-page glow anchor [alignmentX, alignmentY]
   final List<Alignment> _glowAlignments = [
-    const Alignment(0.8, -0.6),
-    const Alignment(-0.8, -0.4),
-    const Alignment(0.0, -0.7),
-    const Alignment(-0.5, -0.5),
+    const Alignment(0.8, -0.5),
+    const Alignment(-0.9, -0.3),
+    const Alignment(0.0, -0.6),
+    const Alignment(-0.6, -0.4),
   ];
 
   final List<Widget> _pages = const [
@@ -78,60 +77,54 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       backgroundColor: AppColors.backgroundMain,
       body: Stack(
         children: [
-          // Animated glow blob
+          // Glow blob — bigger and more visible
           AnimatedAlign(
             duration: const Duration(milliseconds: 700),
             curve: Curves.easeInOut,
             alignment: _glowAlignments[_currentPage],
             child: Container(
-              width: size.width * 0.85,
-              height: size.width * 0.85,
+              width: size.width * 1.1,
+              height: size.width * 1.1,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 gradient: RadialGradient(
                   colors: [
-                    AppColors.accentSecondary.withOpacity(0.20),
-                    AppColors.accentPrimary.withOpacity(0.06),
+                    AppColors.accentSecondary.withOpacity(0.32),
+                    AppColors.accentPrimary.withOpacity(0.10),
                     Colors.transparent,
                   ],
-                  stops: const [0.0, 0.55, 1.0],
+                  stops: const [0.0, 0.5, 1.0],
                 ),
               ),
             ),
           ),
 
-          // Main content
           SafeArea(
             child: Column(
               children: [
-                // Top bar
+                // Top bar — close LEFT, counter RIGHT
                 Padding(
                   padding: const EdgeInsets.symmetric(
                       horizontal: 20, vertical: 14),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
+                      // Close icon — no background, larger
+                      GestureDetector(
+                        onTap: _skipToEnd,
+                        child: Icon(
+                          Icons.close_rounded,
+                          size: 26,
+                          color: AppColors.textSecondary,
+                        ),
+                      ).animate().fadeIn(duration: 400.ms),
+
+                      // Page counter
                       Text(
                         '${_currentPage + 1}/${_pages.length}',
                         style: AppTypography.bodySmall.copyWith(
                           color: AppColors.hintText,
                           fontWeight: FontWeight.w500,
-                        ),
-                      ).animate().fadeIn(duration: 400.ms),
-                      GestureDetector(
-                        onTap: _skipToEnd,
-                        child: Container(
-                          width: 32,
-                          height: 32,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: AppColors.elevated.withOpacity(0.8),
-                          ),
-                          child: Icon(
-                            Icons.close_rounded,
-                            size: 16,
-                            color: AppColors.textSecondary,
-                          ),
                         ),
                       ).animate().fadeIn(duration: 400.ms),
                     ],
@@ -153,14 +146,11 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   padding: const EdgeInsets.fromLTRB(28, 8, 28, 36),
                   child: Column(
                     children: [
-                      // Dots
                       _AnimatedDots(
                         count: _pages.length,
                         current: _currentPage,
                       ),
                       const SizedBox(height: 28),
-
-                      // Navigation
                       AnimatedSwitcher(
                         duration: const Duration(milliseconds: 280),
                         child: _isLastPage
@@ -187,7 +177,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   }
 }
 
-// ─── Animated dots ─────────────────────────────────────────────────────────────
+// Dots
 class _AnimatedDots extends StatelessWidget {
   final int count;
   final int current;
@@ -203,14 +193,14 @@ class _AnimatedDots extends StatelessWidget {
         return AnimatedContainer(
           duration: const Duration(milliseconds: 320),
           curve: Curves.easeInOut,
-          margin: const EdgeInsets.symmetric(horizontal: 3),
-          width: isActive ? 22 : 6,
-          height: 6,
+          margin: const EdgeInsets.symmetric(horizontal: 4),
+          width: isActive ? 32 : 9,
+          height: 9,
           decoration: BoxDecoration(
             color: isActive
                 ? AppColors.accentSecondary
                 : AppColors.elevated,
-            borderRadius: BorderRadius.circular(3),
+            borderRadius: BorderRadius.circular(5),
           ),
         );
       }),
@@ -218,7 +208,7 @@ class _AnimatedDots extends StatelessWidget {
   }
 }
 
-// ─── Skip / Next row ───────────────────────────────────────────────────────────
+// Skip and Next
 class _SkipNextRow extends StatelessWidget {
   final bool showSkip;
   final VoidCallback onSkip;
@@ -290,7 +280,7 @@ class _SkipNextRow extends StatelessWidget {
   }
 }
 
-// ─── I Agree & Enter button ────────────────────────────────────────────────────
+// Agree and enter
 class _AgreeButton extends StatefulWidget {
   final VoidCallback onTap;
 
@@ -327,7 +317,7 @@ class _AgreeButtonState extends State<_AgreeButton> {
               'I Agree & Enter',
               style: AppTypography.labelLarge.copyWith(
                 color: AppColors.backgroundMain,
-                fontWeight: FontWeight.w700,
+                fontWeight: FontWeight.w500,
                 letterSpacing: 0.2,
               ),
             ),

@@ -15,35 +15,25 @@ class LoginScreen extends ConsumerStatefulWidget {
 }
 
 class _LoginScreenState extends ConsumerState<LoginScreen> {
-  bool _isLoadingAnon = false;
   bool _isLoadingGoogle = false;
   String? _errorMessage;
 
-  bool get _isAnyLoading => _isLoadingAnon || _isLoadingGoogle;
-
-  Future<void> _handleAnonymousSignIn() async {
-    setState(() {
-      _isLoadingAnon = true;
-      _errorMessage = null;
-    });
-
-    final authService = ref.read(authServiceProvider);
-    final result = await authService.signInAnonymously();
-
-    if (!mounted) return;
-
-    if (result == SignInResult.success) {
-      HapticFeedback.mediumImpact();
-      final anonId = await authService.getAnonId();
-      if (!mounted) return;
-      // TODO M3: if anonId == null → context.go('/persona/create')
-      context.go('/home');
-    } else {
-      setState(() {
-        _isLoadingAnon = false;
-        _errorMessage = 'Sign-in failed. Please try again.';
-      });
-    }
+  Future<void> _handleMetaTap() async {
+    HapticFeedback.lightImpact();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'Meta login coming soon',
+          style: AppTypography.bodySmall
+              .copyWith(color: AppColors.textPrimary),
+        ),
+        backgroundColor: AppColors.elevated,
+        behavior: SnackBarBehavior.floating,
+        shape:
+        RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        duration: const Duration(seconds: 2),
+      ),
+    );
   }
 
   Future<void> _handleGoogleSignIn() async {
@@ -79,18 +69,18 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       backgroundColor: AppColors.backgroundMain,
       body: Stack(
         children: [
-          // Subtle glow top-right
+          // Glow top-right
           Positioned(
             top: -80,
             right: -80,
             child: Container(
-              width: 300,
-              height: 300,
+              width: 320,
+              height: 320,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 gradient: RadialGradient(
                   colors: [
-                    AppColors.accentSecondary.withOpacity(0.14),
+                    AppColors.accentSecondary.withOpacity(0.18),
                     Colors.transparent,
                   ],
                 ),
@@ -105,12 +95,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 children: [
                   const Spacer(flex: 2),
 
-                  // Logo
-                  Image.asset(
-                    'assets/images/logo.png',
-                    width: 72,
-                    height: 72,
-                  )
+                  Image.asset('assets/images/logo.png', width: 72, height: 72)
                       .animate()
                       .fadeIn(duration: 500.ms)
                       .scale(
@@ -148,7 +133,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
                   const Spacer(flex: 2),
 
-                  // Error message
                   if (_errorMessage != null) ...[
                     Container(
                       width: double.infinity,
@@ -157,8 +141,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         color: AppColors.errorLight.withOpacity(0.10),
                         borderRadius: BorderRadius.circular(10),
                         border: Border.all(
-                          color: AppColors.errorLight.withOpacity(0.35),
-                        ),
+                            color: AppColors.errorLight.withOpacity(0.35)),
                       ),
                       child: Text(
                         _errorMessage!,
@@ -170,11 +153,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     const SizedBox(height: 16),
                   ],
 
-                  // Primary: Anonymous
-                  _PrimaryButton(
-                    label: 'Continue Anonymously',
-                    onPressed: _isAnyLoading ? null : _handleAnonymousSignIn,
-                    isLoading: _isLoadingAnon,
+                  // Primary: Meta
+                  _MetaButton(
+                    onPressed: _handleMetaTap,
                   )
                       .animate()
                       .fadeIn(delay: 350.ms, duration: 400.ms)
@@ -193,7 +174,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           child: Divider(
                               color: AppColors.elevated, thickness: 1)),
                       Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 14),
+                        padding:
+                        const EdgeInsets.symmetric(horizontal: 14),
                         child: Text(
                           'or',
                           style: AppTypography.bodySmall
@@ -212,7 +194,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   _SecondaryButton(
                     label: 'Continue with Google',
                     iconAsset: 'assets/images/icons/google_logo.png',
-                    onPressed: _isAnyLoading ? null : _handleGoogleSignIn,
+                    onPressed: _isLoadingGoogle ? null : _handleGoogleSignIn,
                     isLoading: _isLoadingGoogle,
                   ).animate().fadeIn(delay: 460.ms, duration: 400.ms),
 
@@ -238,24 +220,21 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   }
 }
 
-// Primary Button
-class _PrimaryButton extends StatefulWidget {
-  final String label;
-  final VoidCallback? onPressed;
-  final bool isLoading;
+// ─── Meta button ──────────────────────────────────────────────────────────────
+class _MetaButton extends StatefulWidget {
+  final VoidCallback onPressed;
 
-  const _PrimaryButton({
-    required this.label,
-    this.onPressed,
-    this.isLoading = false,
-  });
+  const _MetaButton({required this.onPressed});
 
   @override
-  State<_PrimaryButton> createState() => _PrimaryButtonState();
+  State<_MetaButton> createState() => _MetaButtonState();
 }
 
-class _PrimaryButtonState extends State<_PrimaryButton> {
+class _MetaButtonState extends State<_MetaButton> {
   bool _pressed = false;
+
+  // Meta brand blue
+  static const Color _metaBlue = Color(0xFF0082FB);
 
   @override
   Widget build(BuildContext context) {
@@ -263,7 +242,7 @@ class _PrimaryButtonState extends State<_PrimaryButton> {
       onTapDown: (_) => setState(() => _pressed = true),
       onTapUp: (_) {
         setState(() => _pressed = false);
-        widget.onPressed?.call();
+        widget.onPressed();
       },
       onTapCancel: () => setState(() => _pressed = false),
       child: AnimatedScale(
@@ -273,29 +252,26 @@ class _PrimaryButtonState extends State<_PrimaryButton> {
           width: double.infinity,
           height: 56,
           decoration: BoxDecoration(
-            color: widget.onPressed == null
-                ? AppColors.accentPrimary.withOpacity(0.5)
-                : AppColors.accentPrimary,
+            color: _metaBlue,
             borderRadius: BorderRadius.circular(14),
           ),
-          child: Center(
-            child: widget.isLoading
-                ? SizedBox(
-              width: 22,
-              height: 22,
-              child: CircularProgressIndicator(
-                strokeWidth: 2.5,
-                valueColor: AlwaysStoppedAnimation<Color>(
-                    AppColors.backgroundMain),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Image.asset(
+                'assets/images/icons/meta_logo.png',
+                width: 22,
+                height: 22,
               ),
-            )
-                : Text(
-              widget.label,
-              style: AppTypography.labelLarge.copyWith(
-                color: AppColors.backgroundMain,
-                fontWeight: FontWeight.w700,
+              const SizedBox(width: 12),
+              Text(
+                'Continue with Meta',
+                style: AppTypography.labelLarge.copyWith(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
-            ),
+            ],
           ),
         ),
       ),
@@ -303,7 +279,7 @@ class _PrimaryButtonState extends State<_PrimaryButton> {
   }
 }
 
-// Secondary Button
+// ─── Secondary button (Google) ─────────────────────────────────────────────────
 class _SecondaryButton extends StatefulWidget {
   final String label;
   final String iconAsset;
@@ -358,7 +334,8 @@ class _SecondaryButtonState extends State<_SecondaryButton> {
                 : Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Image.asset(widget.iconAsset, width: 20, height: 20),
+                Image.asset(widget.iconAsset,
+                    width: 20, height: 20),
                 const SizedBox(width: 12),
                 Text(
                   widget.label,
