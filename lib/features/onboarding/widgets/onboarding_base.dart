@@ -3,11 +3,12 @@ import 'package:flutter_animate/flutter_animate.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_typography.dart';
 
-class OnboardingBase extends StatelessWidget {
+class OnboardingBase extends StatefulWidget {
   final String imagePath;
   final String title;
   final String? highlightWord;
   final String body;
+  final bool enableFloat;
 
   const OnboardingBase({
     super.key,
@@ -15,79 +16,144 @@ class OnboardingBase extends StatelessWidget {
     required this.title,
     this.highlightWord,
     required this.body,
+    this.enableFloat = true,
   });
 
   @override
+  State<OnboardingBase> createState() => _OnboardingBaseState();
+}
+
+class _OnboardingBaseState extends State<OnboardingBase>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _floatController;
+  late Animation<double> _floatAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _floatController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 3200),
+    );
+    _floatAnimation = Tween<double>(begin: -9.0, end: 9.0).animate(
+      CurvedAnimation(parent: _floatController, curve: Curves.easeInOut),
+    );
+    if (widget.enableFloat) {
+      _floatController.repeat(reverse: true);
+    }
+  }
+
+  @override
+  void dispose() {
+    _floatController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final parts = (highlightWord != null && title.contains(highlightWord!))
-        ? title.split(highlightWord!)
+    final parts = (widget.highlightWord != null &&
+        widget.title.contains(widget.highlightWord!))
+        ? widget.title.split(widget.highlightWord!)
         : null;
 
     return Column(
       children: [
-        const SizedBox(height: 16),
+        const SizedBox(height: 8),
+
+        // Image
         Expanded(
           flex: 5,
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(24),
-              child: Image.asset(
-                imagePath,
-                width: double.infinity,
-                fit: BoxFit.cover,
+            padding: const EdgeInsets.symmetric(horizontal: 32),
+            child: widget.enableFloat
+                ? AnimatedBuilder(
+              animation: _floatAnimation,
+              builder: (context, child) => Transform.translate(
+                offset: Offset(0, _floatAnimation.value),
+                child: child,
               ),
-            ),
-          )
-              .animate()
-              .fadeIn(duration: 400.ms, curve: Curves.easeOut),
+              child: _buildImage(),
+            )
+                : _buildImage(),
+          ),
         ),
-        const SizedBox(height: 32),
+
+        const SizedBox(height: 28),
+
+        // Text
         Expanded(
           flex: 4,
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 32),
+            padding: const EdgeInsets.symmetric(horizontal: 28),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 RichText(
                   textAlign: TextAlign.center,
                   text: TextSpan(
-                    style: AppTypography.h2,
+                    style: AppTypography.h1,
                     children: parts != null
                         ? [
                       TextSpan(text: parts[0]),
                       TextSpan(
-                        text: highlightWord!,
-                        style: AppTypography.h2.copyWith(
-                          color: AppColors.accentSecondary,
+                        text: widget.highlightWord!,
+                        style: AppTypography.h1.copyWith(
+                          color: AppColors.accentPrimary,
                         ),
                       ),
                       if (parts.length > 1) TextSpan(text: parts[1]),
                     ]
-                        : [TextSpan(text: title)],
+                        : [TextSpan(text: widget.title)],
                   ),
                 )
                     .animate()
-                    .fadeIn(delay: 150.ms, duration: 350.ms)
-                    .slideY(begin: 0.15, end: 0, delay: 150.ms, duration: 350.ms, curve: Curves.easeOut),
-                const SizedBox(height: 16),
+                    .fadeIn(delay: 180.ms, duration: 380.ms)
+                    .slideY(
+                  begin: 0.14,
+                  end: 0,
+                  delay: 180.ms,
+                  duration: 380.ms,
+                  curve: Curves.easeOut,
+                ),
+                const SizedBox(height: 14),
                 Text(
-                  body,
+                  widget.body,
                   style: AppTypography.bodyMedium.copyWith(
                     color: AppColors.textSecondary,
-                    height: 1.6,
+                    height: 1.65,
                   ),
                   textAlign: TextAlign.center,
                 )
                     .animate()
-                    .fadeIn(delay: 250.ms, duration: 350.ms)
-                    .slideY(begin: 0.1, end: 0, delay: 250.ms, duration: 350.ms, curve: Curves.easeOut),
+                    .fadeIn(delay: 280.ms, duration: 380.ms)
+                    .slideY(
+                  begin: 0.1,
+                  end: 0,
+                  delay: 280.ms,
+                  duration: 380.ms,
+                  curve: Curves.easeOut,
+                ),
               ],
             ),
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildImage() {
+    return Image.asset(
+      widget.imagePath,
+      width: double.infinity,
+      fit: BoxFit.contain,
+    )
+        .animate()
+        .fadeIn(duration: 550.ms, curve: Curves.easeOut)
+        .scale(
+      begin: const Offset(0.88, 0.88),
+      end: const Offset(1.0, 1.0),
+      duration: 550.ms,
+      curve: Curves.easeOutBack,
     );
   }
 }

@@ -18,12 +18,20 @@ class AuthService {
   final GoogleSignIn _googleSignIn = GoogleSignIn();
   final FirebaseFirestore _firestore = FirebaseService.firestore;
 
-  // ── Google Sign-In ──────────────────────────────────────────────────────────
+  // Anonymous sign-in (primary)
+  Future<SignInResult> signInAnonymously() async {
+    try {
+      await _auth.signInAnonymously();
+      return SignInResult.success;
+    } catch (_) {
+      return SignInResult.error;
+    }
+  }
+
+  //Google sign-in (secondary)
   Future<SignInResult> signInWithGoogle() async {
     try {
       final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
-
-      // User cancelled the picker
       if (googleUser == null) return SignInResult.cancelled;
 
       final GoogleSignInAuthentication googleAuth =
@@ -34,24 +42,28 @@ class AuthService {
         idToken: googleAuth.idToken,
       );
 
-      await _auth.signInWithCredential(credential);
+      // If currently signed in anonymously, link the account
+      final currentUser = _auth.currentUser;
+      if (currentUser != null && currentUser.isAnonymous) {
+        await currentUser.linkWithCredential(credential);
+      } else {
+        await _auth.signInWithCredential(credential);
+      }
+
       return SignInResult.success;
     } catch (e) {
       return SignInResult.error;
     }
   }
 
-  // ── Check if user already has a persona ────────────────────────────────────
-  // Returns anonId if persona exists, null if not
+  // ── Check if persona exists ────────────────────────────────────────────────
   Future<String?> getAnonId() async {
     final user = _auth.currentUser;
     if (user == null) return null;
 
-    // Check cache first
     final cached = LocalStorageService.getCachedAnonId();
     if (cached != null) return cached;
 
-    // Check Firestore
     try {
       final doc = await _firestore
           .collection('private_users')
@@ -61,19 +73,16 @@ class AuthService {
       if (doc.exists) {
         final anonId = doc.data()?['publicProfileId'] as String?;
         if (anonId != null && anonId.isNotEmpty) {
-          // Cache it locally
           await LocalStorageService.setCachedAnonId(anonId);
           return anonId;
         }
       }
-    } catch (_) {
-      // If Firestore fails, treat as no persona (safe fallback)
-    }
+    } catch (_) {}
 
     return null;
   }
 
-  // ── Sign out ─────────────────────────────────────────────────────────────────
+  // ── Sign out ───────────────────────────────────────────────────────────────
   Future<void> signOut() async {
     await _googleSignIn.signOut();
     await _auth.signOut();

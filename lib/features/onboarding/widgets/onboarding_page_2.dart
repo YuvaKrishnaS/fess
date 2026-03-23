@@ -11,6 +11,7 @@ class OnboardingPage2 extends StatelessWidget {
       title: 'Keep It Safe & Clean',
       highlightWord: 'Safe',
       body: 'No graphic violence, nudity, or illegal content. Keep shares emotional, not explicit. We strictly prohibit content that harms minors or promotes self-harm.',
+      enableFloat: true,
     );
   }
 }

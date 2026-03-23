@@ -11,6 +11,7 @@ class OnboardingPage1 extends StatelessWidget {
       title: 'Welcome to Fess',
       highlightWord: 'Fess',
       body: 'A safe space for honest stories, hidden feelings, and real connections. We value vulnerability over vanity. You are anonymous here, but you are never alone.',
+      enableFloat: true,
     );
   }
 }

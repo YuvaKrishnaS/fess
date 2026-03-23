@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/constants/app_colors.dart';
-import '../../core/services/local_storage_service.dart';
 import '../../core/services/firebase_service.dart';
+import '../../core/services/local_storage_service.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -19,8 +20,7 @@ class _SplashScreenState extends State<SplashScreen> {
   }
 
   Future<void> _initialize() async {
-    await Future.delayed(const Duration(seconds: 2));
-
+    await Future.delayed(const Duration(milliseconds: 2400));
     if (!mounted) return;
 
     final hasSeenOnboarding = LocalStorageService.getHasSeenOnboarding();
@@ -28,14 +28,9 @@ class _SplashScreenState extends State<SplashScreen> {
 
     if (!hasSeenOnboarding) {
       context.go('/onboarding');
-      return;
-    }
-
-    if (user == null) {
-      // Not authenticated - go to email verification
+    } else if (user == null) {
       context.go('/auth/login');
     } else {
-      // Authenticated (later we’ll also check persona)
       context.go('/home');
     }
   }
@@ -50,20 +45,28 @@ class _SplashScreenState extends State<SplashScreen> {
           children: [
             Image.asset(
               'assets/images/logo.png',
-              width: 80,
-              height: 80,
+              width: 88,
+              height: 88,
+            )
+                .animate()
+                .fadeIn(duration: 700.ms, curve: Curves.easeOut)
+                .scale(
+              begin: const Offset(0.65, 0.65),
+              end: const Offset(1.0, 1.0),
+              duration: 700.ms,
+              curve: Curves.easeOutBack,
             ),
-            const SizedBox(height: 24),
-            const SizedBox(
-              width: 24,
-              height: 24,
+            const SizedBox(height: 40),
+            SizedBox(
+              width: 18,
+              height: 18,
               child: CircularProgressIndicator(
-                strokeWidth: 2,
+                strokeWidth: 1.5,
                 valueColor: AlwaysStoppedAnimation<Color>(
-                  AppColors.accentPrimary,
+                  AppColors.accentPrimary.withOpacity(0.6),
                 ),
               ),
-            ),
+            ).animate().fadeIn(delay: 900.ms, duration: 400.ms),
           ],
         ),
       ),

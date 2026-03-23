@@ -11,6 +11,7 @@ class OnboardingPage4 extends StatelessWidget {
       title: 'You Have the Power',
       highlightWord: 'Power',
       body: 'Anonymity is a responsibility. Own your posts and report toxicity if you see it. By entering, you agree to keep Fess safe for everyone.',
+      enableFloat: true,
     );
   }
 }

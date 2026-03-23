@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../core/constants/app_colors.dart';
-import '../../core/constants/app_typography.dart';
 import 'feed/feed_screen.dart';
 import 'create/create_placeholder_screen.dart';
 import 'world/world_placeholder_screen.dart';
@@ -34,61 +33,107 @@ class _HomeScaffoldState extends State<HomeScaffold> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.backgroundMain,
-      // Fade transition between screens
       body: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 220),
+        duration: const Duration(milliseconds: 200),
         switchInCurve: Curves.easeIn,
         switchOutCurve: Curves.easeOut,
-        transitionBuilder: (child, animation) {
-          return FadeTransition(opacity: animation, child: child);
-        },
+        transitionBuilder: (child, animation) =>
+            FadeTransition(opacity: animation, child: child),
         child: KeyedSubtree(
           key: ValueKey<int>(_currentIndex),
           child: _screens[_currentIndex],
         ),
       ),
       bottomNavigationBar: Container(
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
+          color: AppColors.backgroundMain,
           border: Border(
-            top: BorderSide(color: AppColors.elevated, width: 1),
+            top: BorderSide(color: AppColors.elevated, width: 0.5),
           ),
         ),
-        child: BottomNavigationBar(
-          currentIndex: _currentIndex,
-          onTap: _onTabTapped,
-          items: [
-            _buildNavItem(Icons.home_outlined, Icons.home_rounded, 'Home', 0),
-            _buildNavItem(Icons.add_circle_outline, Icons.add_circle, 'Spill', 1),
-            _buildNavItem(Icons.public_outlined, Icons.public, 'World', 2),
-            _buildNavItem(Icons.chat_bubble_outline, Icons.chat_bubble, 'Chat', 3),
-          ],
+        child: SafeArea(
+          child: SizedBox(
+            height: 52,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: [
+                _NavItem(
+                  icon: Icons.home_outlined,
+                  activeIcon: Icons.home_rounded,
+                  index: 0,
+                  currentIndex: _currentIndex,
+                  onTap: _onTabTapped,
+                ),
+                _NavItem(
+                  icon: Icons.add_circle_outline_rounded,
+                  activeIcon: Icons.add_circle_rounded,
+                  index: 1,
+                  currentIndex: _currentIndex,
+                  onTap: _onTabTapped,
+                ),
+                _NavItem(
+                  icon: Icons.public_outlined,
+                  activeIcon: Icons.public_rounded,
+                  index: 2,
+                  currentIndex: _currentIndex,
+                  onTap: _onTabTapped,
+                ),
+                _NavItem(
+                  icon: Icons.chat_bubble_outline_rounded,
+                  activeIcon: Icons.chat_bubble_rounded,
+                  index: 3,
+                  currentIndex: _currentIndex,
+                  onTap: _onTabTapped,
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );
   }
+}
 
-  BottomNavigationBarItem _buildNavItem(
-      IconData inactive,
-      IconData active,
-      String label,
-      int index,
-      ) {
-    final bool isActive = _currentIndex == index;
+class _NavItem extends StatelessWidget {
+  final IconData icon;
+  final IconData activeIcon;
+  final int index;
+  final int currentIndex;
+  final ValueChanged<int> onTap;
 
-    return BottomNavigationBarItem(
-      icon: AnimatedScale(
-        scale: isActive ? 1.15 : 1.0,
-        duration: const Duration(milliseconds: 200),
-        curve: Curves.easeOut,
-        child: Icon(inactive),
+  const _NavItem({
+    required this.icon,
+    required this.activeIcon,
+    required this.index,
+    required this.currentIndex,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final bool isActive = index == currentIndex;
+
+    return GestureDetector(
+      onTap: () => onTap(index),
+      behavior: HitTestBehavior.opaque,
+      child: SizedBox(
+        width: 56,
+        height: 52,
+        child: Center(
+          child: AnimatedScale(
+            scale: isActive ? 1.18 : 1.0,
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeOut,
+            child: Icon(
+              isActive ? activeIcon : icon,
+              size: 24,
+              color: isActive
+                  ? AppColors.textPrimary
+                  : AppColors.textSecondary,
+            ),
+          ),
+        ),
       ),
-      activeIcon: AnimatedScale(
-        scale: isActive ? 1.15 : 1.0,
-        duration: const Duration(milliseconds: 200),
-        curve: Curves.easeOut,
-        child: Icon(active),
-      ),
-      label: label,
     );
   }
 }
