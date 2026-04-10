@@ -1,3 +1,5 @@
+import 'dart:math';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -7,6 +9,7 @@ import 'package:lucide_icons/lucide_icons.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_typography.dart';
 import '../../core/constants/avatar_data.dart';
+import '../../core/constants/username_words.dart';
 import '../../core/widgets/fess_snackbar.dart';
 import 'providers/persona_provider.dart';
 
@@ -22,14 +25,16 @@ class _PersonaCreationScreenState
     extends ConsumerState<PersonaCreationScreen> {
   final _usernameController = TextEditingController();
   final _usernameFocus = FocusNode();
+  final _random = Random();
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // preload first few avatars so there's no flicker on first load
-    for (int i = 0; i < 3; i++) {
+    // preload all 20 avatars into cache in background
+    for (int i = 0; i < AvatarData.count; i++) {
       precacheImage(
-        NetworkImage(AvatarData.urlForSeed(AvatarData.seedAt(i))),
+        CachedNetworkImageProvider(
+            AvatarData.urlForSeed(AvatarData.seedAt(i))),
         context,
       );
     }
@@ -40,6 +45,21 @@ class _PersonaCreationScreenState
     _usernameController.dispose();
     _usernameFocus.dispose();
     super.dispose();
+  }
+
+  void _generateRandomUsername() {
+    final adj = UsernameWords
+        .adjectives[_random.nextInt(UsernameWords.adjectives.length)];
+    final noun =
+    UsernameWords.nouns[_random.nextInt(UsernameWords.nouns.length)];
+    final num = 10 + _random.nextInt(89);
+    final name = '${adj}_${noun}_$num';
+
+    _usernameController.text = name;
+    _usernameController.selection =
+        TextSelection.fromPosition(TextPosition(offset: name.length));
+    ref.read(personaProvider.notifier).onUsernameChanged(name);
+    HapticFeedback.lightImpact();
   }
 
   Future<void> _handleSubmit() async {
@@ -62,10 +82,8 @@ class _PersonaCreationScreenState
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(personaProvider);
-    final screenHeight = MediaQuery.of(context).size.height;
 
     return PopScope(
-      // persona creation is required, block back navigation
       canPop: false,
       child: Scaffold(
         backgroundColor: AppColors.backgroundMain,
@@ -73,106 +91,88 @@ class _PersonaCreationScreenState
         body: GestureDetector(
           onTap: _usernameFocus.unfocus,
           child: SafeArea(
-            child: SingleChildScrollView(
-              padding: EdgeInsets.only(
-                bottom: MediaQuery.of(context).viewInsets.bottom + 16,
-              ),
-              child: ConstrainedBox(
-                constraints: BoxConstraints(
-                  minHeight: screenHeight -
-                      MediaQuery.of(context).padding.top -
-                      MediaQuery.of(context).padding.bottom,
-                ),
-                child: IntrinsicHeight(
-                  child: Column(
-                    children: [
-                      const SizedBox(height: 36),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  const SizedBox(height: 36),
 
-                      _TitleSection()
-                          .animate()
-                          .fadeIn(duration: 400.ms)
-                          .slideY(begin: -0.08, end: 0, duration: 400.ms),
+                  _TitleSection()
+                      .animate()
+                      .fadeIn(duration: 400.ms)
+                      .slideY(begin: -0.08, end: 0, duration: 400.ms),
 
-                      const SizedBox(height: 40),
+                  const SizedBox(height: 40),
 
-                      _AvatarCarousel(
-                        currentIndex: state.avatarIndex,
-                        isCreating: state.isCreating,
-                        onPrevious: () {
-                          final i = ref.read(personaProvider).avatarIndex;
-                          ref.read(personaProvider.notifier).selectAvatar(
-                            (i - 1 + AvatarData.count) % AvatarData.count,
-                          );
-                        },
-                        onNext: () {
-                          final i = ref.read(personaProvider).avatarIndex;
-                          ref.read(personaProvider.notifier).selectAvatar(
-                            (i + 1) % AvatarData.count,
-                          );
-                        },
-                      )
-                          .animate()
-                          .fadeIn(delay: 100.ms, duration: 500.ms)
-                          .scale(
-                        begin: const Offset(0.9, 0.9),
-                        end: const Offset(1.0, 1.0),
-                        delay: 100.ms,
-                        duration: 500.ms,
-                        curve: Curves.easeOutBack,
-                      ),
-
-                      const Spacer(),
-
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 24),
-                        child: _UsernameField(
-                          controller: _usernameController,
-                          focusNode: _usernameFocus,
-                          status: state.usernameStatus,
-                          length: state.username.length,
-                          onChanged:
-                          ref.read(personaProvider.notifier).onUsernameChanged,
-                        ),
-                      )
-                          .animate()
-                          .fadeIn(delay: 200.ms, duration: 400.ms)
-                          .slideY(
-                          begin: 0.08,
-                          end: 0,
-                          delay: 200.ms,
-                          duration: 400.ms),
-
-                      const SizedBox(height: 8),
-
-                      Text(
-                        'Keep it as anonymous as possible!',
-                        style: AppTypography.bodySmall.copyWith(
-                          color: AppColors.hintText,
-                        ),
-                      ).animate().fadeIn(delay: 260.ms, duration: 400.ms),
-
-                      const SizedBox(height: 28),
-
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 28),
-                        child: _TermsText(),
-                      ).animate().fadeIn(delay: 300.ms, duration: 400.ms),
-
-                      const SizedBox(height: 28),
-
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 24),
-                        child: _EnterFessButton(
-                          canSubmit: state.canSubmit,
-                          isCreating: state.isCreating,
-                          onTap: state.canSubmit ? _handleSubmit : null,
-                        ),
-                      ).animate().fadeIn(delay: 340.ms, duration: 400.ms),
-
-                      const SizedBox(height: 24),
-                    ],
+                  _AvatarCarousel(
+                    currentIndex: state.avatarIndex,
+                    isCreating: state.isCreating,
+                    onPrevious: () {
+                      final i = ref.read(personaProvider).avatarIndex;
+                      ref.read(personaProvider.notifier).selectAvatar(
+                        (i - 1 + AvatarData.count) % AvatarData.count,
+                      );
+                    },
+                    onNext: () {
+                      final i = ref.read(personaProvider).avatarIndex;
+                      ref.read(personaProvider.notifier).selectAvatar(
+                        (i + 1) % AvatarData.count,
+                      );
+                    },
+                  )
+                      .animate()
+                      .fadeIn(delay: 100.ms, duration: 500.ms)
+                      .scale(
+                    begin: const Offset(0.92, 0.92),
+                    end: const Offset(1.0, 1.0),
+                    delay: 100.ms,
+                    duration: 500.ms,
+                    curve: Curves.easeOutBack,
                   ),
-                ),
+
+                  // flexible gap — compresses when keyboard opens
+                  const Spacer(),
+
+                  _UsernameField(
+                    controller: _usernameController,
+                    focusNode: _usernameFocus,
+                    status: state.usernameStatus,
+                    length: state.username.length,
+                    onChanged:
+                    ref.read(personaProvider.notifier).onUsernameChanged,
+                    onShuffleTap: _generateRandomUsername,
+                  )
+                      .animate()
+                      .fadeIn(delay: 200.ms, duration: 400.ms)
+                      .slideY(begin: 0.08, end: 0, delay: 200.ms),
+
+                  const SizedBox(height: 8),
+
+                  Text(
+                    'Keep it as anonymous as possible!',
+                    style: AppTypography.bodySmall.copyWith(
+                      color: AppColors.hintText,
+                    ),
+                  ).animate().fadeIn(delay: 240.ms, duration: 400.ms),
+
+                  const SizedBox(height: 24),
+
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 4),
+                    child: _TermsText(),
+                  ).animate().fadeIn(delay: 280.ms, duration: 400.ms),
+
+                  const SizedBox(height: 24),
+
+                  _EnterFessButton(
+                    canSubmit: state.canSubmit,
+                    isCreating: state.isCreating,
+                    onTap: state.canSubmit ? _handleSubmit : null,
+                  ).animate().fadeIn(delay: 320.ms, duration: 400.ms),
+
+                  const SizedBox(height: 28),
+                ],
               ),
             ),
           ),
@@ -182,7 +182,8 @@ class _PersonaCreationScreenState
   }
 }
 
-// Title
+// ─── Title ─────────────────────────────────────────────────────────────────────
+
 class _TitleSection extends StatelessWidget {
   const _TitleSection();
 
@@ -224,7 +225,8 @@ class _TitleSection extends StatelessWidget {
   }
 }
 
-// Avatar Carousel
+// ─── Avatar carousel ───────────────────────────────────────────────────────────
+
 class _AvatarCarousel extends StatefulWidget {
   final int currentIndex;
   final bool isCreating;
@@ -242,30 +244,8 @@ class _AvatarCarousel extends StatefulWidget {
   State<_AvatarCarousel> createState() => _AvatarCarouselState();
 }
 
-class _AvatarCarouselState extends State<_AvatarCarousel>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _glowController;
-  late Animation<double> _glowAnim;
+class _AvatarCarouselState extends State<_AvatarCarousel> {
   bool _isForward = true;
-
-  @override
-  void initState() {
-    super.initState();
-    _glowController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 2800),
-    )..repeat(reverse: true);
-
-    _glowAnim = Tween<double>(begin: 0.95, end: 1.08).animate(
-      CurvedAnimation(parent: _glowController, curve: Curves.easeInOut),
-    );
-  }
-
-  @override
-  void dispose() {
-    _glowController.dispose();
-    super.dispose();
-  }
 
   void _handlePrevious() {
     setState(() => _isForward = false);
@@ -282,8 +262,11 @@ class _AvatarCarouselState extends State<_AvatarCarousel>
     final seed = AvatarData.seedAt(widget.currentIndex);
     final url = AvatarData.urlForSeed(seed);
 
+    // purple glow color — use hardcoded hex to be safe regardless of AppColors definition
+    const glowColor = Color(0xFF7B2FBE);
+
     return SizedBox(
-      height: 260,
+      height: 255,
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
@@ -292,9 +275,8 @@ class _AvatarCarouselState extends State<_AvatarCarousel>
             onTap: widget.isCreating ? null : _handlePrevious,
           ),
 
-          const SizedBox(width: 16),
+          const SizedBox(width: 20),
 
-          // glow + circle + avatar — all stacked
           GestureDetector(
             onHorizontalDragEnd: (details) {
               if (widget.isCreating) return;
@@ -302,86 +284,83 @@ class _AvatarCarouselState extends State<_AvatarCarousel>
               if (v < -200) _handleNext();
               if (v > 200) _handlePrevious();
             },
-            child: AnimatedBuilder(
-              animation: _glowAnim,
-              builder: (context, child) => Transform.scale(
-                scale: _glowAnim.value,
-                child: child,
-              ),
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  // purple radial glow behind the circle
-                  Container(
-                    width: 230,
-                    height: 230,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      gradient: RadialGradient(
-                        colors: [
-                          AppColors.accentSecondary.withOpacity(0.50),
-                          AppColors.accentSecondary.withOpacity(0.16),
-                          Colors.transparent,
-                        ],
-                        stops: const [0.0, 0.5, 1.0],
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                // ── Glow: static, no animation, strong and visible ──
+                Container(
+                  width: 200,
+                  height: 200,
+                  decoration: const BoxDecoration(
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Color(0x99_7B2FBE), // ~60% opacity purple
+                        blurRadius: 75,
+                        spreadRadius: 28,
                       ),
-                    ),
+                      BoxShadow(
+                        color: Color(0x55_7B2FBE), // ~33% outer haze
+                        blurRadius: 120,
+                        spreadRadius: 50,
+                      ),
+                    ],
                   ),
+                ),
 
-                  // gradient border ring
-                  Container(
-                    width: 190,
-                    height: 190,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      gradient: SweepGradient(
-                        colors: [
-                          AppColors.accentSecondary,
-                          AppColors.accentPrimary,
-                          AppColors.accentSecondary,
-                        ],
-                      ),
+                // ── Gradient border ring ──
+                Container(
+                  width: 192,
+                  height: 192,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: SweepGradient(
+                      colors: [
+                        AppColors.accentSecondary,
+                        AppColors.accentPrimary,
+                        AppColors.accentSecondary,
+                      ],
                     ),
-                    padding: const EdgeInsets.all(2.5),
-                    child: Container(
-                      decoration: const BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: Color(0xFF07070F),
-                      ),
-                      clipBehavior: Clip.antiAlias,
-                      child: widget.isCreating
-                          ? const _CreatingOverlay()
-                          : AnimatedSwitcher(
-                        duration: const Duration(milliseconds: 280),
-                        transitionBuilder: (child, animation) {
-                          final offset = Tween<Offset>(
-                            begin: Offset(_isForward ? 0.4 : -0.4, 0),
-                            end: Offset.zero,
-                          ).animate(CurvedAnimation(
-                            parent: animation,
-                            curve: Curves.easeOut,
-                          ));
-                          return SlideTransition(
-                            position: offset,
-                            child: FadeTransition(
-                              opacity: animation,
-                              child: child,
-                            ),
-                          );
-                        },
-                        child: _AvatarImage(
-                          key: ValueKey(widget.currentIndex),
-                          url: url,
-                        ),
+                  ),
+                  padding: const EdgeInsets.all(2.5),
+                  child: Container(
+                    decoration: const BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Color(0xFF07070F),
+                    ),
+                    clipBehavior: Clip.antiAlias,
+                    child: widget.isCreating
+                        ? const _CreatingOverlay()
+                        : AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 260),
+                      transitionBuilder: (child, animation) {
+                        final offset = Tween<Offset>(
+                          begin: Offset(_isForward ? 0.35 : -0.35, 0),
+                          end: Offset.zero,
+                        ).animate(CurvedAnimation(
+                          parent: animation,
+                          curve: Curves.easeOut,
+                        ));
+                        return SlideTransition(
+                          position: offset,
+                          child: FadeTransition(
+                            opacity: animation,
+                            child: child,
+                          ),
+                        );
+                      },
+                      child: _AvatarImage(
+                        key: ValueKey(widget.currentIndex),
+                        url: url,
                       ),
                     ),
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
 
-          const SizedBox(width: 16),
+          const SizedBox(width: 20),
 
           _ArrowButton(
             icon: LucideIcons.chevronRight,
@@ -393,7 +372,8 @@ class _AvatarCarouselState extends State<_AvatarCarousel>
   }
 }
 
-// Arrow button
+// ─── Arrow button — no background, just the icon ──────────────────────────────
+
 class _ArrowButton extends StatefulWidget {
   final IconData icon;
   final VoidCallback? onTap;
@@ -421,25 +401,13 @@ class _ArrowButtonState extends State<_ArrowButton> {
         width: 44,
         height: 44,
         child: AnimatedOpacity(
-          opacity: widget.onTap == null ? 0.25 : (_pressed ? 0.5 : 1.0),
-          duration: const Duration(milliseconds: 120),
-          child: Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: AppColors.elevated.withOpacity(0.5),
-              border: Border.all(
-                color: AppColors.elevated,
-                width: 0.5,
-              ),
-            ),
-            child: Center(
-              child: Icon(
-                widget.icon,
-                size: 20,
-                color: AppColors.textSecondary,
-              ),
+          opacity: widget.onTap == null ? 0.2 : (_pressed ? 0.45 : 0.8),
+          duration: const Duration(milliseconds: 100),
+          child: Center(
+            child: Icon(
+              widget.icon,
+              size: 26,
+              color: AppColors.textPrimary,
             ),
           ),
         ),
@@ -448,7 +416,8 @@ class _ArrowButtonState extends State<_ArrowButton> {
   }
 }
 
-// Avtar Image with loading + Image state
+// ─── Avatar image ──────────────────────────────────────────────────────────────
+
 class _AvatarImage extends StatelessWidget {
   final String url;
 
@@ -456,38 +425,29 @@ class _AvatarImage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Image.network(
-      url,
+    return CachedNetworkImage(
+      imageUrl: url,
       fit: BoxFit.cover,
-      loadingBuilder: (context, child, loadingProgress) {
-        if (loadingProgress == null) return child;
-        return Center(
-          child: SizedBox(
-            width: 26,
-            height: 26,
-            child: CircularProgressIndicator(
-              strokeWidth: 2,
-              valueColor: AlwaysStoppedAnimation<Color>(
-                AppColors.accentPrimary,
-              ),
-            ),
+      placeholder: (context, url) => Center(
+        child: SizedBox(
+          width: 24,
+          height: 24,
+          child: CircularProgressIndicator(
+            strokeWidth: 2,
+            valueColor:
+            AlwaysStoppedAnimation<Color>(AppColors.accentPrimary),
           ),
-        );
-      },
-      errorBuilder: (context, error, stackTrace) {
-        return Center(
-          child: Icon(
-            LucideIcons.user,
-            size: 48,
-            color: AppColors.textSecondary,
-          ),
-        );
-      },
+        ),
+      ),
+      errorWidget: (context, url, error) => Center(
+        child: Icon(LucideIcons.user, size: 48, color: AppColors.textSecondary),
+      ),
     );
   }
 }
 
-// Creating user OVerlay
+// ─── Creating overlay ──────────────────────────────────────────────────────────
+
 class _CreatingOverlay extends StatelessWidget {
   const _CreatingOverlay();
 
@@ -497,8 +457,8 @@ class _CreatingOverlay extends StatelessWidget {
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         SizedBox(
-          width: 26,
-          height: 26,
+          width: 24,
+          height: 24,
           child: CircularProgressIndicator(
             strokeWidth: 2,
             valueColor:
@@ -517,13 +477,15 @@ class _CreatingOverlay extends StatelessWidget {
   }
 }
 
-// Username field
+// ─── Username field ─────────────────────────────────────────────────────────────
+
 class _UsernameField extends StatelessWidget {
   final TextEditingController controller;
   final FocusNode focusNode;
   final UsernameStatus status;
   final int length;
   final ValueChanged<String> onChanged;
+  final VoidCallback onShuffleTap;
 
   const _UsernameField({
     required this.controller,
@@ -531,6 +493,7 @@ class _UsernameField extends StatelessWidget {
     required this.status,
     required this.length,
     required this.onChanged,
+    required this.onShuffleTap,
   });
 
   Color _borderColor() {
@@ -541,7 +504,18 @@ class _UsernameField extends StatelessWidget {
       case UsernameStatus.invalid:
         return AppColors.errorLight;
       default:
-        return AppColors.elevated;
+        return const Color(0xFF2A2A3E);
+    }
+  }
+
+  double _borderWidth() {
+    switch (status) {
+      case UsernameStatus.available:
+      case UsernameStatus.taken:
+      case UsernameStatus.invalid:
+        return 1.5;
+      default:
+        return 1.0;
     }
   }
 
@@ -556,22 +530,34 @@ class _UsernameField extends StatelessWidget {
         AnimatedContainer(
           duration: const Duration(milliseconds: 220),
           decoration: BoxDecoration(
-            color: AppColors.elevated.withOpacity(0.35),
+            // subtle dark tint — not a flat grey, just barely visible
+            color: const Color(0xFF0D0D16),
             borderRadius: BorderRadius.circular(14),
             border: Border.all(
               color: _borderColor(),
-              width: _hasError || status == UsernameStatus.available ? 1.5 : 0.5,
+              width: _borderWidth(),
             ),
           ),
           child: Row(
             children: [
-              const SizedBox(width: 16),
-              Icon(
-                LucideIcons.dice6,
-                size: 20,
-                color: AppColors.textSecondary,
+              const SizedBox(width: 14),
+
+              // shuffle/dice icon — tappable
+              GestureDetector(
+                onTap: onShuffleTap,
+                behavior: HitTestBehavior.opaque,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 2),
+                  child: Icon(
+                    LucideIcons.shuffle,
+                    size: 20,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
               ),
-              const SizedBox(width: 12),
+
+              const SizedBox(width: 10),
+
               Expanded(
                 child: TextField(
                   controller: controller,
@@ -588,6 +574,9 @@ class _UsernameField extends StatelessWidget {
                   null,
                   decoration: InputDecoration(
                     border: InputBorder.none,
+                    enabledBorder: InputBorder.none,
+                    focusedBorder: InputBorder.none,
+                    filled: false,
                     hintText: 'Your anonymous name',
                     hintStyle: AppTypography.bodyMedium.copyWith(
                       color: AppColors.hintText,
@@ -597,23 +586,23 @@ class _UsernameField extends StatelessWidget {
                   ),
                 ),
               ),
-              const SizedBox(width: 12),
+
+              const SizedBox(width: 10),
               _StatusIndicator(status: status, length: length),
-              const SizedBox(width: 16),
+              const SizedBox(width: 14),
             ],
           ),
         ),
 
-        // validation message shown below field
         AnimatedSize(
-          duration: const Duration(milliseconds: 200),
+          duration: const Duration(milliseconds: 180),
           child: _hasError
               ? Padding(
             padding: const EdgeInsets.only(top: 6, left: 4),
             child: Text(
               status == UsernameStatus.taken
                   ? 'This name is already taken'
-                  : 'Only letters, numbers and _ allowed. Min 3 characters.',
+                  : 'Letters, numbers and _ only. Min 3 characters.',
               style: AppTypography.bodySmall.copyWith(
                 color: AppColors.errorLight,
               ),
@@ -626,7 +615,6 @@ class _UsernameField extends StatelessWidget {
   }
 }
 
-// Status Indicator inside the field
 class _StatusIndicator extends StatelessWidget {
   final UsernameStatus status;
   final int length;
@@ -647,23 +635,13 @@ class _StatusIndicator extends StatelessWidget {
           ),
         );
       case UsernameStatus.available:
-        return Icon(
-          LucideIcons.checkCircle2,
-          size: 18,
-          color: AppColors.accentPrimary,
-        );
+        return Icon(LucideIcons.checkCircle2,
+            size: 18, color: AppColors.accentPrimary);
       case UsernameStatus.taken:
-        return Icon(
-          LucideIcons.xCircle,
-          size: 18,
-          color: AppColors.errorLight,
-        );
+        return Icon(LucideIcons.xCircle, size: 18, color: AppColors.errorLight);
       case UsernameStatus.invalid:
-        return Icon(
-          LucideIcons.alertCircle,
-          size: 18,
-          color: AppColors.errorLight,
-        );
+        return Icon(LucideIcons.alertCircle,
+            size: 18, color: AppColors.errorLight);
       default:
         if (length > 0) {
           return Text(
@@ -678,7 +656,8 @@ class _StatusIndicator extends StatelessWidget {
   }
 }
 
-// ─── Terms & Privacy text ──────────────────────────────────────────────────────
+// ─── Terms ─────────────────────────────────────────────────────────────────────
+
 class _TermsText extends StatelessWidget {
   const _TermsText();
 
@@ -738,6 +717,7 @@ class _TermsText extends StatelessWidget {
 }
 
 // ─── Enter Fess button ─────────────────────────────────────────────────────────
+
 class _EnterFessButton extends StatefulWidget {
   final bool canSubmit;
   final bool isCreating;
@@ -773,12 +753,11 @@ class _EnterFessButtonState extends State<_EnterFessButton> {
         scale: _pressed ? 0.97 : 1.0,
         duration: const Duration(milliseconds: 100),
         child: AnimatedContainer(
-          duration: const Duration(milliseconds: 300),
+          duration: const Duration(milliseconds: 280),
           width: double.infinity,
           height: 56,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(14),
-            // gradient when ready, flat grey when not
             gradient: widget.canSubmit
                 ? LinearGradient(
               colors: [
@@ -789,7 +768,7 @@ class _EnterFessButtonState extends State<_EnterFessButton> {
               end: Alignment.centerRight,
             )
                 : null,
-            color: widget.canSubmit ? null : AppColors.elevated,
+            color: widget.canSubmit ? null : const Color(0xFF1A1A28),
           ),
           child: Center(
             child: Text(
@@ -799,7 +778,7 @@ class _EnterFessButtonState extends State<_EnterFessButton> {
                     ? AppColors.backgroundMain
                     : AppColors.hintText,
                 fontWeight: FontWeight.w700,
-                letterSpacing: 0.2,
+                letterSpacing: 0.3,
               ),
             ),
           ),

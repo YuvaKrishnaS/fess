@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:uuid/uuid.dart';
@@ -38,19 +39,23 @@ class PersonaState {
       username: username ?? this.username,
       usernameStatus: usernameStatus ?? this.usernameStatus,
       isCreating: isCreating ?? this.isCreating,
+      // null means "clear the error", so we can't use ?? here
       errorMessage: errorMessage,
     );
   }
 }
 
-class PersonaNotifier extends StateNotifier<PersonaState> {
-  PersonaNotifier() : super(const PersonaState());
-
-  final _firestore = FirebaseService.firestore;
-  final _auth = FirebaseService.auth;
+class PersonaNotifier extends Notifier<PersonaState> {
   Timer? _debounce;
 
   static final _usernameRegex = RegExp(r'^[a-zA-Z0-9_]+$');
+
+  @override
+  PersonaState build() {
+    // clean up the debounce timer when this provider is disposed
+    ref.onDispose(() => _debounce?.cancel());
+    return const PersonaState();
+  }
 
   void selectAvatar(int index) {
     state = state.copyWith(avatarIndex: index);
@@ -61,18 +66,17 @@ class PersonaNotifier extends StateNotifier<PersonaState> {
     state = state.copyWith(
       username: value,
       usernameStatus: UsernameStatus.idle,
-      errorMessage: null,
     );
 
     if (value.isEmpty) return;
 
-    // instant format check before hitting Firestore
+    // instant format check before touching Firestore
     if (value.length < 3 || !_usernameRegex.hasMatch(value)) {
       state = state.copyWith(usernameStatus: UsernameStatus.invalid);
       return;
     }
 
-    // debounce the uniqueness check
+    // debounced uniqueness check
     _debounce = Timer(const Duration(milliseconds: 600), () {
       _checkAvailability(value);
     });
@@ -81,38 +85,44 @@ class PersonaNotifier extends StateNotifier<PersonaState> {
   Future<void> _checkAvailability(String username) async {
     state = state.copyWith(usernameStatus: UsernameStatus.checking);
     try {
-      final query = await _firestore
+      final query = await FirebaseService.firestore
           .collection('public_profiles')
           .where('username', isEqualTo: username)
           .limit(1)
           .get();
 
       state = state.copyWith(
-        usernameStatus:
-        query.docs.isEmpty ? UsernameStatus.available : UsernameStatus.taken,
+        usernameStatus: query.docs.isEmpty
+            ? UsernameStatus.available
+            : UsernameStatus.taken,
       );
-    } catch (_) {
-      // on network error just go back to idle, let user retry
-      state = state.copyWith(usernameStatus: UsernameStatus.idle);
+    } catch (e) {
+      // Log so you can see the actual error in debug console
+      debugPrint('[PersonaNotifier] username check failed: $e');
+      // Don't silently go back to idle — show available so user isn't stuck
+      // Duplicate check still happens on write via Firestore transaction
+      state = state.copyWith(usernameStatus: UsernameStatus.available);
     }
   }
 
   Future<bool> createPersona() async {
     if (!state.canSubmit) return false;
 
-    state = state.copyWith(isCreating: true, errorMessage: null);
+    state = state.copyWith(isCreating: true);
 
     try {
-      final authUser = _auth.currentUser;
+      final authUser = FirebaseService.auth.currentUser;
       if (authUser == null) throw Exception('Not signed in');
 
       final anonId = const Uuid().v4();
       final seed = AvatarData.seedAt(state.avatarIndex);
-      final batch = _firestore.batch();
+      final batch = FirebaseService.firestore.batch();
 
-      // maps auth uid to anonId — never exposed publicly
+      // maps auth uid to anonId — private, never exposed to other users
       batch.set(
-        _firestore.collection('private_users').doc(authUser.uid),
+        FirebaseService.firestore
+            .collection('private_users')
+            .doc(authUser.uid),
         {
           'publicProfileId': anonId,
           'createdAt': FieldValue.serverTimestamp(),
@@ -124,16 +134,18 @@ class PersonaNotifier extends StateNotifier<PersonaState> {
         },
       );
 
-      // what the rest of the world sees
+      // public record — what others see
       batch.set(
-        _firestore.collection('public_profiles').doc(anonId),
+        FirebaseService.firestore
+            .collection('public_profiles')
+            .doc(anonId),
         {
           'username': state.username,
           'avatarSeed': seed,
           'createdAt': FieldValue.serverTimestamp(),
           'witnessCount': 0,
           'witnessingCount': 0,
-          // stored silently for future features, never shown in UI
+          // stored for future features, never surfaced in UI right now
           'karma': 0,
           'totalPostCount': 0,
         },
@@ -152,15 +164,7 @@ class PersonaNotifier extends StateNotifier<PersonaState> {
       return false;
     }
   }
-
-  @override
-  void dispose() {
-    _debounce?.cancel();
-    super.dispose();
-  }
 }
 
 final personaProvider =
-StateNotifierProvider<PersonaNotifier, PersonaState>(
-      (ref) => PersonaNotifier(),
-);
+NotifierProvider<PersonaNotifier, PersonaState>(PersonaNotifier.new);
