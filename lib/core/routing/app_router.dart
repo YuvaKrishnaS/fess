@@ -1,3 +1,4 @@
+import 'package:fessv2/features/persona/persona_creation_screen.dart';
 import 'package:go_router/go_router.dart';
 import '../../features/splash/splash_screen.dart';
 import '../../features/onboarding/onboarding_screen.dart';
@@ -30,7 +31,10 @@ class AppRouter {
         name: 'home',
         builder: (context, state) => const HomeScaffold(),
       ),
-      // /persona/create will be added in next milestone
+      GoRoute(
+        path: '/persona/create',
+        builder: (context, state) => const PersonaCreationScreen()
+      )
     ],
     errorBuilder: (context, state) => Scaffold(
       backgroundColor: const Color(0xFF000000),

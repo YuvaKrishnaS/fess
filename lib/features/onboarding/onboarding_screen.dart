@@ -8,6 +8,7 @@ import 'widgets/onboarding_page_1.dart';
 import 'widgets/onboarding_page_2.dart';
 import 'widgets/onboarding_page_3.dart';
 import 'widgets/onboarding_page_4.dart';
+import 'package:lucide_icons/lucide_icons.dart';
 
 class OnboardingScreen extends StatefulWidget {
   const OnboardingScreen({super.key});
@@ -113,8 +114,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                       GestureDetector(
                         onTap: _skipToEnd,
                         child: Icon(
-                          Icons.close_rounded,
-                          size: 26,
+                          LucideIcons.x,
+                          size: 22,
                           color: AppColors.textSecondary,
                         ),
                       ).animate().fadeIn(duration: 400.ms),
@@ -267,7 +268,7 @@ class _SkipNextRow extends StatelessWidget {
                 ),
                 const SizedBox(width: 6),
                 Icon(
-                  Icons.arrow_forward_rounded,
+                  LucideIcons.arrowRight,
                   size: 18,
                   color: AppColors.textPrimary,
                 ),
@@ -317,7 +318,7 @@ class _AgreeButtonState extends State<_AgreeButton> {
               'I Agree & Enter',
               style: AppTypography.labelLarge.copyWith(
                 color: AppColors.backgroundMain,
-                fontWeight: FontWeight.w500,
+                fontWeight: FontWeight.w600,
                 letterSpacing: 0.2,
               ),
             ),

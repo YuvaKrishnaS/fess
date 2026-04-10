@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_typography.dart';
 import 'providers/auth_provider.dart';
+import '../../core/widgets/fess_snackbar.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -18,21 +19,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   bool _isLoadingGoogle = false;
   String? _errorMessage;
 
-  Future<void> _handleMetaTap() async {
-    HapticFeedback.lightImpact();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          'Meta login coming soon',
-          style: AppTypography.bodySmall
-              .copyWith(color: AppColors.textPrimary),
-        ),
-        backgroundColor: AppColors.elevated,
-        behavior: SnackBarBehavior.floating,
-        shape:
-        RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        duration: const Duration(seconds: 2),
-      ),
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Precache so icon is ready before animation plays
+    precacheImage(
+      const AssetImage('assets/images/icons/google_logo.png'),
+      context,
     );
   }
 
@@ -51,8 +44,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       HapticFeedback.mediumImpact();
       final anonId = await authService.getAnonId();
       if (!mounted) return;
-      // TODO M3: if anonId == null → context.go('/persona/create')
-      context.go('/home');
+      if (anonId == null) {
+        context.go('/persona/create');
+      } else {
+        context.go('/home');
+      }
     } else if (result == SignInResult.cancelled) {
       setState(() => _isLoadingGoogle = false);
     } else {
@@ -153,9 +149,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     const SizedBox(height: 16),
                   ],
 
-                  // Primary: Meta
-                  _MetaButton(
-                    onPressed: _handleMetaTap,
+                  // Google — only button, full width, outlined
+                  _GoogleButton(
+                    onPressed: _isLoadingGoogle ? null : _handleGoogleSignIn,
+                    isLoading: _isLoadingGoogle,
                   )
                       .animate()
                       .fadeIn(delay: 350.ms, duration: 400.ms)
@@ -164,39 +161,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       end: 0,
                       delay: 350.ms,
                       duration: 400.ms),
-
-                  const SizedBox(height: 16),
-
-                  // Divider
-                  Row(
-                    children: [
-                      Expanded(
-                          child: Divider(
-                              color: AppColors.elevated, thickness: 1)),
-                      Padding(
-                        padding:
-                        const EdgeInsets.symmetric(horizontal: 14),
-                        child: Text(
-                          'or',
-                          style: AppTypography.bodySmall
-                              .copyWith(color: AppColors.hintText),
-                        ),
-                      ),
-                      Expanded(
-                          child: Divider(
-                              color: AppColors.elevated, thickness: 1)),
-                    ],
-                  ).animate().fadeIn(delay: 420.ms, duration: 300.ms),
-
-                  const SizedBox(height: 16),
-
-                  // Secondary: Google
-                  _SecondaryButton(
-                    label: 'Continue with Google',
-                    iconAsset: 'assets/images/icons/google_logo.png',
-                    onPressed: _isLoadingGoogle ? null : _handleGoogleSignIn,
-                    isLoading: _isLoadingGoogle,
-                  ).animate().fadeIn(delay: 460.ms, duration: 400.ms),
 
                   const Spacer(flex: 1),
 
@@ -207,7 +171,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       height: 1.5,
                     ),
                     textAlign: TextAlign.center,
-                  ).animate().fadeIn(delay: 550.ms, duration: 400.ms),
+                  ).animate().fadeIn(delay: 460.ms, duration: 400.ms),
 
                   const SizedBox(height: 24),
                 ],
@@ -220,84 +184,18 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   }
 }
 
-// ─── Meta button ──────────────────────────────────────────────────────────────
-class _MetaButton extends StatefulWidget {
-  final VoidCallback onPressed;
-
-  const _MetaButton({required this.onPressed});
-
-  @override
-  State<_MetaButton> createState() => _MetaButtonState();
-}
-
-class _MetaButtonState extends State<_MetaButton> {
-  bool _pressed = false;
-
-  // Meta brand blue
-  static const Color _metaBlue = Color(0xFF0082FB);
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTapDown: (_) => setState(() => _pressed = true),
-      onTapUp: (_) {
-        setState(() => _pressed = false);
-        widget.onPressed();
-      },
-      onTapCancel: () => setState(() => _pressed = false),
-      child: AnimatedScale(
-        scale: _pressed ? 0.97 : 1.0,
-        duration: const Duration(milliseconds: 100),
-        child: Container(
-          width: double.infinity,
-          height: 56,
-          decoration: BoxDecoration(
-            color: _metaBlue,
-            borderRadius: BorderRadius.circular(14),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Image.asset(
-                'assets/images/icons/meta_logo.png',
-                width: 22,
-                height: 22,
-              ),
-              const SizedBox(width: 12),
-              Text(
-                'Continue with Meta',
-                style: AppTypography.labelLarge.copyWith(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// ─── Secondary button (Google) ─────────────────────────────────────────────────
-class _SecondaryButton extends StatefulWidget {
-  final String label;
-  final String iconAsset;
+// ─── Google button ─────────────────────────────────────────────────────────────
+class _GoogleButton extends StatefulWidget {
   final VoidCallback? onPressed;
   final bool isLoading;
 
-  const _SecondaryButton({
-    required this.label,
-    required this.iconAsset,
-    this.onPressed,
-    this.isLoading = false,
-  });
+  const _GoogleButton({this.onPressed, this.isLoading = false});
 
   @override
-  State<_SecondaryButton> createState() => _SecondaryButtonState();
+  State<_GoogleButton> createState() => _GoogleButtonState();
 }
 
-class _SecondaryButtonState extends State<_SecondaryButton> {
+class _GoogleButtonState extends State<_GoogleButton> {
   bool _pressed = false;
 
   @override
@@ -314,19 +212,18 @@ class _SecondaryButtonState extends State<_SecondaryButton> {
         duration: const Duration(milliseconds: 100),
         child: Container(
           width: double.infinity,
-          height: 52,
+          height: 56,
           decoration: BoxDecoration(
-            color: Colors.transparent,
+            color: AppColors.elevated,
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: AppColors.elevated, width: 1.5),
           ),
           child: Center(
             child: widget.isLoading
                 ? SizedBox(
-              width: 20,
-              height: 20,
+              width: 22,
+              height: 22,
               child: CircularProgressIndicator(
-                strokeWidth: 2,
+                strokeWidth: 2.5,
                 valueColor: AlwaysStoppedAnimation<Color>(
                     AppColors.accentPrimary),
               ),
@@ -334,13 +231,17 @@ class _SecondaryButtonState extends State<_SecondaryButton> {
                 : Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Image.asset(widget.iconAsset,
-                    width: 20, height: 20),
+                Image.asset(
+                  'assets/images/icons/google_logo.png',
+                  width: 22,
+                  height: 22,
+                ),
                 const SizedBox(width: 12),
                 Text(
-                  widget.label,
+                  'Continue with Google',
                   style: AppTypography.labelLarge.copyWith(
                     color: AppColors.textPrimary,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
               ],

@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/services/firebase_service.dart';
 import '../../core/services/local_storage_service.dart';
+import '../auth/providers/auth_provider.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -31,7 +32,14 @@ class _SplashScreenState extends State<SplashScreen> {
     } else if (user == null) {
       context.go('/auth/login');
     } else {
-      context.go('/home');
+      final authService = AuthService();
+      final anonId = await authService.getAnonId();
+      if (!mounted) return;
+      if (anonId == null) {
+        context.go('/persona/create');
+      } else {
+        context.go('/home');
+      }
     }
   }
 
@@ -85,109 +93,9 @@ class _SplashScreenState extends State<SplashScreen> {
               duration: 700.ms,
               curve: Curves.easeOutBack,
             ),
-          ),
-
-          // 3 pulsing dots at bottom
-          Positioned(
-            bottom: 72,
-            left: 0,
-            right: 0,
-            child: Center(
-              child: _PulsingDots(),
-            ),
-          ),
+          )
         ],
       ),
     );
-  }
-}
-
-// ─── 3 pulsing dots ───────────────────────────────────────────────────────────
-class _PulsingDots extends StatefulWidget {
-  @override
-  State<_PulsingDots> createState() => _PulsingDotsState();
-}
-
-class _PulsingDotsState extends State<_PulsingDots>
-    with TickerProviderStateMixin {
-  late List<AnimationController> _controllers;
-  late List<Animation<double>> _animations;
-
-  static const int _dotCount = 3;
-  static const Duration _pulseDuration = Duration(milliseconds: 600);
-  static const Duration _stagger = Duration(milliseconds: 180);
-
-  @override
-  void initState() {
-    super.initState();
-
-    _controllers = List.generate(
-      _dotCount,
-          (i) => AnimationController(vsync: this, duration: _pulseDuration),
-    );
-
-    _animations = _controllers.map((c) {
-      return Tween<double>(begin: 0.35, end: 1.0).animate(
-        CurvedAnimation(parent: c, curve: Curves.easeInOut),
-      );
-    }).toList();
-
-    _startSequence();
-  }
-
-  Future<void> _startSequence() async {
-    await Future.delayed(const Duration(milliseconds: 900));
-    if (!mounted) return;
-    _runLoop();
-  }
-
-  Future<void> _runLoop() async {
-    while (mounted) {
-      for (int i = 0; i < _dotCount; i++) {
-        if (!mounted) return;
-        _controllers[i].forward(from: 0.0);
-        await Future.delayed(_stagger);
-      }
-      await Future.delayed(
-          Duration(milliseconds: _pulseDuration.inMilliseconds + 120));
-    }
-  }
-
-  @override
-  void dispose() {
-    for (final c in _controllers) {
-      c.dispose();
-    }
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: List.generate(_dotCount, (i) {
-        return Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 5),
-          child: AnimatedBuilder(
-            animation: _animations[i],
-            builder: (context, _) {
-              return Opacity(
-                opacity: _animations[i].value,
-                child: Container(
-                  width: 7,
-                  height: 7,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: AppColors.accentPrimary,
-                  ),
-                ),
-              );
-            },
-          ),
-        );
-      }),
-    )
-        .animate()
-        .fadeIn(delay: 900.ms, duration: 400.ms);
   }
 }
