@@ -1,5 +1,6 @@
 import 'package:fessv2/features/persona/persona_creation_screen.dart';
 import 'package:go_router/go_router.dart';
+import '../../features/persona/avatar_builder_screen.dart';
 import '../../features/splash/splash_screen.dart';
 import '../../features/onboarding/onboarding_screen.dart';
 import '../../features/auth/login_screen.dart';
@@ -34,6 +35,10 @@ class AppRouter {
       GoRoute(
         path: '/persona/create',
         builder: (context, state) => const PersonaCreationScreen()
+      ),
+      GoRoute(
+        path: '/avatar-builder',
+        builder: (context, state) => const AvatarBuilderScreen(),
       )
     ],
     errorBuilder: (context, state) => Scaffold(

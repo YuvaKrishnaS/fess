@@ -45,7 +45,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       final anonId = await authService.getAnonId();
       if (!mounted) return;
       if (anonId == null) {
-        context.go('/persona/create');
+        context.go('/avatar-builder');
       } else {
         context.go('/home');
       }

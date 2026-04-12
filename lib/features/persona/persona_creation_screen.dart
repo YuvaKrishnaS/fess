@@ -8,9 +8,9 @@ import 'package:go_router/go_router.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_typography.dart';
-import '../../core/constants/avatar_data.dart';
 import '../../core/constants/username_words.dart';
 import '../../core/widgets/fess_snackbar.dart';
+import '../persona/providers/avatar_builder_provider.dart';
 import 'providers/persona_provider.dart';
 
 class PersonaCreationScreen extends ConsumerStatefulWidget {
@@ -28,19 +28,6 @@ class _PersonaCreationScreenState
   final _random = Random();
 
   @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    // preload all 20 avatars into cache in background
-    for (int i = 0; i < AvatarData.count; i++) {
-      precacheImage(
-        CachedNetworkImageProvider(
-            AvatarData.urlForSeed(AvatarData.seedAt(i))),
-        context,
-      );
-    }
-  }
-
-  @override
   void dispose() {
     _usernameController.dispose();
     _usernameFocus.dispose();
@@ -48,11 +35,11 @@ class _PersonaCreationScreenState
   }
 
   void _generateRandomUsername() {
-    final adj = UsernameWords
-        .adjectives[_random.nextInt(UsernameWords.adjectives.length)];
+    final adj =
+    UsernameWords.adjectives[_random.nextInt(UsernameWords.adjectives.length)];
     final noun =
     UsernameWords.nouns[_random.nextInt(UsernameWords.nouns.length)];
-    final num = 10 + _random.nextInt(89);
+    final num = 100 + _random.nextInt(900); // 100–999
     final name = '${adj}_${noun}_$num';
 
     _usernameController.text = name;
@@ -82,6 +69,8 @@ class _PersonaCreationScreenState
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(personaProvider);
+    final avatarUrl =
+    ref.watch(avatarBuilderProvider).config.buildUrl(size: 256);
 
     return PopScope(
       canPop: false,
@@ -98,29 +87,16 @@ class _PersonaCreationScreenState
                 children: [
                   const SizedBox(height: 36),
 
-                  _TitleSection()
+                  // Tietle
+                  const _TitleSection()
                       .animate()
                       .fadeIn(duration: 400.ms)
                       .slideY(begin: -0.08, end: 0, duration: 400.ms),
 
-                  const SizedBox(height: 40),
+                  const SizedBox(height: 36),
 
-                  _AvatarCarousel(
-                    currentIndex: state.avatarIndex,
-                    isCreating: state.isCreating,
-                    onPrevious: () {
-                      final i = ref.read(personaProvider).avatarIndex;
-                      ref.read(personaProvider.notifier).selectAvatar(
-                        (i - 1 + AvatarData.count) % AvatarData.count,
-                      );
-                    },
-                    onNext: () {
-                      final i = ref.read(personaProvider).avatarIndex;
-                      ref.read(personaProvider.notifier).selectAvatar(
-                        (i + 1) % AvatarData.count,
-                      );
-                    },
-                  )
+                  // avatar
+                  _StaticAvatar(url: avatarUrl, isCreating: state.isCreating)
                       .animate()
                       .fadeIn(delay: 100.ms, duration: 500.ms)
                       .scale(
@@ -131,9 +107,10 @@ class _PersonaCreationScreenState
                     curve: Curves.easeOutBack,
                   ),
 
-                  // flexible gap — compresses when keyboard opens
+                  // flexible gap — compresses naturally when keyboard opens
                   const Spacer(),
 
+                  // username field
                   _UsernameField(
                     controller: _usernameController,
                     focusNode: _usernameFocus,
@@ -154,17 +131,18 @@ class _PersonaCreationScreenState
                     style: AppTypography.bodySmall.copyWith(
                       color: AppColors.hintText,
                     ),
-                  ).animate().fadeIn(delay: 240.ms, duration: 400.ms),
+                  ).animate().fadeIn(delay: 240.ms),
 
                   const SizedBox(height: 24),
 
-                  const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 4),
-                    child: _TermsText(),
-                  ).animate().fadeIn(delay: 280.ms, duration: 400.ms),
+                  // terms
+                  const _TermsText()
+                      .animate()
+                      .fadeIn(delay: 280.ms, duration: 400.ms),
 
                   const SizedBox(height: 24),
 
+                  // ── Enter Fess button ──────────────────────────────────
                   _EnterFessButton(
                     canSubmit: state.canSubmit,
                     isCreating: state.isCreating,
@@ -182,7 +160,7 @@ class _PersonaCreationScreenState
   }
 }
 
-// ─── Title ─────────────────────────────────────────────────────────────────────
+// title
 
 class _TitleSection extends StatelessWidget {
   const _TitleSection();
@@ -225,228 +203,138 @@ class _TitleSection extends StatelessWidget {
   }
 }
 
-// ─── Avatar carousel ───────────────────────────────────────────────────────────
+// static avatar
 
-class _AvatarCarousel extends StatefulWidget {
-  final int currentIndex;
-  final bool isCreating;
-  final VoidCallback onPrevious;
-  final VoidCallback onNext;
-
-  const _AvatarCarousel({
-    required this.currentIndex,
-    required this.isCreating,
-    required this.onPrevious,
-    required this.onNext,
-  });
-
-  @override
-  State<_AvatarCarousel> createState() => _AvatarCarouselState();
-}
-
-class _AvatarCarouselState extends State<_AvatarCarousel> {
-  bool _isForward = true;
-
-  void _handlePrevious() {
-    setState(() => _isForward = false);
-    widget.onPrevious();
-  }
-
-  void _handleNext() {
-    setState(() => _isForward = true);
-    widget.onNext();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final seed = AvatarData.seedAt(widget.currentIndex);
-    final url = AvatarData.urlForSeed(seed);
-
-    // purple glow color — use hardcoded hex to be safe regardless of AppColors definition
-    const glowColor = Color(0xFF7B2FBE);
-
-    return SizedBox(
-      height: 255,
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          _ArrowButton(
-            icon: LucideIcons.chevronLeft,
-            onTap: widget.isCreating ? null : _handlePrevious,
-          ),
-
-          const SizedBox(width: 20),
-
-          GestureDetector(
-            onHorizontalDragEnd: (details) {
-              if (widget.isCreating) return;
-              final v = details.primaryVelocity ?? 0;
-              if (v < -200) _handleNext();
-              if (v > 200) _handlePrevious();
-            },
-            child: Stack(
-              alignment: Alignment.center,
-              children: [
-                // ── Glow: static, no animation, strong and visible ──
-                Container(
-                  width: 200,
-                  height: 200,
-                  decoration: const BoxDecoration(
-                    shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(
-                        color: Color(0x99_7B2FBE), // ~60% opacity purple
-                        blurRadius: 75,
-                        spreadRadius: 28,
-                      ),
-                      BoxShadow(
-                        color: Color(0x55_7B2FBE), // ~33% outer haze
-                        blurRadius: 120,
-                        spreadRadius: 50,
-                      ),
-                    ],
-                  ),
-                ),
-
-                // ── Gradient border ring ──
-                Container(
-                  width: 192,
-                  height: 192,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: SweepGradient(
-                      colors: [
-                        AppColors.accentSecondary,
-                        AppColors.accentPrimary,
-                        AppColors.accentSecondary,
-                      ],
-                    ),
-                  ),
-                  padding: const EdgeInsets.all(2.5),
-                  child: Container(
-                    decoration: const BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: Color(0xFF07070F),
-                    ),
-                    clipBehavior: Clip.antiAlias,
-                    child: widget.isCreating
-                        ? const _CreatingOverlay()
-                        : AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 260),
-                      transitionBuilder: (child, animation) {
-                        final offset = Tween<Offset>(
-                          begin: Offset(_isForward ? 0.35 : -0.35, 0),
-                          end: Offset.zero,
-                        ).animate(CurvedAnimation(
-                          parent: animation,
-                          curve: Curves.easeOut,
-                        ));
-                        return SlideTransition(
-                          position: offset,
-                          child: FadeTransition(
-                            opacity: animation,
-                            child: child,
-                          ),
-                        );
-                      },
-                      child: _AvatarImage(
-                        key: ValueKey(widget.currentIndex),
-                        url: url,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          const SizedBox(width: 20),
-
-          _ArrowButton(
-            icon: LucideIcons.chevronRight,
-            onTap: widget.isCreating ? null : _handleNext,
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ─── Arrow button — no background, just the icon ──────────────────────────────
-
-class _ArrowButton extends StatefulWidget {
-  final IconData icon;
-  final VoidCallback? onTap;
-
-  const _ArrowButton({required this.icon, this.onTap});
-
-  @override
-  State<_ArrowButton> createState() => _ArrowButtonState();
-}
-
-class _ArrowButtonState extends State<_ArrowButton> {
-  bool _pressed = false;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTapDown: (_) => setState(() => _pressed = true),
-      onTapUp: (_) {
-        setState(() => _pressed = false);
-        widget.onTap?.call();
-      },
-      onTapCancel: () => setState(() => _pressed = false),
-      behavior: HitTestBehavior.opaque,
-      child: SizedBox(
-        width: 44,
-        height: 44,
-        child: AnimatedOpacity(
-          opacity: widget.onTap == null ? 0.2 : (_pressed ? 0.45 : 0.8),
-          duration: const Duration(milliseconds: 100),
-          child: Center(
-            child: Icon(
-              widget.icon,
-              size: 26,
-              color: AppColors.textPrimary,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// ─── Avatar image ──────────────────────────────────────────────────────────────
-
-class _AvatarImage extends StatelessWidget {
+class _StaticAvatar extends StatelessWidget {
   final String url;
+  final bool isCreating;
 
-  const _AvatarImage({super.key, required this.url});
+  const _StaticAvatar({required this.url, required this.isCreating});
 
   @override
   Widget build(BuildContext context) {
-    return CachedNetworkImage(
-      imageUrl: url,
-      fit: BoxFit.cover,
-      placeholder: (context, url) => Center(
-        child: SizedBox(
-          width: 24,
-          height: 24,
-          child: CircularProgressIndicator(
-            strokeWidth: 2,
-            valueColor:
-            AlwaysStoppedAnimation<Color>(AppColors.accentPrimary),
-          ),
+    return Column(
+      children: [
+        Stack(
+          alignment: Alignment.center,
+          children: [
+            // Glow — reduced
+            Container(
+              width: 200,
+              height: 200,
+              decoration: const BoxDecoration(
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: Color(0x667B2FBE),
+                    blurRadius: 60,
+                    spreadRadius: 18,
+                  ),
+                  BoxShadow(
+                    color: Color(0x337B2FBE),
+                    blurRadius: 90,
+                    spreadRadius: 30,
+                  ),
+                ],
+              ),
+            ),
+
+            // Gradient ring
+            Container(
+              width: 192,
+              height: 192,
+              decoration: const BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: LinearGradient(
+                  colors: [
+                    Color(0xFF7B2FBE),
+                    Color(0xFF00BFA5),
+                    Color(0xFF7B2FBE),
+                  ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+              ),
+              padding: const EdgeInsets.all(2.5),
+              child: Container(
+                decoration: const BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Color(0xFF07070F),
+                ),
+                clipBehavior: Clip.antiAlias,
+                child: isCreating
+                    ? const _CreatingOverlay()
+                    : CachedNetworkImage(
+                  imageUrl: url,
+                  fit: BoxFit.cover,
+                  placeholder: (_, __) => const Center(
+                    child: SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          Color(0xFF00BFA5),
+                        ),
+                      ),
+                    ),
+                  ),
+                  errorWidget: (_, __, ___) => const Icon(
+                    LucideIcons.user,
+                    size: 56,
+                    color: Color(0xFF555566),
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
-      ),
-      errorWidget: (context, url, error) => Center(
-        child: Icon(LucideIcons.user, size: 48, color: AppColors.textSecondary),
-      ),
+
+        const SizedBox(height: 14),
+
+        // Edit avatar button — only visible when not creating
+        if (!isCreating)
+          GestureDetector(
+            onTap: () => context.push('/avatar-builder'),
+            behavior: HitTestBehavior.opaque,
+            child: Container(
+              padding:
+              const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+              decoration: BoxDecoration(
+                color: const Color(0xFF00BFA5).withOpacity(0.08),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: const Color(0xFF00BFA5).withOpacity(0.3),
+                  width: 1,
+                ),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(
+                    LucideIcons.pencil,
+                    size: 12,
+                    color: Color(0xFF00BFA5),
+                  ),
+                  const SizedBox(width: 5),
+                  Text(
+                    'Edit Avatar',
+                    style: AppTypography.bodySmall.copyWith(
+                      color: const Color(0xFF00BFA5),
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+      ],
     );
   }
 }
 
-// ─── Creating overlay ──────────────────────────────────────────────────────────
+// creating overlay
+
 
 class _CreatingOverlay extends StatelessWidget {
   const _CreatingOverlay();
@@ -456,18 +344,17 @@ class _CreatingOverlay extends StatelessWidget {
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        SizedBox(
-          width: 24,
-          height: 24,
+        const SizedBox(
+          width: 22,
+          height: 22,
           child: CircularProgressIndicator(
             strokeWidth: 2,
-            valueColor:
-            AlwaysStoppedAnimation<Color>(AppColors.accentPrimary),
+            valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF00BFA5)),
           ),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 10),
         Text(
-          'Creating user ...',
+          'Creating...',
           style: AppTypography.bodySmall.copyWith(
             color: AppColors.textSecondary,
           ),
@@ -477,7 +364,7 @@ class _CreatingOverlay extends StatelessWidget {
   }
 }
 
-// ─── Username field ─────────────────────────────────────────────────────────────
+// username field
 
 class _UsernameField extends StatelessWidget {
   final TextEditingController controller;
@@ -530,7 +417,6 @@ class _UsernameField extends StatelessWidget {
         AnimatedContainer(
           duration: const Duration(milliseconds: 220),
           decoration: BoxDecoration(
-            // subtle dark tint — not a flat grey, just barely visible
             color: const Color(0xFF0D0D16),
             borderRadius: BorderRadius.circular(14),
             border: Border.all(
@@ -542,12 +428,13 @@ class _UsernameField extends StatelessWidget {
             children: [
               const SizedBox(width: 14),
 
-              // shuffle/dice icon — tappable
+              // Shuffle icon — tap to generate random name
               GestureDetector(
                 onTap: onShuffleTap,
                 behavior: HitTestBehavior.opaque,
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 2),
+                  padding:
+                  const EdgeInsets.symmetric(vertical: 14, horizontal: 2),
                   child: Icon(
                     LucideIcons.shuffle,
                     size: 20,
@@ -558,6 +445,7 @@ class _UsernameField extends StatelessWidget {
 
               const SizedBox(width: 10),
 
+              // Input
               Expanded(
                 child: TextField(
                   controller: controller,
@@ -588,12 +476,16 @@ class _UsernameField extends StatelessWidget {
               ),
 
               const SizedBox(width: 10),
+
+              // Status indicator
               _StatusIndicator(status: status, length: length),
+
               const SizedBox(width: 14),
             ],
           ),
         ),
 
+        // Inline error message
         AnimatedSize(
           duration: const Duration(milliseconds: 180),
           child: _hasError
@@ -614,6 +506,8 @@ class _UsernameField extends StatelessWidget {
     );
   }
 }
+
+// status indicator inside field
 
 class _StatusIndicator extends StatelessWidget {
   final UsernameStatus status;
@@ -638,11 +532,12 @@ class _StatusIndicator extends StatelessWidget {
         return Icon(LucideIcons.checkCircle2,
             size: 18, color: AppColors.accentPrimary);
       case UsernameStatus.taken:
-        return Icon(LucideIcons.xCircle, size: 18, color: AppColors.errorLight);
+        return Icon(LucideIcons.xCircle,
+            size: 18, color: AppColors.errorLight);
       case UsernameStatus.invalid:
         return Icon(LucideIcons.alertCircle,
             size: 18, color: AppColors.errorLight);
-      default:
+      case UsernameStatus.idle:
         if (length > 0) {
           return Text(
             '$length/25',
@@ -656,7 +551,7 @@ class _StatusIndicator extends StatelessWidget {
   }
 }
 
-// ─── Terms ─────────────────────────────────────────────────────────────────────
+// terms text
 
 class _TermsText extends StatelessWidget {
   const _TermsText();
@@ -716,7 +611,7 @@ class _TermsText extends StatelessWidget {
   }
 }
 
-// ─── Enter Fess button ─────────────────────────────────────────────────────────
+// enter fess button
 
 class _EnterFessButton extends StatefulWidget {
   final bool canSubmit;
@@ -759,11 +654,8 @@ class _EnterFessButtonState extends State<_EnterFessButton> {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(14),
             gradient: widget.canSubmit
-                ? LinearGradient(
-              colors: [
-                AppColors.accentSecondary,
-                AppColors.accentPrimary,
-              ],
+                ? const LinearGradient(
+              colors: [Color(0xFF7B2FBE), Color(0xFF00BFA5)],
               begin: Alignment.centerLeft,
               end: Alignment.centerRight,
             )
@@ -771,11 +663,21 @@ class _EnterFessButtonState extends State<_EnterFessButton> {
             color: widget.canSubmit ? null : const Color(0xFF1A1A28),
           ),
           child: Center(
-            child: Text(
+            child: widget.isCreating
+                ? const SizedBox(
+              width: 22,
+              height: 22,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                valueColor:
+                AlwaysStoppedAnimation<Color>(Colors.white),
+              ),
+            )
+                : Text(
               'Enter Fess',
               style: AppTypography.labelLarge.copyWith(
                 color: widget.canSubmit
-                    ? AppColors.backgroundMain
+                    ? Colors.white
                     : AppColors.hintText,
                 fontWeight: FontWeight.w700,
                 letterSpacing: 0.3,

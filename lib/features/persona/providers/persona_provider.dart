@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:fessv2/features/persona/providers/avatar_builder_provider.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -115,7 +116,7 @@ class PersonaNotifier extends Notifier<PersonaState> {
       if (authUser == null) throw Exception('Not signed in');
 
       final anonId = const Uuid().v4();
-      final seed = AvatarData.seedAt(state.avatarIndex);
+      final avatarConfig = ref.read(avatarBuilderProvider).config;
       final batch = FirebaseService.firestore.batch();
 
       // maps auth uid to anonId — private, never exposed to other users
@@ -141,12 +142,10 @@ class PersonaNotifier extends Notifier<PersonaState> {
             .doc(anonId),
         {
           'username': state.username,
-          'avatarSeed': seed,
+          'avatarConfig': avatarConfig.toMap(),
           'createdAt': FieldValue.serverTimestamp(),
           'witnessCount': 0,
           'witnessingCount': 0,
-          // stored for future features, never surfaced in UI right now
-          'karma': 0,
           'totalPostCount': 0,
         },
       );

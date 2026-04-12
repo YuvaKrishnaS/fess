@@ -13,6 +13,7 @@ class AppColors {
   static const Color textSecondary = Color(0xFF9E9E9E);
   static const Color hintText = Color(0xFF616161);
 
+  static const Color border = Color(0xFF2A2A3E); // subtle dark border
   // Accents
   static const Color accentPrimary = Color(0xFF1DE9B6);
   static const Color accentSecondary = Color(0xFF7C4DFF);
