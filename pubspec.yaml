@@ -29,6 +29,7 @@ dependencies:
   google_sign_in: ^6.2.1
   lucide_icons: ^0.257.0
   cached_network_image: ^3.4.1
+  timeago: ^3.7.1
 
 dev_dependencies:
   flutter_test:
