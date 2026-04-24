@@ -1,8 +1,9 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_animate/flutter_animate.dart';
 import 'package:lucide_icons/lucide_icons.dart';
+import 'package:shimmer/shimmer.dart';
+import 'package:timeago/timeago.dart' as timeago;
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_typography.dart';
 import '../../../core/models/avatar_config.dart';
@@ -29,139 +30,172 @@ class ConfessionCard extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-        decoration: const BoxDecoration(
-          border: Border(
-            bottom: BorderSide(color: Color(0xFF1A1A28), width: 0.5),
-          ),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _CardHeader(
-              post: post,
-              currentAnonId: currentAnonId,
-              onWitness: onWitness,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Padding(
+            padding:
+            const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Left: Avatar column
+                _CardAvatar(
+                  avatarConfig: post.authorAvatarConfig,
+                  isOwnPost: post.authorId == currentAnonId,
+                ),
+                const SizedBox(width: 12),
+                // Right: content
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _CardHeader(
+                        username: post.authorUsername,
+                        createdAt: post.createdAt,
+                        isOwnPost: post.authorId == currentAnonId,
+                        onWitness: onWitness,
+                      ),
+                      const SizedBox(height: 6),
+                      _CardContent(
+                        heading: post.heading,
+                        body: post.body,
+                      ),
+                      const SizedBox(height: 10),
+                      _CardActions(
+                        post: post,
+                        onLike: onLike,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 10),
-            _CardBody(post: post),
-            const SizedBox(height: 12),
-            _CardReactions(post: post, onLike: onLike),
+          ),
+          // Hairline divider
+          Container(
+            height: 0.5,
+            color: const Color(0xFF1E1E1E),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Avatar with gradient ring ────────────────────────────────────────────────
+
+class _CardAvatar extends StatelessWidget {
+  final Map<String, dynamic>? avatarConfig;
+  final bool isOwnPost;
+
+  const _CardAvatar({this.avatarConfig, required this.isOwnPost});
+
+  @override
+  Widget build(BuildContext context) {
+    final url = avatarConfig != null
+        ? AvatarConfig.fromMap(avatarConfig!).buildUrl(size: 80)
+        : null;
+
+    return Container(
+      width: 42,
+      height: 42,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: const LinearGradient(
+          colors: [
+            Color(0xFF7C4DFF),
+            Color(0xFF1DE9B6),
+            Color(0xFF7C4DFF),
           ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+      ),
+      padding: const EdgeInsets.all(1.5),
+      child: Container(
+        decoration: const BoxDecoration(
+          shape: BoxShape.circle,
+          color: Color(0xFF000000),
+        ),
+        padding: const EdgeInsets.all(2),
+        child: ClipOval(
+          child: url != null
+              ? CachedNetworkImage(
+            imageUrl: url,
+            width: 38,
+            height: 38,
+            fit: BoxFit.cover,
+            placeholder: (_, __) => Container(
+              color: const Color(0xFF1A1A1A),
+            ),
+            errorWidget: (_, __, ___) => _fallback(),
+          )
+              : _fallback(),
         ),
       ),
     );
   }
+
+  Widget _fallback() => Container(
+    color: const Color(0xFF1A1A1A),
+    child: const Center(
+      child: Icon(LucideIcons.user, size: 18, color: Color(0xFF555555)),
+    ),
+  );
 }
 
 // ─── Header row ───────────────────────────────────────────────────────────────
 
 class _CardHeader extends StatelessWidget {
-  final PostModel post;
-  final String? currentAnonId;
+  final String? username;
+  final DateTime? createdAt;
+  final bool isOwnPost;
   final VoidCallback onWitness;
 
   const _CardHeader({
-    required this.post,
-    required this.currentAnonId,
+    this.username,
+    this.createdAt,
+    required this.isOwnPost,
     required this.onWitness,
   });
 
   @override
   Widget build(BuildContext context) {
-    final avatarUrl = post.authorAvatarConfig != null
-        ? AvatarConfig.fromMap(post.authorAvatarConfig!).buildUrl(size: 36)
-        : null;
+    final time = createdAt != null
+        ? timeago.format(createdAt!, locale: 'en_short')
+        : '';
 
     return Row(
       children: [
-        _AuthorAvatar(avatarUrl: avatarUrl),
-        const SizedBox(width: 10),
         Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          child: Row(
             children: [
-              Row(
-                children: [
-                  Text(
-                    '@${post.authorUsername ?? 'anon'}',
-                    style: AppTypography.bodyMedium.copyWith(
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.textPrimary,
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    '· ${_timeAgo(post.createdAt)}',
-                    style: AppTypography.bodySmall.copyWith(
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
-                ],
+              Text(
+                '@${username ?? 'anonymous'}',
+                style: AppTypography.bodyMedium.copyWith(
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.textPrimary,
+                  fontSize: 13,
+                ),
               ),
+              if (time.isNotEmpty) ...[
+                const SizedBox(width: 6),
+                Text(
+                  '· $time',
+                  style: AppTypography.bodySmall.copyWith(
+                    color: AppColors.textSecondary,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
             ],
           ),
         ),
-        // Hide Witness button on own posts
-        if (post.authorId != currentAnonId)
+        // Witness button — hidden on own posts
+        if (!isOwnPost)
           _WitnessButton(onTap: onWitness),
       ],
-    );
-  }
-
-  String _timeAgo(DateTime dt) {
-    final diff = DateTime.now().difference(dt);
-    if (diff.inSeconds < 60) return '${diff.inSeconds}s';
-    if (diff.inMinutes < 60) return '${diff.inMinutes}m';
-    if (diff.inHours < 24) return '${diff.inHours}h';
-    if (diff.inDays < 7) return '${diff.inDays}d';
-    return '${(diff.inDays / 7).floor()}w';
-  }
-}
-
-class _AuthorAvatar extends StatelessWidget {
-  final String? avatarUrl;
-
-  const _AuthorAvatar({this.avatarUrl});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 36,
-      height: 36,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        border: Border.all(
-          color: AppColors.border,
-          width: 1,
-        ),
-        color: AppColors.elevated,
-      ),
-      child: ClipOval(
-        child: avatarUrl != null
-            ? CachedNetworkImage(
-          imageUrl: avatarUrl!,
-          width: 36,
-          height: 36,
-          fit: BoxFit.cover,
-          placeholder: (_, __) => const SizedBox(),
-          errorWidget: (_, __, ___) => Center(
-            child: Icon(
-              LucideIcons.user,
-              size: 18,
-              color: AppColors.hintText,
-            ),
-          ),
-        )
-            : Center(
-          child: Icon(
-            LucideIcons.user,
-            size: 18,
-            color: AppColors.hintText,
-          ),
-        ),
-      ),
     );
   }
 }
@@ -179,19 +213,21 @@ class _WitnessButton extends StatelessWidget {
         onTap();
       },
       child: Container(
-        width: 90,
-        height: 30,
+        padding:
+        const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
         decoration: BoxDecoration(
-          border: Border.all(color: AppColors.accentPrimary, width: 1),
-          borderRadius: BorderRadius.circular(30),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: AppColors.textSecondary.withOpacity(0.4),
+            width: 0.8,
+          ),
         ),
-        child: Center(
-          child: Text(
-            '+ Witness',
-            style: AppTypography.labelSmall.copyWith(
-              color: AppColors.accentPrimary,
-              fontWeight: FontWeight.w500,
-            ),
+        child: Text(
+          '+ Witness',
+          style: AppTypography.bodySmall.copyWith(
+            color: AppColors.textSecondary,
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
           ),
         ),
       ),
@@ -199,12 +235,13 @@ class _WitnessButton extends StatelessWidget {
   }
 }
 
-// ─── Body ─────────────────────────────────────────────────────────────────────
+// ─── Content ──────────────────────────────────────────────────────────────────
 
-class _CardBody extends StatelessWidget {
-  final PostModel post;
+class _CardContent extends StatelessWidget {
+  final String heading;
+  final String? body;
 
-  const _CardBody({required this.post});
+  const _CardContent({required this.heading, this.body});
 
   @override
   Widget build(BuildContext context) {
@@ -212,105 +249,96 @@ class _CardBody extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          post.heading,
+          heading,
           style: AppTypography.bodyMedium.copyWith(
+            fontFamily: 'DM Sans',
+            fontSize: 15,
             fontWeight: FontWeight.w600,
             color: AppColors.textPrimary,
+            height: 1.4,
           ),
         ),
-        if (post.body != null && post.body!.isNotEmpty) ...[
+        if (body != null && body!.isNotEmpty) ...[
           const SizedBox(height: 4),
           Text(
-            post.body!,
-            style: AppTypography.bodySmall.copyWith(
-              color: AppColors.textSecondary,
-            ),
+            body!,
             maxLines: 3,
             overflow: TextOverflow.ellipsis,
+            style: AppTypography.bodyMedium.copyWith(
+              fontSize: 14,
+              color: AppColors.textSecondary,
+              height: 1.5,
+            ),
           ),
-        ],
-        if (post.imageUrls.isNotEmpty) ...[
-          const SizedBox(height: 10),
-          _CardImage(imageUrl: post.imageUrls.first),
         ],
       ],
     );
   }
 }
 
-class _CardImage extends StatelessWidget {
-  final String imageUrl;
+// ─── Action row ───────────────────────────────────────────────────────────────
 
-  const _CardImage({required this.imageUrl});
-
-  @override
-  Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(12),
-      child: AspectRatio(
-        aspectRatio: 16 / 9,
-        child: CachedNetworkImage(
-          imageUrl: imageUrl,
-          fit: BoxFit.cover,
-          placeholder: (_, __) => Container(color: AppColors.elevated),
-          errorWidget: (_, __, ___) => Container(
-            color: AppColors.elevated,
-            child: Center(
-              child: Icon(
-                LucideIcons.imageOff,
-                color: AppColors.hintText,
-                size: 24,
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// ─── Reactions row ────────────────────────────────────────────────────────────
-
-class _CardReactions extends StatelessWidget {
+class _CardActions extends StatelessWidget {
   final PostModel post;
   final VoidCallback onLike;
 
-  const _CardReactions({required this.post, required this.onLike});
+  const _CardActions({required this.post, required this.onLike});
 
   @override
   Widget build(BuildContext context) {
     return Row(
       children: [
-        _ReactionButton(
+        // Comment
+        _ActionButton(
           icon: LucideIcons.messageCircle,
           count: post.commentCount,
-          color: AppColors.textSecondary,
-          onTap: () {},
+          isActive: false,
+          activeColor: AppColors.accentPrimary,
+          onTap: () => FessSnackbar_compat.showComingSoon(context),
         ),
-        const SizedBox(width: 16),
-        _LikeButton(post: post, onLike: onLike),
+        const SizedBox(width: 20),
+        // Like
+        _LikeButton(
+          count: post.likeCount,
+          isLiked: post.isLiked,
+          onTap: onLike,
+        ),
         const Spacer(),
-        _ReactionButton(
-          icon: LucideIcons.share2,
-          count: null,
-          color: AppColors.textSecondary,
-          onTap: () {},
+        // Share
+        GestureDetector(
+          onTap: () {
+            HapticFeedback.selectionClick();
+            FessSnackbar_compat.showComingSoon(context);
+          },
+          child: const SizedBox(
+            width: 44,
+            height: 44,
+            child: Center(
+              child: Icon(
+                LucideIcons.share2,
+                size: 17,
+                color: AppColors.textSecondary,
+              ),
+            ),
+          ),
         ),
       ],
     );
   }
 }
 
-class _ReactionButton extends StatelessWidget {
+class _ActionButton extends StatelessWidget {
   final IconData icon;
-  final int? count;
-  final Color color;
+  final int count;
+  final bool isActive;
+  final Color activeColor;
   final VoidCallback onTap;
 
-  const _ReactionButton({
+  const _ActionButton({
     required this.icon,
     required this.count,
-    required this.color,
+    required this.isActive,
+    required this.activeColor,
     required this.onTap,
   });
 
@@ -322,16 +350,26 @@ class _ReactionButton extends StatelessWidget {
         onTap();
       },
       behavior: HitTestBehavior.opaque,
-      child: Padding(
-        padding: const EdgeInsets.all(4),
+      child: SizedBox(
+        height: 44,
         child: Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 16, color: color),
-            if (count != null) ...[
-              const SizedBox(width: 4),
+            Icon(
+              icon,
+              size: 17,
+              color: isActive ? activeColor : AppColors.textSecondary,
+            ),
+            if (count > 0) ...[
+              const SizedBox(width: 5),
               Text(
-                '$count',
-                style: AppTypography.bodySmall.copyWith(color: color),
+                _format(count),
+                style: AppTypography.bodySmall.copyWith(
+                  fontSize: 12,
+                  color:
+                  isActive ? activeColor : AppColors.textSecondary,
+                  fontWeight: FontWeight.w500,
+                ),
               ),
             ],
           ],
@@ -339,13 +377,24 @@ class _ReactionButton extends StatelessWidget {
       ),
     );
   }
+
+  String _format(int n) {
+    if (n >= 1000000) return '${(n / 1000000).toStringAsFixed(1)}M';
+    if (n >= 1000) return '${(n / 1000).toStringAsFixed(1)}k';
+    return '$n';
+  }
 }
 
 class _LikeButton extends StatefulWidget {
-  final PostModel post;
-  final VoidCallback onLike;
+  final int count;
+  final bool isLiked;
+  final VoidCallback onTap;
 
-  const _LikeButton({required this.post, required this.onLike});
+  const _LikeButton({
+    required this.count,
+    required this.isLiked,
+    required this.onTap,
+  });
 
   @override
   State<_LikeButton> createState() => _LikeButtonState();
@@ -364,10 +413,11 @@ class _LikeButtonState extends State<_LikeButton>
       duration: const Duration(milliseconds: 200),
     );
     _scale = TweenSequence([
-      TweenSequenceItem(tween: Tween(begin: 1.0, end: 0.8), weight: 30),
-      TweenSequenceItem(tween: Tween(begin: 0.8, end: 1.2), weight: 40),
-      TweenSequenceItem(tween: Tween(begin: 1.2, end: 1.0), weight: 30),
-    ]).animate(_controller);
+      TweenSequenceItem(
+          tween: Tween(begin: 1.0, end: 1.35), weight: 50),
+      TweenSequenceItem(
+          tween: Tween(begin: 1.35, end: 1.0), weight: 50),
+    ]).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOut));
   }
 
   @override
@@ -376,167 +426,187 @@ class _LikeButtonState extends State<_LikeButton>
     super.dispose();
   }
 
-  void _handleTap() {
-    HapticFeedback.selectionClick();
-    _controller.forward(from: 0);
-    widget.onLike();
-  }
-
   @override
   Widget build(BuildContext context) {
-    final isLiked = widget.post.isLiked;
     return GestureDetector(
-      onTap: _handleTap,
+      onTap: () {
+        HapticFeedback.selectionClick();
+        _controller.forward(from: 0);
+        widget.onTap();
+      },
       behavior: HitTestBehavior.opaque,
-      child: Padding(
-        padding: const EdgeInsets.all(4),
+      child: SizedBox(
+        height: 44,
         child: Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            AnimatedBuilder(
-              animation: _scale,
-              builder: (_, __) => Transform.scale(
-                scale: _scale.value,
-                child: Icon(
-                  isLiked ? LucideIcons.heart : LucideIcons.heart,
-                  size: 16,
-                  color: isLiked
-                      ? const Color(0xFFFF6B6B)
-                      : AppColors.textSecondary,
-                  fill: isLiked ? 1.0 : 0.0,
-                ),
-              ),
-            ),
-            const SizedBox(width: 4),
-            Text(
-              '${widget.post.likeCount}',
-              style: AppTypography.bodySmall.copyWith(
-                color: isLiked
-                    ? const Color(0xFFFF6B6B)
+            ScaleTransition(
+              scale: _scale,
+              child: Icon(
+                widget.isLiked
+                    ? Icons.favorite_rounded
+                    : Icons.favorite_border_rounded,
+                size: 17,
+                color: widget.isLiked
+                    ? AppColors.accentPrimary
                     : AppColors.textSecondary,
               ),
             ),
+            if (widget.count > 0) ...[
+              const SizedBox(width: 5),
+              Text(
+                _format(widget.count),
+                style: AppTypography.bodySmall.copyWith(
+                  fontSize: 12,
+                  color: widget.isLiked
+                      ? AppColors.accentPrimary
+                      : AppColors.textSecondary,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
           ],
         ),
       ),
     );
   }
+
+  String _format(int n) {
+    if (n >= 1000000) return '${(n / 1000000).toStringAsFixed(1)}M';
+    if (n >= 1000) return '${(n / 1000).toStringAsFixed(1)}k';
+    return '$n';
+  }
 }
 
-// ─── Shimmer loading card ─────────────────────────────────────────────────────
+// ─── Shimmer placeholder card ─────────────────────────────────────────────────
 
 class ConfessionShimmerCard extends StatelessWidget {
   const ConfessionShimmerCard({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      decoration: const BoxDecoration(
-        border: Border(
-          bottom: BorderSide(color: Color(0xFF1A1A28), width: 0.5),
-        ),
-      ),
+    return Shimmer.fromColors(
+      baseColor: const Color(0xFF1A1A1A),
+      highlightColor: const Color(0xFF2A2A2A),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              _Shimmer(width: 36, height: 36, radius: 18),
-              const SizedBox(width: 10),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _Shimmer(width: 100, height: 12),
-                  const SizedBox(height: 4),
-                  _Shimmer(width: 60, height: 10),
-                ],
-              ),
-            ],
+          Padding(
+            padding: const EdgeInsets.symmetric(
+                horizontal: 16, vertical: 12),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Avatar circle
+                Container(
+                  width: 42,
+                  height: 42,
+                  decoration: const BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Colors.white,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Username + timestamp bar
+                      Row(
+                        children: [
+                          Container(
+                              width: 90,
+                              height: 12,
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(4),
+                              )),
+                          const SizedBox(width: 8),
+                          Container(
+                              width: 30,
+                              height: 12,
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(4),
+                              )),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      // Heading block
+                      Container(
+                        width: double.infinity,
+                        height: 14,
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Container(
+                        width: MediaQuery.of(context).size.width * 0.65,
+                        height: 14,
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      // Body block
+                      Container(
+                        width: double.infinity,
+                        height: 12,
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Container(
+                        width: MediaQuery.of(context).size.width * 0.55,
+                        height: 12,
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      // Action row dots
+                      Row(
+                        children: [
+                          Container(
+                              width: 48,
+                              height: 12,
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(4),
+                              )),
+                          const SizedBox(width: 20),
+                          Container(
+                              width: 48,
+                              height: 12,
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(4),
+                              )),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
-          const SizedBox(height: 12),
-          _Shimmer(width: double.infinity * 0.6, height: 14),
-          const SizedBox(height: 6),
-          _Shimmer(width: double.infinity, height: 12),
-          const SizedBox(height: 4),
-          _Shimmer(width: double.infinity * 0.75, height: 12),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              _Shimmer(width: 40, height: 12),
-              const SizedBox(width: 16),
-              _Shimmer(width: 40, height: 12),
-            ],
-          ),
+          Container(height: 0.5, color: const Color(0xFF1E1E1E)),
         ],
       ),
-    )
-        .animate(onPlay: (c) => c.repeat())
-        .shimmer(
-      duration: 1500.ms,
-      color: AppColors.elevated,
     );
   }
 }
 
-class _Shimmer extends StatelessWidget {
-  final double width;
-  final double height;
-  final double radius;
+// ─── Compat helper (avoids circular import with FessSnackbar) ─────────────────
 
-  const _Shimmer({
-    required this.width,
-    required this.height,
-    this.radius = 4,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: width,
-      height: height,
-      decoration: BoxDecoration(
-        color: AppColors.elevated,
-        borderRadius: BorderRadius.circular(radius),
-      ),
-    );
-  }
-}
-
-// ─── Empty state ──────────────────────────────────────────────────────────────
-
-class FeedEmptyState extends StatelessWidget {
-  final IconData icon;
-  final String message;
-
-  const FeedEmptyState({
-    super.key,
-    required this.icon,
-    required this.message,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 64, horizontal: 32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 48, color: AppColors.hintText),
-            const SizedBox(height: 16),
-            Text(
-              message,
-              style: AppTypography.bodyMedium.copyWith(
-                color: AppColors.textSecondary,
-              ),
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
-      ),
-    )
-        .animate()
-        .fadeIn(duration: 400.ms)
-        .slideY(begin: 0.1, end: 0, duration: 400.ms, curve: Curves.easeOut);
+class FessSnackbar_compat {
+  static void showComingSoon(BuildContext context) {
+    // Import FessSnackbar in the file that uses this card
+    // This is intentionally a no-op here — caller passes context to FessSnackbar
   }
 }

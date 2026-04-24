@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -7,7 +6,7 @@ import '../../../core/models/avatar_config.dart';
 import '../../../core/services/firebase_service.dart';
 import '../../../core/services/local_storage_service.dart';
 
-// ─── Current user's anonId ───────────────────────────────────────────────────
+// ─── Current anonId ───────────────────────────────────────────────────────────
 
 final currentAnonIdProvider = FutureProvider<String?>((ref) async {
   final cached = LocalStorageService.getCachedAnonId();
@@ -16,47 +15,60 @@ final currentAnonIdProvider = FutureProvider<String?>((ref) async {
   final uid = FirebaseService.auth.currentUser?.uid;
   if (uid == null) return null;
 
-  final doc = await FirebaseService.firestore
-      .collection('private_users')
-      .doc(uid)
-      .get();
-  final id = doc.data()?['publicProfileId'] as String?;
-  if (id != null) await LocalStorageService.setCachedAnonId(id);
-  return id;
+  try {
+    final doc = await FirebaseService.firestore
+        .collection('private_users')
+        .doc(uid)
+        .get();
+    final id = doc.data()?['publicProfileId'] as String?;
+    if (id != null) await LocalStorageService.setCachedAnonId(id);
+    return id;
+  } catch (e) {
+    debugPrint('[currentAnonIdProvider] $e');
+    return null;
+  }
 });
 
-// ─── Current user's public profile (for avatar in app bar) ───────────────────
+// ─── Current profile (for app bar avatar) ────────────────────────────────────
 
 final currentProfileProvider = FutureProvider<Map<String, dynamic>?>((ref) async {
   final anonId = await ref.watch(currentAnonIdProvider.future);
   if (anonId == null) return null;
-
-  final doc = await FirebaseService.firestore
-      .collection('public_profiles')
-      .doc(anonId)
-      .get();
-  return doc.data();
+  try {
+    final doc = await FirebaseService.firestore
+        .collection('public_profiles')
+        .doc(anonId)
+        .get();
+    return doc.data();
+  } catch (e) {
+    debugPrint('[currentProfileProvider] $e');
+    return null;
+  }
 });
 
-// ─── Witnessing IDs (for Following tab) ──────────────────────────────────────
+// ─── Witnessing IDs ───────────────────────────────────────────────────────────
 
 final witnessingIdsProvider = FutureProvider<List<String>>((ref) async {
   final anonId = await ref.watch(currentAnonIdProvider.future);
   if (anonId == null) return [];
-
-  final snap = await FirebaseService.firestore
-      .collection('witnesses')
-      .where('followerId', isEqualTo: anonId)
-      .limit(30) // Firestore whereIn max
-      .get();
-
-  return snap.docs
-      .map((d) => d.data()['followingId'] as String? ?? '')
-      .where((id) => id.isNotEmpty)
-      .toList();
+  try {
+    final snap = await FirebaseService.firestore
+        .collection('witnesses')
+        .where('followerId', isEqualTo: anonId)
+        .limit(30)
+        .get();
+    return snap.docs
+        .map((d) => d.data()['followingId'] as String? ?? '')
+        .where((id) => id.isNotEmpty)
+        .toList();
+  } catch (e) {
+    // Collection doesn't exist yet — return empty cleanly
+    debugPrint('[witnessingIdsProvider] not available yet: $e');
+    return [];
+  }
 });
 
-// ─── Feed State ───────────────────────────────────────────────────────────────
+// ─── Feed state ───────────────────────────────────────────────────────────────
 
 class FeedState {
   final List<PostModel> posts;
@@ -83,57 +95,58 @@ class FeedState {
     String? error,
     DocumentSnapshot? lastDocument,
     bool clearError = false,
-  }) {
-    return FeedState(
-      posts: posts ?? this.posts,
-      isLoading: isLoading ?? this.isLoading,
-      isLoadingMore: isLoadingMore ?? this.isLoadingMore,
-      hasMore: hasMore ?? this.hasMore,
-      error: clearError ? null : (error ?? this.error),
-      lastDocument: lastDocument ?? this.lastDocument,
-    );
-  }
+  }) =>
+      FeedState(
+        posts: posts ?? this.posts,
+        isLoading: isLoading ?? this.isLoading,
+        isLoadingMore: isLoadingMore ?? this.isLoadingMore,
+        hasMore: hasMore ?? this.hasMore,
+        error: clearError ? null : (error ?? this.error),
+        lastDocument: lastDocument ?? this.lastDocument,
+      );
 }
 
-// ─── For You Feed ─────────────────────────────────────────────────────────────
+// ─── For You feed ─────────────────────────────────────────────────────────────
 
 class ForYouFeedNotifier extends AsyncNotifier<FeedState> {
-  static const int _pageSize = 15;
+  static const int _limit = 15;
 
   @override
-  Future<FeedState> build() async {
-    return _fetchInitial();
-  }
+  Future<FeedState> build() => _fetch();
 
-  Future<FeedState> _fetchInitial() async {
+  Future<FeedState> _fetch({DocumentSnapshot? after}) async {
     try {
-      final snap = await FirebaseService.firestore
+      var query = FirebaseService.firestore
           .collection('posts')
-          .where('type', isEqualTo: 'confession')
           .orderBy('createdAt', descending: true)
-          .limit(_pageSize)
-          .get();
+          .limit(_limit);
+      if (after != null) query = query.startAfterDocument(after);
 
-      final posts = await _enrichPosts(snap.docs);
+      final snap = await query.get();
+      final posts = await _enrich(snap.docs);
+      // Client-side filter — no composite index needed
+      final confessions =
+      posts.where((p) => p.type == 'confession').toList();
+
       return FeedState(
-        posts: posts,
+        posts: confessions,
         isLoading: false,
-        hasMore: snap.docs.length == _pageSize,
+        hasMore: snap.docs.length == _limit,
         lastDocument: snap.docs.isNotEmpty ? snap.docs.last : null,
       );
     } catch (e) {
-      debugPrint('[ForYouFeed] fetch failed: $e');
-      return FeedState(
+      debugPrint('[ForYouFeed] $e');
+      return const FeedState(
         isLoading: false,
         hasMore: false,
-        error: 'Failed to load posts. Pull down to retry.',
+        error: 'Could not load posts. Pull down to retry.',
       );
     }
   }
 
   Future<void> refresh() async {
     state = const AsyncValue.loading();
-    state = AsyncValue.data(await _fetchInitial());
+    state = AsyncValue.data(await _fetch());
   }
 
   Future<void> loadMore() async {
@@ -148,30 +161,30 @@ class ForYouFeedNotifier extends AsyncNotifier<FeedState> {
     try {
       final snap = await FirebaseService.firestore
           .collection('posts')
-          .where('type', isEqualTo: 'confession')
           .orderBy('createdAt', descending: true)
           .startAfterDocument(current.lastDocument!)
-          .limit(_pageSize)
+          .limit(_limit)
           .get();
 
-      final newPosts = await _enrichPosts(snap.docs);
+      final more = await _enrich(snap.docs);
+      final confessions = more.where((p) => p.type == 'confession').toList();
+
       state = AsyncValue.data(current.copyWith(
-        posts: [...current.posts, ...newPosts],
+        posts: [...current.posts, ...confessions],
         isLoadingMore: false,
-        hasMore: snap.docs.length == _pageSize,
-        lastDocument: snap.docs.isNotEmpty ? snap.docs.last : current.lastDocument,
+        hasMore: snap.docs.length == _limit,
+        lastDocument:
+        snap.docs.isNotEmpty ? snap.docs.last : current.lastDocument,
       ));
     } catch (e) {
-      debugPrint('[ForYouFeed] loadMore failed: $e');
+      debugPrint('[ForYouFeed] loadMore: $e');
       state = AsyncValue.data(current.copyWith(isLoadingMore: false));
     }
   }
 
-  // Optimistic like toggle
   Future<void> toggleLike(String postId) async {
     final anonId = LocalStorageService.getCachedAnonId();
     if (anonId == null) return;
-
     final current = state.value;
     if (current == null) return;
 
@@ -179,42 +192,45 @@ class ForYouFeedNotifier extends AsyncNotifier<FeedState> {
     if (idx == -1) return;
 
     final post = current.posts[idx];
-    final newIsLiked = !post.isLiked;
-    final newCount = post.likeCount + (newIsLiked ? 1 : -1);
+    final nowLiked = !post.isLiked;
+    final newCount = post.likeCount + (nowLiked ? 1 : -1);
 
-    // Optimistic update
-    final updatedPosts = List<PostModel>.from(current.posts);
-    updatedPosts[idx] = post.copyWith(isLiked: newIsLiked, likeCount: newCount);
-    state = AsyncValue.data(current.copyWith(posts: updatedPosts));
+    // Optimistic
+    final optimistic = List<PostModel>.from(current.posts);
+    optimistic[idx] = post.copyWith(isLiked: nowLiked, likeCount: newCount);
+    state = AsyncValue.data(current.copyWith(posts: optimistic));
 
     try {
-      final likeDocId = '${postId}_$anonId';
-      final likeRef = FirebaseService.firestore
-          .collection('post_likes')
-          .doc(likeDocId);
-      final postRef = FirebaseService.firestore
-          .collection('posts')
-          .doc(postId);
-
+      final likeId = '${postId}_$anonId';
       final batch = FirebaseService.firestore.batch();
-      if (newIsLiked) {
-        batch.set(likeRef, {
-          'postId': postId,
-          'anonId': anonId,
-          'likedAt': FieldValue.serverTimestamp(),
-        });
-        batch.update(postRef, {'likeCount': FieldValue.increment(1)});
+      if (nowLiked) {
+        batch.set(
+          FirebaseService.firestore.collection('post_likes').doc(likeId),
+          {
+            'postId': postId,
+            'anonId': anonId,
+            'likedAt': FieldValue.serverTimestamp(),
+          },
+        );
+        batch.update(
+          FirebaseService.firestore.collection('posts').doc(postId),
+          {'likeCount': FieldValue.increment(1)},
+        );
       } else {
-        batch.delete(likeRef);
-        batch.update(postRef, {'likeCount': FieldValue.increment(-1)});
+        batch.delete(
+            FirebaseService.firestore.collection('post_likes').doc(likeId));
+        batch.update(
+          FirebaseService.firestore.collection('posts').doc(postId),
+          {'likeCount': FieldValue.increment(-1)},
+        );
       }
       await batch.commit();
     } catch (e) {
-      debugPrint('[ForYouFeed] toggleLike failed: $e');
-      // Revert optimistic update
-      final revertedPosts = List<PostModel>.from(current.posts);
-      revertedPosts[idx] = post;
-      state = AsyncValue.data(current.copyWith(posts: revertedPosts));
+      debugPrint('[ForYouFeed] toggleLike failed, reverting: $e');
+      // Revert optimistic
+      final reverted = List<PostModel>.from(current.posts);
+      reverted[idx] = post;
+      state = AsyncValue.data(current.copyWith(posts: reverted));
     }
   }
 }
@@ -223,53 +239,48 @@ final forYouFeedProvider =
 AsyncNotifierProvider<ForYouFeedNotifier, FeedState>(
     ForYouFeedNotifier.new);
 
-// ─── Following Feed ───────────────────────────────────────────────────────────
+// ─── Following feed ───────────────────────────────────────────────────────────
 
 class FollowingFeedNotifier extends AsyncNotifier<FeedState> {
-  static const int _pageSize = 15;
+  static const int _limit = 15;
 
   @override
-  Future<FeedState> build() async {
-    return _fetchInitial();
-  }
+  Future<FeedState> build() => _fetch();
 
-  Future<FeedState> _fetchInitial() async {
+  Future<FeedState> _fetch({DocumentSnapshot? after}) async {
     try {
-      final witnessingIds =
-      await ref.read(witnessingIdsProvider.future);
-
-      if (witnessingIds.isEmpty) {
+      final ids = await ref.read(witnessingIdsProvider.future);
+      if (ids.isEmpty) {
         return const FeedState(isLoading: false, hasMore: false);
       }
 
-      final snap = await FirebaseService.firestore
+      var query = FirebaseService.firestore
           .collection('posts')
-          .where('type', isEqualTo: 'confession')
-          .where('authorId', whereIn: witnessingIds)
+          .where('authorId', whereIn: ids)
           .orderBy('createdAt', descending: true)
-          .limit(_pageSize)
-          .get();
+          .limit(_limit);
+      if (after != null) query = query.startAfterDocument(after);
 
-      final posts = await _enrichPosts(snap.docs);
+      final snap = await query.get();
+      final posts = await _enrich(snap.docs);
+      final confessions =
+      posts.where((p) => p.type == 'confession').toList();
+
       return FeedState(
-        posts: posts,
+        posts: confessions,
         isLoading: false,
-        hasMore: snap.docs.length == _pageSize,
+        hasMore: snap.docs.length == _limit,
         lastDocument: snap.docs.isNotEmpty ? snap.docs.last : null,
       );
     } catch (e) {
-      debugPrint('[FollowingFeed] fetch failed: $e');
-      return FeedState(
-        isLoading: false,
-        hasMore: false,
-        error: 'Failed to load posts.',
-      );
+      debugPrint('[FollowingFeed] $e');
+      return const FeedState(isLoading: false, hasMore: false);
     }
   }
 
   Future<void> refresh() async {
     state = const AsyncValue.loading();
-    state = AsyncValue.data(await _fetchInitial());
+    state = AsyncValue.data(await _fetch());
   }
 
   Future<void> loadMore() async {
@@ -279,59 +290,63 @@ class FollowingFeedNotifier extends AsyncNotifier<FeedState> {
         !current.hasMore ||
         current.lastDocument == null) return;
 
-    final witnessingIds = await ref.read(witnessingIdsProvider.future);
-    if (witnessingIds.isEmpty) return;
+    final ids = await ref.read(witnessingIdsProvider.future);
+    if (ids.isEmpty) return;
 
     state = AsyncValue.data(current.copyWith(isLoadingMore: true));
 
     try {
       final snap = await FirebaseService.firestore
           .collection('posts')
-          .where('type', isEqualTo: 'confession')
-          .where('authorId', whereIn: witnessingIds)
+          .where('authorId', whereIn: ids)
           .orderBy('createdAt', descending: true)
           .startAfterDocument(current.lastDocument!)
-          .limit(_pageSize)
+          .limit(_limit)
           .get();
 
-      final newPosts = await _enrichPosts(snap.docs);
+      final more = await _enrich(snap.docs);
+      final confessions = more.where((p) => p.type == 'confession').toList();
+
       state = AsyncValue.data(current.copyWith(
-        posts: [...current.posts, ...newPosts],
+        posts: [...current.posts, ...confessions],
         isLoadingMore: false,
-        hasMore: snap.docs.length == _pageSize,
+        hasMore: snap.docs.length == _limit,
         lastDocument:
         snap.docs.isNotEmpty ? snap.docs.last : current.lastDocument,
       ));
     } catch (e) {
-      debugPrint('[FollowingFeed] loadMore failed: $e');
+      debugPrint('[FollowingFeed] loadMore: $e');
       state = AsyncValue.data(current.copyWith(isLoadingMore: false));
     }
   }
 
   Future<void> toggleLike(String postId) async {
-    // Same logic — delegate to a shared helper
     final anonId = LocalStorageService.getCachedAnonId();
     if (anonId == null) return;
     final current = state.value;
     if (current == null) return;
+
     final idx = current.posts.indexWhere((p) => p.postId == postId);
     if (idx == -1) return;
-
     final post = current.posts[idx];
-    final newIsLiked = !post.isLiked;
-    final newCount = post.likeCount + (newIsLiked ? 1 : -1);
+    final nowLiked = !post.isLiked;
+    final newCount = post.likeCount + (nowLiked ? 1 : -1);
 
-    final updatedPosts = List<PostModel>.from(current.posts);
-    updatedPosts[idx] = post.copyWith(isLiked: newIsLiked, likeCount: newCount);
-    state = AsyncValue.data(current.copyWith(posts: updatedPosts));
+    final optimistic = List<PostModel>.from(current.posts);
+    optimistic[idx] = post.copyWith(isLiked: nowLiked, likeCount: newCount);
+    state = AsyncValue.data(current.copyWith(posts: optimistic));
 
     try {
-      final likeDocId = '${postId}_$anonId';
+      final likeId = '${postId}_$anonId';
       final batch = FirebaseService.firestore.batch();
-      if (newIsLiked) {
+      if (nowLiked) {
         batch.set(
-          FirebaseService.firestore.collection('post_likes').doc(likeDocId),
-          {'postId': postId, 'anonId': anonId, 'likedAt': FieldValue.serverTimestamp()},
+          FirebaseService.firestore.collection('post_likes').doc(likeId),
+          {
+            'postId': postId,
+            'anonId': anonId,
+            'likedAt': FieldValue.serverTimestamp(),
+          },
         );
         batch.update(
           FirebaseService.firestore.collection('posts').doc(postId),
@@ -339,7 +354,7 @@ class FollowingFeedNotifier extends AsyncNotifier<FeedState> {
         );
       } else {
         batch.delete(
-            FirebaseService.firestore.collection('post_likes').doc(likeDocId));
+            FirebaseService.firestore.collection('post_likes').doc(likeId));
         batch.update(
           FirebaseService.firestore.collection('posts').doc(postId),
           {'likeCount': FieldValue.increment(-1)},
@@ -347,10 +362,10 @@ class FollowingFeedNotifier extends AsyncNotifier<FeedState> {
       }
       await batch.commit();
     } catch (e) {
-      debugPrint('[FollowingFeed] toggleLike failed: $e');
-      final revertedPosts = List<PostModel>.from(current.posts);
-      revertedPosts[idx] = post;
-      state = AsyncValue.data(current.copyWith(posts: revertedPosts));
+      debugPrint('[FollowingFeed] toggleLike reverted: $e');
+      final reverted = List<PostModel>.from(current.posts);
+      reverted[idx] = post;
+      state = AsyncValue.data(current.copyWith(posts: reverted));
     }
   }
 }
@@ -359,97 +374,40 @@ final followingFeedProvider =
 AsyncNotifierProvider<FollowingFeedNotifier, FeedState>(
     FollowingFeedNotifier.new);
 
-// ─── Shared helper — enrich posts with author profile data ───────────────────
-
-Future<List<PostModel>> _enrichPosts(
-    List<QueryDocumentSnapshot> docs) async {
-  if (docs.isEmpty) return [];
-
-  final posts = docs.map((d) => PostModel.fromFirestore(d)).toList();
-
-  // Batch fetch unique author profiles
-  final uniqueAuthorIds = posts.map((p) => p.authorId).toSet().toList();
-
-  // Firestore 'in' queries max 30 — already guaranteed by page size of 15
-  final profileSnaps = await FirebaseService.firestore
-      .collection('public_profiles')
-      .where(FieldPath.documentId, whereIn: uniqueAuthorIds)
-      .get();
-
-  final profileMap = <String, Map<String, dynamic>>{
-    for (final doc in profileSnaps.docs) doc.id: doc.data(),
-  };
-
-  // Check which posts the current user has liked
-  final anonId = LocalStorageService.getCachedAnonId();
-  Set<String> likedPostIds = {};
-  if (anonId != null) {
-    final likeChecks = posts
-        .map((p) => FirebaseService.firestore
-        .collection('post_likes')
-        .doc('${p.postId}_$anonId')
-        .get())
-        .toList();
-    final likeResults = await Future.wait(likeChecks);
-    likedPostIds = likeResults
-        .where((d) => d.exists)
-        .map((d) => d.id.split('_').first)
-        .toSet();
-  }
-
-  return posts.map((post) {
-    final profile = profileMap[post.authorId];
-    return post.copyWith(
-      authorUsername: profile?['username'] as String?,
-      authorAvatarConfig:
-      profile?['avatarConfig'] as Map<String, dynamic>?,
-      isLiked: likedPostIds.contains(post.postId),
-    );
-  }).toList();
-}
-
-// ─── Create post provider ─────────────────────────────────────────────────────
+// ─── Create post ──────────────────────────────────────────────────────────────
 
 class CreatePostNotifier extends Notifier<bool> {
   @override
-  bool build() => false; // isPosting
+  bool build() => false;
 
   Future<bool> createConfession({
     required String heading,
     String? body,
-    List<String> imageUrls = const [],
   }) async {
     final anonId = LocalStorageService.getCachedAnonId();
     if (anonId == null) return false;
-
     state = true;
     try {
-      final docRef =
-      FirebaseService.firestore.collection('posts').doc();
-
-      await docRef.set({
+      await FirebaseService.firestore.collection('posts').doc().set({
         'type': 'confession',
         'authorId': anonId,
         'heading': heading.trim(),
-        'body': (body?.trim().isNotEmpty == true) ? body!.trim() : null,
-        'imageUrls': imageUrls,
+        'body': (body != null && body.trim().isNotEmpty) ? body.trim() : null,
+        'imageUrls': <String>[], // M5: image upload added here
         'audioUrl': null,
         'audioDuration': null,
         'likeCount': 0,
         'commentCount': 0,
         'createdAt': FieldValue.serverTimestamp(),
       });
-
-      // Increment totalPostCount silently
       await FirebaseService.firestore
           .collection('public_profiles')
           .doc(anonId)
           .update({'totalPostCount': FieldValue.increment(1)});
-
       state = false;
       return true;
     } catch (e) {
-      debugPrint('[CreatePost] failed: $e');
+      debugPrint('[CreatePost] $e');
       state = false;
       return false;
     }
@@ -458,3 +416,51 @@ class CreatePostNotifier extends Notifier<bool> {
 
 final createPostProvider =
 NotifierProvider<CreatePostNotifier, bool>(CreatePostNotifier.new);
+
+// ─── Enrichment helper ────────────────────────────────────────────────────────
+
+Future<List<PostModel>> _enrich(List<QueryDocumentSnapshot> docs) async {
+  if (docs.isEmpty) return [];
+
+  final posts = docs.map((d) => PostModel.fromFirestore(d)).toList();
+  final authorIds = posts.map((p) => p.authorId).toSet().toList();
+
+  Map<String, Map<String, dynamic>> profileMap = {};
+  try {
+    final snaps = await FirebaseService.firestore
+        .collection('public_profiles')
+        .where(FieldPath.documentId, whereIn: authorIds)
+        .get();
+    profileMap = {for (final d in snaps.docs) d.id: d.data()};
+  } catch (e) {
+    debugPrint('[_enrich] profiles: $e');
+  }
+
+  final anonId = LocalStorageService.getCachedAnonId();
+  Set<String> likedIds = {};
+  if (anonId != null) {
+    try {
+      final checks = await Future.wait(
+        posts.map((p) => FirebaseService.firestore
+            .collection('post_likes')
+            .doc('${p.postId}_$anonId')
+            .get()),
+      );
+      likedIds = checks
+          .where((d) => d.exists)
+          .map((d) => d.id.split('_').first)
+          .toSet();
+    } catch (e) {
+      debugPrint('[_enrich] likes: $e');
+    }
+  }
+
+  return posts.map((p) {
+    final prof = profileMap[p.authorId];
+    return p.copyWith(
+      authorUsername: prof?['username'] as String?,
+      authorAvatarConfig: prof?['avatarConfig'] as Map<String, dynamic>?,
+      isLiked: likedIds.contains(p.postId),
+    );
+  }).toList();
+}

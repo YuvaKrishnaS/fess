@@ -1,22 +1,25 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import '../../core/constants/app_colors.dart';
-import '../../core/constants/app_typography.dart';
+import '../../core/widgets/fess_snackbar.dart';
 import 'feed/feed_screen.dart';
 import 'create/create_placeholder_screen.dart';
 import 'world/world_placeholder_screen.dart';
 import 'chat/chat_placeholder_screen.dart';
+import 'widgets/create_confession_sheet.dart';
+import 'providers/feed_provider.dart';
 
-class HomeScaffold extends StatefulWidget {
+class HomeScaffold extends ConsumerStatefulWidget {
   const HomeScaffold({super.key});
 
   @override
-  State<HomeScaffold> createState() => _HomeScaffoldState();
+  ConsumerState<HomeScaffold> createState() => _HomeScaffoldState();
 }
 
-class _HomeScaffoldState extends State<HomeScaffold> {
+class _HomeScaffoldState extends ConsumerState<HomeScaffold> {
   int _currentIndex = 0;
 
   final List<Widget> _screens = const [
@@ -26,35 +29,34 @@ class _HomeScaffoldState extends State<HomeScaffold> {
     ChatPlaceholderScreen(),
   ];
 
-  // Nav items: inactive icon, active icon
-  final List<_NavItemData> _navItems = const [
-    _NavItemData(
-      inactive: LucideIcons.home,
-      active: LucideIcons.home,
-      label: 'Home',
-    ),
-    // spill the tea page
-    _NavItemData(
-      inactive: LucideIcons.coffee,
-      active: LucideIcons.coffee,
-      label: 'Spill',
-    ),
-    _NavItemData(
-      inactive: LucideIcons.globe,
-      active: LucideIcons.globe,
-      label: 'World',
-    ),
-    _NavItemData(
-      inactive: LucideIcons.messageCircle,
-      active: LucideIcons.messageCircle,
-      label: 'Chat',
-    ),
+  static const List<_NavItem> _navItems = [
+    _NavItem(icon: LucideIcons.home, label: 'Home'),
+    _NavItem(icon: LucideIcons.coffee, label: 'Spill'),
+    _NavItem(icon: LucideIcons.globe, label: 'World'),
+    _NavItem(icon: LucideIcons.messageCircle, label: 'Chat'),
   ];
 
-  void _onTabTapped(int index) {
-    if (index == _currentIndex) return;
+  void _onTab(int i) {
+    if (i == _currentIndex) return;
     HapticFeedback.selectionClick();
-    setState(() => _currentIndex = index);
+    setState(() => _currentIndex = i);
+  }
+
+  void _openCreate() {
+    if (_currentIndex > 1) {
+      FessSnackbar.show(context, 'Coming soon', type: SnackbarType.info);
+      return;
+    }
+    HapticFeedback.mediumImpact();
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      barrierColor: Colors.black.withOpacity(0.6),
+      builder: (_) => const CreateConfessionSheet(),
+    ).then((_) {
+      ref.read(forYouFeedProvider.notifier).refresh();
+    });
   }
 
   @override
@@ -62,47 +64,35 @@ class _HomeScaffoldState extends State<HomeScaffold> {
     return Scaffold(
       backgroundColor: AppColors.backgroundMain,
       body: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 200),
+        duration: const Duration(milliseconds: 180),
         switchInCurve: Curves.easeIn,
         switchOutCurve: Curves.easeOut,
-        transitionBuilder: (child, animation) =>
-            FadeTransition(opacity: animation, child: child),
+        transitionBuilder: (child, anim) =>
+            FadeTransition(opacity: anim, child: child),
         child: KeyedSubtree(
-          key: ValueKey<int>(_currentIndex),
+          key: ValueKey(_currentIndex),
           child: _screens[_currentIndex],
         ),
       ),
-
-      // Floating action button — UI only, wired in M5
-      floatingActionButton: _FabSpill(),
-
-      // Custom nav bar — X.com style
+      floatingActionButton: _Fab(onTap: _openCreate),
       bottomNavigationBar: _BottomNav(
         currentIndex: _currentIndex,
         items: _navItems,
-        onTap: _onTabTapped,
+        onTap: _onTab,
       ),
     );
   }
 }
 
-// Nav item Data
-class _NavItemData {
-  final IconData inactive;
-  final IconData active;
+class _NavItem {
+  final IconData icon;
   final String label;
-
-  const _NavItemData({
-    required this.inactive,
-    required this.active,
-    required this.label,
-  });
+  const _NavItem({required this.icon, required this.label});
 }
 
-// Bottom Nav Bar
 class _BottomNav extends StatelessWidget {
   final int currentIndex;
-  final List<_NavItemData> items;
+  final List<_NavItem> items;
   final ValueChanged<int> onTap;
 
   const _BottomNav({
@@ -114,13 +104,10 @@ class _BottomNav extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      decoration: BoxDecoration(
+      decoration: const BoxDecoration(
         color: AppColors.backgroundMain,
         border: Border(
-          top: BorderSide(
-            color: AppColors.elevated,
-            width: 0.5,
-          ),
+          top: BorderSide(color: Color(0xFF1A1A1A), width: 0.5),
         ),
       ),
       child: SafeArea(
@@ -128,7 +115,7 @@ class _BottomNav extends StatelessWidget {
           height: 52,
           child: Row(
             children: List.generate(items.length, (i) {
-              final isActive = i == currentIndex;
+              final active = i == currentIndex;
               return Expanded(
                 child: GestureDetector(
                   onTap: () => onTap(i),
@@ -137,13 +124,13 @@ class _BottomNav extends StatelessWidget {
                     height: 52,
                     child: Center(
                       child: AnimatedScale(
-                        scale: isActive ? 1.15 : 1.0,
-                        duration: const Duration(milliseconds: 200),
+                        scale: active ? 1.12 : 1.0,
+                        duration: const Duration(milliseconds: 180),
                         curve: Curves.easeOut,
                         child: Icon(
-                          isActive ? items[i].active : items[i].inactive,
+                          items[i].icon,
                           size: 22,
-                          color: isActive
+                          color: active
                               ? AppColors.textPrimary
                               : AppColors.textSecondary,
                         ),
@@ -160,13 +147,15 @@ class _BottomNav extends StatelessWidget {
   }
 }
 
+class _Fab extends StatefulWidget {
+  final VoidCallback onTap;
+  const _Fab({required this.onTap});
 
-class _FabSpill extends StatefulWidget {
   @override
-  State<_FabSpill> createState() => _FabSpillState();
+  State<_Fab> createState() => _FabState();
 }
 
-class _FabSpillState extends State<_FabSpill> {
+class _FabState extends State<_Fab> {
   bool _pressed = false;
 
   @override
@@ -175,44 +164,39 @@ class _FabSpillState extends State<_FabSpill> {
       onTapDown: (_) => setState(() => _pressed = true),
       onTapUp: (_) {
         setState(() => _pressed = false);
-        // TODO M5: context.go('/create/post')
+        widget.onTap();
       },
       onTapCancel: () => setState(() => _pressed = false),
       child: AnimatedScale(
-        scale: _pressed ? 0.93 : 1.0,
+        scale: _pressed ? 0.92 : 1.0,
         duration: const Duration(milliseconds: 100),
         child: Container(
-          width: 56,
-          height: 56,
+          width: 52,
+          height: 52,
           decoration: BoxDecoration(
-            color: AppColors.accentPrimary,
+            gradient: const LinearGradient(
+              colors: [Color(0xFF7C4DFF), Color(0xFF1DE9B6)],
+            ),
             shape: BoxShape.circle,
-            // Teal glow shadow — dark theme appropriate
             boxShadow: [
               BoxShadow(
-                color: AppColors.accentPrimary.withOpacity(0.35),
+                color: const Color(0xFF7C4DFF).withOpacity(0.35),
                 blurRadius: 16,
-                spreadRadius: 0,
                 offset: const Offset(0, 4),
               ),
             ],
           ),
-          child: Center(
-            child: Icon(
-              LucideIcons.feather,
-              size: 22,
-              color: AppColors.backgroundMain,
-            ),
+          child: const Center(
+            child: Icon(LucideIcons.feather, size: 20, color: Colors.white),
           ),
         ),
       ),
     )
         .animate()
-        .fadeIn(delay: 300.ms, duration: 400.ms)
+        .fadeIn(delay: 350.ms, duration: 400.ms)
         .scale(
-      begin: const Offset(0.7, 0.7),
-      end: const Offset(1.0, 1.0),
-      delay: 300.ms,
+      begin: const Offset(0.6, 0.6),
+      delay: 350.ms,
       duration: 400.ms,
       curve: Curves.easeOutBack,
     );

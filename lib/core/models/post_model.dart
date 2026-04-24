@@ -3,20 +3,20 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 class PostModel {
   final String postId;
   final String type; // 'confession' | 'tea'
-  final String authorId; // anonId
+  final String authorId;
   final String heading;
   final String? body;
-  final List<String> imageUrls;
+  final List<String> imageUrls; // M5: populated then
   final String? audioUrl;
-  final int? audioDuration; // seconds
+  final int? audioDuration;
   final int likeCount;
   final int commentCount;
-  final DateTime createdAt;
+  final DateTime? createdAt;
 
-  // Local-only (not in Firestore)
-  final bool isLiked;
+  // Enriched client-side (not stored in post doc)
   final String? authorUsername;
   final Map<String, dynamic>? authorAvatarConfig;
+  final bool isLiked;
 
   const PostModel({
     required this.postId,
@@ -27,47 +27,13 @@ class PostModel {
     this.imageUrls = const [],
     this.audioUrl,
     this.audioDuration,
-    this.likeCount = 0,
-    this.commentCount = 0,
-    required this.createdAt,
-    this.isLiked = false,
+    required this.likeCount,
+    required this.commentCount,
+    this.createdAt,
     this.authorUsername,
     this.authorAvatarConfig,
+    this.isLiked = false,
   });
-
-  PostModel copyWith({
-    String? postId,
-    String? type,
-    String? authorId,
-    String? heading,
-    String? body,
-    List<String>? imageUrls,
-    String? audioUrl,
-    int? audioDuration,
-    int? likeCount,
-    int? commentCount,
-    DateTime? createdAt,
-    bool? isLiked,
-    String? authorUsername,
-    Map<String, dynamic>? authorAvatarConfig,
-  }) {
-    return PostModel(
-      postId: postId ?? this.postId,
-      type: type ?? this.type,
-      authorId: authorId ?? this.authorId,
-      heading: heading ?? this.heading,
-      body: body ?? this.body,
-      imageUrls: imageUrls ?? this.imageUrls,
-      audioUrl: audioUrl ?? this.audioUrl,
-      audioDuration: audioDuration ?? this.audioDuration,
-      likeCount: likeCount ?? this.likeCount,
-      commentCount: commentCount ?? this.commentCount,
-      createdAt: createdAt ?? this.createdAt,
-      isLiked: isLiked ?? this.isLiked,
-      authorUsername: authorUsername ?? this.authorUsername,
-      authorAvatarConfig: authorAvatarConfig ?? this.authorAvatarConfig,
-    );
-  }
 
   factory PostModel.fromFirestore(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>;
@@ -82,22 +48,31 @@ class PostModel {
       audioDuration: data['audioDuration'] as int?,
       likeCount: (data['likeCount'] as num?)?.toInt() ?? 0,
       commentCount: (data['commentCount'] as num?)?.toInt() ?? 0,
-      createdAt: (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
+      createdAt: (data['createdAt'] as Timestamp?)?.toDate(),
     );
   }
 
-  Map<String, dynamic> toFirestore() {
-    return {
-      'type': type,
-      'authorId': authorId,
-      'heading': heading,
-      'body': body,
-      'imageUrls': imageUrls,
-      'audioUrl': audioUrl,
-      'audioDuration': audioDuration,
-      'likeCount': likeCount,
-      'commentCount': commentCount,
-      'createdAt': FieldValue.serverTimestamp(),
-    };
-  }
+  PostModel copyWith({
+    String? authorUsername,
+    Map<String, dynamic>? authorAvatarConfig,
+    bool? isLiked,
+    int? likeCount,
+    int? commentCount,
+  }) =>
+      PostModel(
+        postId: postId,
+        type: type,
+        authorId: authorId,
+        heading: heading,
+        body: body,
+        imageUrls: imageUrls,
+        audioUrl: audioUrl,
+        audioDuration: audioDuration,
+        likeCount: likeCount ?? this.likeCount,
+        commentCount: commentCount ?? this.commentCount,
+        createdAt: createdAt,
+        authorUsername: authorUsername ?? this.authorUsername,
+        authorAvatarConfig: authorAvatarConfig ?? this.authorAvatarConfig,
+        isLiked: isLiked ?? this.isLiked,
+      );
 }
