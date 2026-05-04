@@ -1,12 +1,14 @@
+import 'package:flutter/foundation.dart';
+
 class AvatarConfig {
-  final String skinColor;
-  final String hair;
-  final String hairColor;
-  final String eyes;
-  final String eyebrows;
-  final String mouth;
-  final String? glasses;
-  final String? earrings;
+  final String skinColor;   // hex: e.g. 'edb98a'
+  final String hair;        // avataaars 'top' param: e.g. 'shortFlat'
+  final String hairColor;   // hex: e.g. '2c1b18'
+  final String eyes;        // e.g. 'default'
+  final String eyebrows;    // e.g. 'default'
+  final String mouth;       // e.g. 'smile'
+  final String? glasses;    // accessories param: e.g. 'prescription01'
+  final String? earrings;   // not supported in avataaars — ignored safely
   final List<String> features;
 
   const AvatarConfig({
@@ -33,81 +35,76 @@ class AvatarConfig {
     String? earrings,
     bool clearEarrings = false,
     List<String>? features,
-  }) {
-    return AvatarConfig(
-      skinColor: skinColor ?? this.skinColor,
-      hair: hair ?? this.hair,
-      hairColor: hairColor ?? this.hairColor,
-      eyes: eyes ?? this.eyes,
-      eyebrows: eyebrows ?? this.eyebrows,
-      mouth: mouth ?? this.mouth,
-      glasses: clearGlasses ? null : (glasses ?? this.glasses),
-      earrings: clearEarrings ? null : (earrings ?? this.earrings),
-      features: features ?? this.features,
+  }) =>
+      AvatarConfig(
+        skinColor: skinColor ?? this.skinColor,
+        hair: hair ?? this.hair,
+        hairColor: hairColor ?? this.hairColor,
+        eyes: eyes ?? this.eyes,
+        eyebrows: eyebrows ?? this.eyebrows,
+        mouth: mouth ?? this.mouth,
+        glasses: clearGlasses ? null : (glasses ?? this.glasses),
+        earrings: clearEarrings ? null : (earrings ?? this.earrings),
+        features: features ?? this.features,
+      );
+
+  Map<String, dynamic> toMap() => {
+    'skinColor': skinColor,
+    'hair': hair,
+    'hairColor': hairColor,
+    'eyes': eyes,
+    'eyebrows': eyebrows,
+    'mouth': mouth,
+    'glasses': glasses,
+    'earrings': earrings,
+    'features': features,
+  };
+
+  factory AvatarConfig.fromMap(Map<String, dynamic> map) => AvatarConfig(
+    skinColor: map['skinColor'] as String? ?? 'edb98a',
+    hair: map['hair'] as String? ?? 'shortFlat',
+    hairColor: map['hairColor'] as String? ?? '2c1b18',
+    eyes: map['eyes'] as String? ?? 'default',
+    eyebrows: map['eyebrows'] as String? ?? 'default',
+    mouth: map['mouth'] as String? ?? 'smile',
+    glasses: map['glasses'] as String?,
+    earrings: map['earrings'] as String?,
+    features: (map['features'] as List?)?.cast<String>() ?? const [],
+  );
+
+  /// Builds a valid DiceBear avataaars PNG URL.
+  /// All param names and values are verified against the 9.x API docs.
+  String buildUrl({int size = 128}) {
+    final buffer = StringBuffer(
+      'https://api.dicebear.com/9.x/avataaars/png'
+          '?size=$size'
+          '&skinColor=${Uri.encodeComponent(skinColor)}'
+          '&top=${Uri.encodeComponent(hair)}'
+          '&hairColor=${Uri.encodeComponent(hairColor)}'
+          '&eyes=${Uri.encodeComponent(eyes)}'
+          '&eyebrows=${Uri.encodeComponent(eyebrows)}'
+          '&mouth=${Uri.encodeComponent(mouth)}'
+          '&topProbability=100'
+          '&facialHairProbability=0'
+          '&backgroundColor=transparent',
     );
-  }
 
-  Map<String, dynamic> toMap() {
-    return {
-      'skinColor': skinColor,
-      'hair': hair,
-      'hairColor': hairColor,
-      'eyes': eyes,
-      'eyebrows': eyebrows,
-      'mouth': mouth,
-      'glasses': glasses,
-      'earrings': earrings,
-      'features': features,
-    };
-  }
+    if (glasses != null) {
+      buffer.write('&accessories=${Uri.encodeComponent(glasses!)}');
+      buffer.write('&accessoriesProbability=100');
+    } else {
+      buffer.write('&accessoriesProbability=0');
+    }
 
-  factory AvatarConfig.fromMap(Map<String, dynamic> map) {
-    return AvatarConfig(
-      skinColor: map['skinColor'] as String? ?? 'f2d3b1',
-      hair: map['hair'] as String? ?? 'short03',
-      hairColor: map['hairColor'] as String? ?? '2c1b18',
-      eyes: map['eyes'] as String? ?? 'variant01',
-      eyebrows: map['eyebrows'] as String? ?? 'variant01',
-      mouth: map['mouth'] as String? ?? 'variant01',
-      glasses: map['glasses'] as String?,
-      earrings: map['earrings'] as String?,
-      features: (map['features'] as List?)?.cast<String>() ?? const [],
-    );
-  }
-
-  String buildUrl({int size = 256}) {
-    final params = <String, String>{
-      'size': '$size',
-      'skinColor': skinColor,
-      'hair': hair,
-      'hairColor': hairColor,
-      'eyes': eyes,
-      'eyebrows': eyebrows,
-      'mouth': mouth,
-      'backgroundColor': 'transparent',
-      'radius': '50',
-    };
-
-    if (glasses != null) params['glasses'] = glasses!;
-    if (earrings != null) params['earrings'] = earrings!;
-    if (features.isNotEmpty) params['features'] = features.join(',');
-
-    final query = params.entries
-        .map((e) => '${e.key}=${Uri.encodeComponent(e.value)}')
-        .join('&');
-
-    return 'https://api.dicebear.com/9.x/adventurer/png?$query';
+    return buffer.toString();
   }
 
   static const AvatarConfig initial = AvatarConfig(
-    skinColor: 'f2d3b1',
-    hair: 'short03',
-    hairColor: '2c1b18',
-    eyes: 'variant01',
-    eyebrows: 'variant01',
-    mouth: 'variant01',
-    glasses: null,
-    earrings: null,
-    features: [],
+    skinColor: 'edb98a',   // valid hex — medium skin
+    hair: 'shortFlat',     // valid 'top' value
+    hairColor: '2c1b18',   // valid hex — dark brown
+    eyes: 'default',       // valid eyes value
+    eyebrows: 'default',   // valid eyebrows value
+    mouth: 'smile',        // valid mouth value
   );
 }
