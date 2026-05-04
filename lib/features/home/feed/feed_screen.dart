@@ -59,8 +59,26 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
     return Scaffold(
       backgroundColor: AppColors.backgroundMain,
       body: NestedScrollView(
-        headerSliverBuilder: (_, __) => [
-          SliverToBoxAdapter(child: _FeedAppBar()),
+        headerSliverBuilder: (ctx, innerScrolled) => [
+          // app bar collapses on scroll, reappears on scroll up
+          SliverAppBar(
+            backgroundColor: AppColors.backgroundMain,
+            floating: true,
+            snap: true,
+            pinned: false,
+            elevation: 0,
+            scrolledUnderElevation: 0,
+            automaticallyImplyLeading: false,
+            toolbarHeight: 0,
+            flexibleSpace: null,
+            collapsedHeight: null,
+            expandedHeight: null,
+            bottom: PreferredSize(
+              preferredSize: const Size.fromHeight(52),
+              child: _AppBarContent(),
+            ),
+          ),
+          // tab bar always pinned
           SliverPersistentHeader(
             pinned: true,
             delegate: _TabBarDelegate(tab: _tab),
@@ -78,30 +96,23 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
   }
 }
 
-// ─── App bar ──────────────────────────────────────────────────────────────────
+// app bar content — collapses with the SliverAppBar
 
-class _FeedAppBar extends ConsumerWidget {
+class _AppBarContent extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final profileAsync = ref.watch(currentProfileProvider);
 
     return Container(
       color: AppColors.backgroundMain,
-      padding: EdgeInsets.only(
-        top: MediaQuery.of(context).padding.top + 6,
-        left: 16,
-        right: 8,
-        bottom: 8,
-      ),
+      padding: const EdgeInsets.fromLTRB(16, 0, 8, 8),
       child: Row(
         children: [
-          // Avatar
           _AppBarAvatar(profile: profileAsync.value),
           const Spacer(),
-          // FESS wordmark
-          Text(
+          const Text(
             'FESS',
-            style: const TextStyle(
+            style: TextStyle(
               fontFamily: 'DM Sans',
               fontSize: 20,
               fontWeight: FontWeight.w800,
@@ -111,7 +122,6 @@ class _FeedAppBar extends ConsumerWidget {
             ),
           ),
           const Spacer(),
-          // Streak cup
           _StreakCup(),
         ],
       ),
@@ -147,7 +157,11 @@ class _AppBarAvatar extends StatelessWidget {
         decoration: const BoxDecoration(
           shape: BoxShape.circle,
           gradient: LinearGradient(
-            colors: [Color(0xFF7C4DFF), Color(0xFF1DE9B6), Color(0xFF7C4DFF)],
+            colors: [
+              Color(0xFF7C4DFF),
+              Color(0xFF1DE9B6),
+              Color(0xFF7C4DFF),
+            ],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
@@ -177,7 +191,8 @@ class _AppBarAvatar extends StatelessWidget {
 
   Widget _fallback() => Container(
     color: const Color(0xFF1A1A1A),
-    child: const Icon(LucideIcons.user, size: 14, color: Color(0xFF444444)),
+    child: const Icon(LucideIcons.user, size: 14,
+        color: Color(0xFF444444)),
   );
 }
 
@@ -212,7 +227,8 @@ class _StreakCup extends StatelessWidget {
           color: Color(0xFF0F0F0F),
           borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
         ),
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+        padding:
+        const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
         child: SafeArea(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -236,7 +252,7 @@ class _StreakCup extends StatelessWidget {
               ),
               const SizedBox(height: 8),
               Text(
-                'Post a confession or tea every day to keep it alive.',
+                'Post a spill or tea every day to keep it alive.',
                 style: AppTypography.bodyMedium.copyWith(
                   color: AppColors.textSecondary,
                 ),
@@ -251,7 +267,7 @@ class _StreakCup extends StatelessWidget {
   }
 }
 
-// ─── Pinned tab bar ───────────────────────────────────────────────────────────
+// tab bar — always pinned
 
 class _TabBarDelegate extends SliverPersistentHeaderDelegate {
   final TabController tab;
@@ -305,7 +321,7 @@ class _TabBarDelegate extends SliverPersistentHeaderDelegate {
   }
 }
 
-// ─── For You tab ──────────────────────────────────────────────────────────────
+// For You tab
 
 class _ForYouTab extends ConsumerWidget {
   final ScrollController scrollController;
@@ -329,7 +345,8 @@ class _ForYouTab extends ConsumerWidget {
           return _ScrollableErrorState(
             message: feed.error!,
             scrollController: scrollController,
-            onRetry: () => ref.read(forYouFeedProvider.notifier).refresh(),
+            onRetry: () =>
+                ref.read(forYouFeedProvider.notifier).refresh(),
           );
         }
 
@@ -337,9 +354,10 @@ class _ForYouTab extends ConsumerWidget {
           return _EmptyState(
             scrollController: scrollController,
             icon: LucideIcons.feather,
-            title: 'No confessions yet.',
+            title: 'No spills yet.',
             subtitle: 'Be the first to break the silence.',
-            onRefresh: () => ref.read(forYouFeedProvider.notifier).refresh(),
+            onRefresh: () =>
+                ref.read(forYouFeedProvider.notifier).refresh(),
           );
         }
 
@@ -350,7 +368,8 @@ class _ForYouTab extends ConsumerWidget {
           child: ListView.builder(
             controller: scrollController,
             physics: const AlwaysScrollableScrollPhysics(),
-            itemCount: feed.posts.length + (feed.isLoadingMore ? 1 : 0),
+            itemCount:
+            feed.posts.length + (feed.isLoadingMore ? 1 : 0),
             itemBuilder: (ctx, i) {
               if (i == feed.posts.length) {
                 return const _LoadMoreIndicator();
@@ -364,8 +383,9 @@ class _ForYouTab extends ConsumerWidget {
                   'Post detail — Coming soon',
                   type: SnackbarType.info,
                 ),
-                onLike: () =>
-                    ref.read(forYouFeedProvider.notifier).toggleLike(post.postId),
+                onLike: () => ref
+                    .read(forYouFeedProvider.notifier)
+                    .toggleLike(post.postId),
                 onWitness: () => FessSnackbar.show(
                   ctx,
                   'Witness system — Coming soon',
@@ -374,13 +394,15 @@ class _ForYouTab extends ConsumerWidget {
               )
                   .animate()
                   .fadeIn(
-                delay: Duration(milliseconds: i < 6 ? i * 50 : 0),
+                delay: Duration(
+                    milliseconds: i < 6 ? i * 50 : 0),
                 duration: 280.ms,
               )
                   .slideY(
                 begin: 0.04,
                 end: 0,
-                delay: Duration(milliseconds: i < 6 ? i * 50 : 0),
+                delay: Duration(
+                    milliseconds: i < 6 ? i * 50 : 0),
                 duration: 280.ms,
                 curve: Curves.easeOut,
               );
@@ -392,7 +414,7 @@ class _ForYouTab extends ConsumerWidget {
   }
 }
 
-// ─── Following tab ────────────────────────────────────────────────────────────
+// Following tab
 
 class _FollowingTab extends ConsumerWidget {
   final ScrollController scrollController;
@@ -407,7 +429,8 @@ class _FollowingTab extends ConsumerWidget {
     return feedAsync.when(
       loading: () => _ShimmerList(),
       error: (_, __) => _ErrorState(
-        onRetry: () => ref.read(followingFeedProvider.notifier).refresh(),
+        onRetry: () =>
+            ref.read(followingFeedProvider.notifier).refresh(),
       ),
       data: (feed) {
         if (feed.isLoading) return _ShimmerList();
@@ -418,7 +441,7 @@ class _FollowingTab extends ConsumerWidget {
             icon: LucideIcons.users,
             title: 'Nobody here yet.',
             subtitle:
-            'Witness people you connect with to see their confessions here.',
+            'Witness people you connect with to see their spills here.',
             onRefresh: () =>
                 ref.read(followingFeedProvider.notifier).refresh(),
           );
@@ -464,7 +487,7 @@ class _FollowingTab extends ConsumerWidget {
   }
 }
 
-// ─── Shared widgets ───────────────────────────────────────────────────────────
+// shared widgets
 
 class _ShimmerList extends StatelessWidget {
   @override
@@ -535,11 +558,11 @@ class _EmptyState extends StatelessWidget {
                       height: 64,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        color:
-                        AppColors.accentPrimary.withOpacity(0.06),
+                        color: AppColors.accentPrimary.withOpacity(0.06),
                       ),
                     ),
-                    Icon(icon, size: 28, color: AppColors.accentPrimary),
+                    Icon(icon, size: 28,
+                        color: AppColors.accentPrimary),
                   ],
                 ),
                 const SizedBox(height: 16),
@@ -554,7 +577,8 @@ class _EmptyState extends StatelessWidget {
                 ),
                 const SizedBox(height: 6),
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 48),
+                  padding:
+                  const EdgeInsets.symmetric(horizontal: 48),
                   child: Text(
                     subtitle,
                     style: AppTypography.bodySmall.copyWith(
@@ -637,8 +661,10 @@ class _ScrollableErrorState extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 40),
               child: Text(
                 message,
-                style: AppTypography.bodySmall
-                    .copyWith(color: AppColors.textSecondary, height: 1.5),
+                style: AppTypography.bodySmall.copyWith(
+                  color: AppColors.textSecondary,
+                  height: 1.5,
+                ),
                 textAlign: TextAlign.center,
               ),
             ),

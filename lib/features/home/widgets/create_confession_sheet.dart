@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -8,6 +9,13 @@ import '../../../core/constants/app_typography.dart';
 import '../../../core/widgets/fess_snackbar.dart';
 import '../providers/feed_provider.dart';
 
+// one hint is picked randomly when the sheet opens and stays for that session
+const _headingHints = [
+  'Thinking of something? Type it out.',
+  'What are you thinking? Go ahead, spill...',
+  "Don't hold back. Go ahead, type it...",
+];
+
 class CreateConfessionSheet extends ConsumerStatefulWidget {
   const CreateConfessionSheet({super.key});
 
@@ -16,13 +24,13 @@ class CreateConfessionSheet extends ConsumerStatefulWidget {
       _CreateConfessionSheetState();
 }
 
-class _CreateConfessionSheetState
-    extends ConsumerState<CreateConfessionSheet>
+class _CreateConfessionSheetState extends ConsumerState<CreateConfessionSheet>
     with SingleTickerProviderStateMixin {
   late TabController _tab;
   final TextEditingController _heading = TextEditingController();
   final TextEditingController _body = TextEditingController();
   final FocusNode _headingFocus = FocusNode();
+  late final String _hint;
 
   bool get _canPost => _heading.text.trim().isNotEmpty;
 
@@ -30,8 +38,8 @@ class _CreateConfessionSheetState
   void initState() {
     super.initState();
     _tab = TabController(length: 2, vsync: this);
+    _hint = _headingHints[Random().nextInt(_headingHints.length)];
     _heading.addListener(() => setState(() {}));
-    // Auto-focus heading after sheet animates in
     WidgetsBinding.instance.addPostFrameCallback((_) {
       Future.delayed(const Duration(milliseconds: 350), () {
         if (mounted) _headingFocus.requestFocus();
@@ -52,7 +60,9 @@ class _CreateConfessionSheetState
     if (!_canPost) return;
     HapticFeedback.mediumImpact();
 
-    final success = await ref.read(createPostProvider.notifier).createConfession(
+    final success = await ref
+        .read(createPostProvider.notifier)
+        .createConfession(
       heading: _heading.text,
       body: _body.text.isNotEmpty ? _body.text : null,
     );
@@ -63,7 +73,7 @@ class _CreateConfessionSheetState
       Navigator.of(context).pop();
       FessSnackbar.show(
         context,
-        'Confession posted.',
+        'Spilled. 🫗',
         type: SnackbarType.success,
       );
     } else {
@@ -95,11 +105,12 @@ class _CreateConfessionSheetState
               _SheetHeader(onClose: () => Navigator.of(context).pop()),
               _TypeSelector(controller: _tab),
               const SizedBox(height: 4),
-              _ConfessionBody(
+              _SpillBody(
                 tab: _tab,
                 headingController: _heading,
                 bodyController: _body,
                 headingFocus: _headingFocus,
+                hint: _hint,
               ),
               _BottomBar(
                 headingLength: _heading.text.length,
@@ -121,8 +132,6 @@ class _CreateConfessionSheetState
   }
 }
 
-// ─── Handle ───────────────────────────────────────────────────────────────────
-
 class _Handle extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
@@ -140,8 +149,6 @@ class _Handle extends StatelessWidget {
   }
 }
 
-// ─── Header ───────────────────────────────────────────────────────────────────
-
 class _SheetHeader extends StatelessWidget {
   final VoidCallback onClose;
 
@@ -154,7 +161,7 @@ class _SheetHeader extends StatelessWidget {
       child: Row(
         children: [
           Text(
-            'New Confession',
+            'New Spill',
             style: AppTypography.h4.copyWith(
               fontSize: 16,
               fontWeight: FontWeight.w700,
@@ -166,16 +173,13 @@ class _SheetHeader extends StatelessWidget {
             child: Container(
               width: 32,
               height: 32,
-              decoration: BoxDecoration(
-                color: const Color(0xFF1E1E1E),
+              decoration: const BoxDecoration(
+                color: Color(0xFF1E1E1E),
                 shape: BoxShape.circle,
               ),
               child: const Center(
-                child: Icon(
-                  LucideIcons.x,
-                  size: 16,
-                  color: AppColors.textSecondary,
-                ),
+                child: Icon(LucideIcons.x, size: 16,
+                    color: AppColors.textSecondary),
               ),
             ),
           ),
@@ -184,8 +188,6 @@ class _SheetHeader extends StatelessWidget {
     );
   }
 }
-
-// ─── Type selector (Confession | Tea) ─────────────────────────────────────────
 
 class _TypeSelector extends StatefulWidget {
   final TabController controller;
@@ -210,7 +212,7 @@ class _TypeSelectorState extends State<_TypeSelector> {
       child: Row(
         children: [
           _TypePill(
-            label: 'Confession',
+            label: 'Spill',
             isSelected: widget.controller.index == 0,
             onTap: () {
               HapticFeedback.selectionClick();
@@ -256,8 +258,7 @@ class _TypePill extends StatelessWidget {
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
-        padding:
-        const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
         decoration: BoxDecoration(
           color: isSelected
               ? AppColors.accentPrimary.withOpacity(0.12)
@@ -287,26 +288,26 @@ class _TypePill extends StatelessWidget {
   }
 }
 
-// ─── Confession form body ─────────────────────────────────────────────────────
-
-class _ConfessionBody extends StatefulWidget {
+class _SpillBody extends StatefulWidget {
   final TabController tab;
   final TextEditingController headingController;
   final TextEditingController bodyController;
   final FocusNode headingFocus;
+  final String hint;
 
-  const _ConfessionBody({
+  const _SpillBody({
     required this.tab,
     required this.headingController,
     required this.bodyController,
     required this.headingFocus,
+    required this.hint,
   });
 
   @override
-  State<_ConfessionBody> createState() => _ConfessionBodyState();
+  State<_SpillBody> createState() => _SpillBodyState();
 }
 
-class _ConfessionBodyState extends State<_ConfessionBody> {
+class _SpillBodyState extends State<_SpillBody> {
   @override
   void initState() {
     super.initState();
@@ -316,23 +317,26 @@ class _ConfessionBodyState extends State<_ConfessionBody> {
 
   @override
   Widget build(BuildContext context) {
+    final headingLen = widget.headingController.text.length;
+    final bodyLen = widget.bodyController.text.length;
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Heading field
           Stack(
             alignment: Alignment.centerRight,
             children: [
               TextField(
                 controller: widget.headingController,
                 focusNode: widget.headingFocus,
-                maxLength: 80,
+                maxLength: 100,
                 maxLines: 2,
                 minLines: 1,
-                buildCounter: (_, {required currentLength, required isFocused, maxLength}) =>
-                null,
+                buildCounter: (_, {required currentLength,
+                  required isFocused,
+                  maxLength}) => null,
                 style: AppTypography.bodyMedium.copyWith(
                   fontFamily: 'DM Sans',
                   fontSize: 17,
@@ -341,7 +345,7 @@ class _ConfessionBodyState extends State<_ConfessionBody> {
                   height: 1.4,
                 ),
                 decoration: InputDecoration(
-                  hintText: "What's your confession?",
+                  hintText: widget.hint,
                   hintStyle: AppTypography.bodyMedium.copyWith(
                     fontFamily: 'DM Sans',
                     fontSize: 17,
@@ -352,37 +356,35 @@ class _ConfessionBodyState extends State<_ConfessionBody> {
                   border: InputBorder.none,
                   enabledBorder: InputBorder.none,
                   focusedBorder: InputBorder.none,
-                  contentPadding: const EdgeInsets.only(right: 40, bottom: 4),
+                  contentPadding: const EdgeInsets.only(right: 44, bottom: 4),
                   filled: false,
                 ),
                 textInputAction: TextInputAction.next,
               ),
-              // Char counter
               Text(
-                '${widget.headingController.text.length}/80',
+                '$headingLen/100',
                 style: AppTypography.bodySmall.copyWith(
                   fontSize: 11,
-                  color: widget.headingController.text.length > 70
+                  color: headingLen > 85
                       ? AppColors.errorLight.withOpacity(0.8)
                       : AppColors.hintText,
                 ),
               ),
             ],
           ),
-          // Divider between heading and body
           Container(
             height: 0.5,
             color: const Color(0xFF1E1E1E),
             margin: const EdgeInsets.only(bottom: 8),
           ),
-          // Body field
           TextField(
             controller: widget.bodyController,
             maxLength: 500,
             maxLines: 4,
             minLines: 2,
-            buildCounter: (_, {required currentLength, required isFocused, maxLength}) =>
-            null,
+            buildCounter: (_, {required currentLength,
+              required isFocused,
+              maxLength}) => null,
             style: AppTypography.bodyMedium.copyWith(
               fontSize: 14,
               color: AppColors.textSecondary,
@@ -409,8 +411,6 @@ class _ConfessionBodyState extends State<_ConfessionBody> {
   }
 }
 
-// ─── Bottom action bar ────────────────────────────────────────────────────────
-
 class _BottomBar extends StatelessWidget {
   final int headingLength;
   final int bodyLength;
@@ -435,7 +435,6 @@ class _BottomBar extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(20, 10, 16, 12),
           child: Row(
             children: [
-              // Body char counter
               if (bodyLength > 0)
                 Text(
                   '$bodyLength/500',
@@ -447,7 +446,6 @@ class _BottomBar extends StatelessWidget {
                   ),
                 ),
               const Spacer(),
-              // Post button
               _PostButton(
                 canPost: canPost,
                 isPosting: isPosting,
@@ -480,8 +478,7 @@ class _PostButton extends StatelessWidget {
         duration: const Duration(milliseconds: 200),
         opacity: canPost ? 1.0 : 0.35,
         child: Container(
-          padding:
-          const EdgeInsets.symmetric(horizontal: 22, vertical: 10),
+          padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 10),
           decoration: BoxDecoration(
             gradient: const LinearGradient(
               colors: [Color(0xFF7C4DFF), Color(0xFF1DE9B6)],
@@ -498,7 +495,7 @@ class _PostButton extends StatelessWidget {
             ),
           )
               : Text(
-            'Post',
+            'Spill',
             style: AppTypography.labelMedium.copyWith(
               color: Colors.white,
               fontSize: 14,
