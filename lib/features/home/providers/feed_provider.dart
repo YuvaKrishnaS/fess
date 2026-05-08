@@ -2,9 +2,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/models/post_model.dart';
-import '../../../core/models/avatar_config.dart';
 import '../../../core/services/firebase_service.dart';
 import '../../../core/services/local_storage_service.dart';
+import '../../../core/services/storage_service.dart';
 
 // ─── Current anonId ───────────────────────────────────────────────────────────
 
@@ -31,7 +31,8 @@ final currentAnonIdProvider = FutureProvider<String?>((ref) async {
 
 // ─── Current profile (for app bar avatar) ────────────────────────────────────
 
-final currentProfileProvider = FutureProvider<Map<String, dynamic>?>((ref) async {
+final currentProfileProvider =
+FutureProvider<Map<String, dynamic>?>((ref) async {
   final anonId = await ref.watch(currentAnonIdProvider.future);
   if (anonId == null) return null;
   try {
@@ -62,7 +63,6 @@ final witnessingIdsProvider = FutureProvider<List<String>>((ref) async {
         .where((id) => id.isNotEmpty)
         .toList();
   } catch (e) {
-    // Collection doesn't exist yet — return empty cleanly
     debugPrint('[witnessingIdsProvider] not available yet: $e');
     return [];
   }
@@ -124,7 +124,6 @@ class ForYouFeedNotifier extends AsyncNotifier<FeedState> {
 
       final snap = await query.get();
       final posts = await _enrich(snap.docs);
-      // Client-side filter — no composite index needed
       final confessions =
       posts.where((p) => p.type == 'confession').toList();
 
@@ -145,8 +144,13 @@ class ForYouFeedNotifier extends AsyncNotifier<FeedState> {
   }
 
   Future<void> refresh() async {
-    state = const AsyncValue.loading();
-    state = AsyncValue.data(await _fetch());
+    final current = state.value;
+    // keep showing existing posts while fetching new ones
+    if (current != null) {
+      state = AsyncValue.data(current.copyWith(isLoading: true, clearError: true));
+    }
+    final fresh = await _fetch();
+    state = AsyncValue.data(fresh);
   }
 
   Future<void> loadMore() async {
@@ -167,7 +171,8 @@ class ForYouFeedNotifier extends AsyncNotifier<FeedState> {
           .get();
 
       final more = await _enrich(snap.docs);
-      final confessions = more.where((p) => p.type == 'confession').toList();
+      final confessions =
+      more.where((p) => p.type == 'confession').toList();
 
       state = AsyncValue.data(current.copyWith(
         posts: [...current.posts, ...confessions],
@@ -195,7 +200,6 @@ class ForYouFeedNotifier extends AsyncNotifier<FeedState> {
     final nowLiked = !post.isLiked;
     final newCount = post.likeCount + (nowLiked ? 1 : -1);
 
-    // Optimistic
     final optimistic = List<PostModel>.from(current.posts);
     optimistic[idx] = post.copyWith(isLiked: nowLiked, likeCount: newCount);
     state = AsyncValue.data(current.copyWith(posts: optimistic));
@@ -205,7 +209,9 @@ class ForYouFeedNotifier extends AsyncNotifier<FeedState> {
       final batch = FirebaseService.firestore.batch();
       if (nowLiked) {
         batch.set(
-          FirebaseService.firestore.collection('post_likes').doc(likeId),
+          FirebaseService.firestore
+              .collection('post_likes')
+              .doc(likeId),
           {
             'postId': postId,
             'anonId': anonId,
@@ -217,8 +223,9 @@ class ForYouFeedNotifier extends AsyncNotifier<FeedState> {
           {'likeCount': FieldValue.increment(1)},
         );
       } else {
-        batch.delete(
-            FirebaseService.firestore.collection('post_likes').doc(likeId));
+        batch.delete(FirebaseService.firestore
+            .collection('post_likes')
+            .doc(likeId));
         batch.update(
           FirebaseService.firestore.collection('posts').doc(postId),
           {'likeCount': FieldValue.increment(-1)},
@@ -227,7 +234,6 @@ class ForYouFeedNotifier extends AsyncNotifier<FeedState> {
       await batch.commit();
     } catch (e) {
       debugPrint('[ForYouFeed] toggleLike failed, reverting: $e');
-      // Revert optimistic
       final reverted = List<PostModel>.from(current.posts);
       reverted[idx] = post;
       state = AsyncValue.data(current.copyWith(posts: reverted));
@@ -305,7 +311,8 @@ class FollowingFeedNotifier extends AsyncNotifier<FeedState> {
           .get();
 
       final more = await _enrich(snap.docs);
-      final confessions = more.where((p) => p.type == 'confession').toList();
+      final confessions =
+      more.where((p) => p.type == 'confession').toList();
 
       state = AsyncValue.data(current.copyWith(
         posts: [...current.posts, ...confessions],
@@ -341,7 +348,9 @@ class FollowingFeedNotifier extends AsyncNotifier<FeedState> {
       final batch = FirebaseService.firestore.batch();
       if (nowLiked) {
         batch.set(
-          FirebaseService.firestore.collection('post_likes').doc(likeId),
+          FirebaseService.firestore
+              .collection('post_likes')
+              .doc(likeId),
           {
             'postId': postId,
             'anonId': anonId,
@@ -353,8 +362,9 @@ class FollowingFeedNotifier extends AsyncNotifier<FeedState> {
           {'likeCount': FieldValue.increment(1)},
         );
       } else {
-        batch.delete(
-            FirebaseService.firestore.collection('post_likes').doc(likeId));
+        batch.delete(FirebaseService.firestore
+            .collection('post_likes')
+            .doc(likeId));
         batch.update(
           FirebaseService.firestore.collection('posts').doc(postId),
           {'likeCount': FieldValue.increment(-1)},
@@ -383,27 +393,50 @@ class CreatePostNotifier extends Notifier<bool> {
   Future<bool> createConfession({
     required String heading,
     String? body,
+    String? voiceNotePath,        // local file path from recorder
+    int? voiceDurationSeconds,    // duration of voice note
   }) async {
     final anonId = LocalStorageService.getCachedAnonId();
     if (anonId == null) return false;
     state = true;
+
     try {
+      // Upload voice note to Cloudinary if provided
+      String? audioUrl;
+      if (voiceNotePath != null) {
+        try {
+          audioUrl = await StorageService.instance.uploadAudio(
+            localPath: voiceNotePath,
+            anonId: anonId,
+          );
+        } catch (e) {
+          debugPrint('[CreatePost] audio upload failed: $e');
+          // fail hard — don't post without the voice note if one was recorded
+          state = false;
+          return false;
+        }
+      }
+
       await FirebaseService.firestore.collection('posts').doc().set({
         'type': 'confession',
         'authorId': anonId,
         'heading': heading.trim(),
-        'body': (body != null && body.trim().isNotEmpty) ? body.trim() : null,
-        'imageUrls': <String>[], // M5: image upload added here
-        'audioUrl': null,
-        'audioDuration': null,
+        'body': (body != null && body.trim().isNotEmpty)
+            ? body.trim()
+            : null,
+        'imageUrls': <String>[],  // M5: image upload added here
+        'audioUrl': audioUrl,     // null when no voice note recorded
+        'audioDuration': voiceDurationSeconds,
         'likeCount': 0,
         'commentCount': 0,
         'createdAt': FieldValue.serverTimestamp(),
       });
+
       await FirebaseService.firestore
           .collection('public_profiles')
           .doc(anonId)
           .update({'totalPostCount': FieldValue.increment(1)});
+
       state = false;
       return true;
     } catch (e) {

@@ -6,11 +6,12 @@ import 'package:lucide_icons/lucide_icons.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/widgets/fess_snackbar.dart';
 import 'feed/feed_screen.dart';
-import 'create/create_placeholder_screen.dart';
+import 'tea/tea_screen.dart';
 import 'world/world_placeholder_screen.dart';
 import 'chat/chat_placeholder_screen.dart';
 import 'widgets/create_confession_sheet.dart';
 import 'providers/feed_provider.dart';
+import 'providers/tea_feed_provider.dart';
 
 class HomeScaffold extends ConsumerStatefulWidget {
   const HomeScaffold({super.key});
@@ -24,7 +25,7 @@ class _HomeScaffoldState extends ConsumerState<HomeScaffold> {
 
   final List<Widget> _screens = const [
     FeedScreen(),
-    CreatePlaceholderScreen(),
+    TeaScreen(),
     WorldPlaceholderScreen(),
     ChatPlaceholderScreen(),
   ];
@@ -54,9 +55,7 @@ class _HomeScaffoldState extends ConsumerState<HomeScaffold> {
       backgroundColor: Colors.transparent,
       barrierColor: Colors.black.withOpacity(0.6),
       builder: (_) => const CreateConfessionSheet(),
-    ).then((_) {
-      ref.read(forYouFeedProvider.notifier).refresh();
-    });
+    );
   }
 
   @override
@@ -74,7 +73,9 @@ class _HomeScaffoldState extends ConsumerState<HomeScaffold> {
           child: _screens[_currentIndex],
         ),
       ),
-      floatingActionButton: _Fab(onTap: _openCreate),
+      floatingActionButton: _currentIndex <= 1
+          ? _Fab(onTap: _openCreate)
+          : null,
       bottomNavigationBar: _BottomNav(
         currentIndex: _currentIndex,
         items: _navItems,
@@ -174,6 +175,7 @@ class _FabState extends State<_Fab> {
           width: 52,
           height: 52,
           decoration: BoxDecoration(
+            // FAB keeps gradient — it's the one place it belongs
             gradient: const LinearGradient(
               colors: [Color(0xFF7C4DFF), Color(0xFF1DE9B6)],
             ),
