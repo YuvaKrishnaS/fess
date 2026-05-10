@@ -71,7 +71,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
       // Scrolling down (content moving up) → hide
       scrollVisibilityNotifier.value = false;
     } else if (diff < -4) {
-      // Scrolling up (content moving down) → show
+      // Scrolling up (content moving down) - show
       scrollVisibilityNotifier.value = true;
     }
   }
@@ -99,7 +99,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
               child: _AppBarContent(),
             ),
           ),
-          // Tab bar pinned — stops exactly at status bar bottom
+          // Tab bar pinned - stops exactly at status bar bottom
           SliverPersistentHeader(
             pinned: true,
             delegate: _TabBarDelegate(tab: _tab, topPad: statusBarH),
@@ -117,7 +117,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
   }
 }
 
-// ── App bar content ───────────────────────────────────────────────────────────
+// app bar content
 
 class _AppBarContent extends ConsumerWidget {
   @override
@@ -132,10 +132,10 @@ class _AppBarContent extends ConsumerWidget {
           _AppBarAvatar(profile: profileAsync.value),
           const Spacer(),
           const Text(
-            'fess',
+            'Fess',
             style: TextStyle(
               fontFamily: 'DM Sans',
-              fontSize: 22,
+              fontSize: 24,
               fontWeight: FontWeight.w900,
               color: AppColors.textPrimary,
               letterSpacing: -0.5,
@@ -155,7 +155,6 @@ class _AppBarAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // FIX: use AvatarConfig.fromMap().buildUrl() — correct style
     final url = profile?['avatarConfig'] != null
         ? AvatarConfig.fromMap(
         profile!['avatarConfig'] as Map<String, dynamic>)

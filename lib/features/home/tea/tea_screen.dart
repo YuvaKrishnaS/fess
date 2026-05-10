@@ -51,6 +51,7 @@ class _TeaScreenState extends ConsumerState<TeaScreen> {
             snap: true,
             pinned: false,
             elevation: 0,
+            toolbarHeight: 0,
             scrolledUnderElevation: 0,
             automaticallyImplyLeading: false,
             bottom: PreferredSize(
@@ -79,13 +80,12 @@ class _TeaAppBar extends ConsumerWidget {
             text: const TextSpan(
               children: [
                 TextSpan(
-                  text: 'FESS',
+                  text: 'Tea',
                   style: TextStyle(
                     fontFamily: 'DM Sans',
-                    fontSize: 20,
-                    fontWeight: FontWeight.w800,
+                    fontSize: 22,
+                    fontWeight: FontWeight.w700,
                     color: AppColors.textPrimary,
-                    letterSpacing: 2.0,
                   ),
                 ),
               ],
