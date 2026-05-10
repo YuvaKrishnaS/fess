@@ -10,8 +10,7 @@ import 'tea/tea_screen.dart';
 import 'world/world_placeholder_screen.dart';
 import 'chat/chat_placeholder_screen.dart';
 import 'widgets/create_confession_sheet.dart';
-import 'providers/feed_provider.dart';
-import 'providers/tea_feed_provider.dart';
+import 'providers/scroll_visibility_provider.dart';
 
 class HomeScaffold extends ConsumerStatefulWidget {
   const HomeScaffold({super.key});
@@ -40,6 +39,8 @@ class _HomeScaffoldState extends ConsumerState<HomeScaffold> {
   void _onTab(int i) {
     if (i == _currentIndex) return;
     HapticFeedback.selectionClick();
+    // Reset visibility when switching tabs
+    scrollVisibilityNotifier.value = true;
     setState(() => _currentIndex = i);
   }
 
@@ -62,6 +63,7 @@ class _HomeScaffoldState extends ConsumerState<HomeScaffold> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.backgroundMain,
+      extendBody: true, // content goes under nav bar
       body: AnimatedSwitcher(
         duration: const Duration(milliseconds: 180),
         switchInCurve: Curves.easeIn,
@@ -74,12 +76,36 @@ class _HomeScaffoldState extends ConsumerState<HomeScaffold> {
         ),
       ),
       floatingActionButton: _currentIndex <= 1
-          ? _Fab(onTap: _openCreate)
+          ? ValueListenableBuilder<bool>(
+        valueListenable: scrollVisibilityNotifier,
+        builder: (_, visible, __) => AnimatedSlide(
+          offset: visible ? Offset.zero : const Offset(0, 2),
+          duration: const Duration(milliseconds: 260),
+          curve: Curves.easeInOutCubic,
+          child: AnimatedOpacity(
+            opacity: visible ? 1.0 : 0.0,
+            duration: const Duration(milliseconds: 200),
+            child: _Fab(onTap: _openCreate),
+          ),
+        ),
+      )
           : null,
-      bottomNavigationBar: _BottomNav(
-        currentIndex: _currentIndex,
-        items: _navItems,
-        onTap: _onTab,
+      bottomNavigationBar: ValueListenableBuilder<bool>(
+        valueListenable: scrollVisibilityNotifier,
+        builder: (_, visible, __) => AnimatedSlide(
+          offset: visible ? Offset.zero : const Offset(0, 1),
+          duration: const Duration(milliseconds: 260),
+          curve: Curves.easeInOutCubic,
+          child: AnimatedOpacity(
+            opacity: visible ? 1.0 : 0.0,
+            duration: const Duration(milliseconds: 200),
+            child: _BottomNav(
+              currentIndex: _currentIndex,
+              items: _navItems,
+              onTap: _onTab,
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -175,7 +201,6 @@ class _FabState extends State<_Fab> {
           width: 52,
           height: 52,
           decoration: BoxDecoration(
-            // FAB keeps gradient — it's the one place it belongs
             gradient: const LinearGradient(
               colors: [Color(0xFF7C4DFF), Color(0xFF1DE9B6)],
             ),

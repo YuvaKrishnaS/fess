@@ -88,10 +88,6 @@ class _TeaAppBar extends ConsumerWidget {
                     letterSpacing: 2.0,
                   ),
                 ),
-                TextSpan(
-                  text: '  ☕',
-                  style: TextStyle(fontSize: 16),
-                ),
               ],
             ),
           ),

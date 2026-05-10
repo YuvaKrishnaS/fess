@@ -1,11 +1,13 @@
 import 'dart:async';
 import 'dart:math';
+
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:lucide_icons/lucide_icons.dart';
+
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_typography.dart';
 import '../../../core/services/audio_service.dart';
@@ -13,27 +15,7 @@ import '../../../core/widgets/fess_snackbar.dart';
 import '../providers/feed_provider.dart';
 import '../providers/tea_feed_provider.dart';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Constants
-// ─────────────────────────────────────────────────────────────────────────────
-
-const _kBg       = Color(0xFF07070F); // matches AppColors.backgroundMain
-const _kSurface  = Color(0xFF0F0F1A);
-const _kBorder   = Color(0xFF1C1C2A);
-const _kLine     = Color(0xFF141420);
-
-const _kSpillHints = [
-  'What are you not saying out loud?',
-  'Say it. No one knows it\'s you.',
-  'Something on your mind?',
-];
-
-const _spillMaxSecs = 30;
-const _teaMaxSecs   = 60;
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Root sheet
-// ─────────────────────────────────────────────────────────────────────────────
+// ── Entry point ───────────────────────────────────────────────────────────────
 
 class CreateConfessionSheet extends ConsumerStatefulWidget {
   const CreateConfessionSheet({super.key});
@@ -43,597 +25,689 @@ class CreateConfessionSheet extends ConsumerStatefulWidget {
       _CreateConfessionSheetState();
 }
 
-class _CreateConfessionSheetState extends ConsumerState<CreateConfessionSheet>
+class _CreateConfessionSheetState
+    extends ConsumerState<CreateConfessionSheet>
     with SingleTickerProviderStateMixin {
+  late final TabController _tabCtrl;
 
-  bool _expanded = false;
+  // spill
+  final _headingCtrl = TextEditingController();
+  final _bodyCtrl = TextEditingController();
+  final _headingFocus = FocusNode();
 
-  late final PageController _pageCtrl;
-  int _tabIndex = 0;
-
-  // Spill
-  final _spillHeadingCtrl = TextEditingController();
-  final _spillBodyCtrl    = TextEditingController();
-  final _spillFocus       = FocusNode();
-  late final String _spillHint;
-
-  // Tea
+  // tea
   final _teaHeadingCtrl = TextEditingController();
-  final _teaFocus       = FocusNode();
+  final _teaFocus = FocusNode();
 
-  // Voice — shared across both tabs
-  _VoiceState  _voiceState = _VoiceState.idle;
-  String?      _recPath;
-  int          _recSecs  = 0;
-  int          _elapsed  = 0;
-  Timer?       _recTimer;
-  // 30 bar amplitudes
-  final List<double> _amps = List.filled(30, 0.08);
+  // voice
+  _VoiceState _voice = _VoiceState.idle;
+  String? _recPath;
+  int _recSecs = 0;
+  int _elapsed = 0;
+  Timer? _timer;
+  List<double> _amps = List.filled(40, 0.04);
 
-  bool get _isSpill  => _tabIndex == 0;
-  int  get _maxSecs  => _isSpill ? _spillMaxSecs : _teaMaxSecs;
+  bool get _isSpill => _tabCtrl.index == 0;
+  int get _maxSecs => _isSpill ? 30 : 60;
 
   bool get _canPost {
-    if (_isSpill) return _spillHeadingCtrl.text.trim().isNotEmpty;
+    if (_isSpill) return _headingCtrl.text.trim().isNotEmpty;
     return _teaHeadingCtrl.text.trim().isNotEmpty && _recPath != null;
   }
-
-  // ── lifecycle ──────────────────────────────────────────────────────────────
 
   @override
   void initState() {
     super.initState();
-    _spillHint = _kSpillHints[Random().nextInt(_kSpillHints.length)];
-    _pageCtrl  = PageController();
-    _spillHeadingCtrl.addListener(() => setState(() {}));
-    _spillBodyCtrl.addListener(() => setState(() {}));
-    _teaHeadingCtrl.addListener(() => setState(() {}));
+    _tabCtrl = TabController(length: 2, vsync: this);
+    _tabCtrl.addListener(() => setState(() {}));
+    for (final c in [_headingCtrl, _bodyCtrl, _teaHeadingCtrl]) {
+      c.addListener(() => setState(() {}));
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      Future.delayed(380.ms, () {
-        if (mounted) _spillFocus.requestFocus();
-      });
+      Future.delayed(
+          const Duration(milliseconds: 350),
+              () => mounted ? _headingFocus.requestFocus() : null);
     });
   }
 
   @override
   void dispose() {
-    _pageCtrl.dispose();
-    _spillHeadingCtrl.dispose();
-    _spillBodyCtrl.dispose();
-    _spillFocus.dispose();
+    _tabCtrl.dispose();
+    _headingCtrl.dispose();
+    _bodyCtrl.dispose();
+    _headingFocus.dispose();
     _teaHeadingCtrl.dispose();
     _teaFocus.dispose();
-    _recTimer?.cancel();
+    _timer?.cancel();
     AudioService.instance.stop();
     super.dispose();
   }
 
-  // ── tab ───────────────────────────────────────────────────────────────────
-
-  void _switchTab(int i) {
-    if (i == _tabIndex) return;
-    HapticFeedback.selectionClick();
-    _pageCtrl.animateToPage(
-      i,
-      duration: const Duration(milliseconds: 300),
-      curve: Curves.easeInOutCubic,
-    );
-  }
-
-  // ── recording ─────────────────────────────────────────────────────────────
+  // ── Voice ─────────────────────────────────────────────────────────────────
 
   Future<void> _startRec() async {
     final ok = await AudioService.instance.hasPermission();
-    if (!ok && mounted) {
-      FessSnackbar.show(context, 'Microphone permission required.',
-          type: SnackbarType.error);
+    if (!ok) {
+      if (mounted) {
+        FessSnackbar.show(context, 'Microphone permission needed.',
+            type: SnackbarType.error);
+      }
       return;
     }
     await AudioService.instance.startRecording();
     setState(() {
-      _voiceState = _VoiceState.recording;
+      _voice = _VoiceState.recording;
       _elapsed = 0;
-      for (int i = 0; i < _amps.length; i++) _amps[i] = 0.08;
+      _amps = List.filled(40, 0.04);
     });
-    _recTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
       setState(() => _elapsed++);
       if (_elapsed >= _maxSecs) _stopRec();
     });
     AudioService.instance.amplitudeStream.listen((a) {
-      if (!mounted || _voiceState != _VoiceState.recording) return;
-      final norm = ((a.current + 60) / 60).clamp(0.06, 1.0);
-      setState(() {
-        _amps.removeAt(0);
-        _amps.add(norm);
-      });
+      if (!mounted || _voice != _VoiceState.recording) return;
+      final n = ((a.current + 60) / 60).clamp(0.04, 1.0);
+      setState(() => _amps = [..._amps.skip(1), n]);
     });
   }
 
   Future<void> _stopRec() async {
-    _recTimer?.cancel();
+    _timer?.cancel();
     final path = await AudioService.instance.stopRecording();
-    if (!mounted) return;
-    if (path == null) { setState(() => _voiceState = _VoiceState.idle); return; }
+    if (path == null || !mounted) {
+      setState(() => _voice = _VoiceState.idle);
+      return;
+    }
     final dur = await AudioService.instance.getFileDurationSeconds(path);
     setState(() {
-      _voiceState = _VoiceState.recorded;
-      _recPath    = path;
-      _recSecs    = dur > 0 ? dur : _elapsed;
+      _voice = _VoiceState.recorded;
+      _recPath = path;
+      _recSecs = dur > 0 ? dur : _elapsed;
     });
   }
 
   Future<void> _discardRec() async {
-    _recTimer?.cancel();
+    _timer?.cancel();
     await AudioService.instance.cancelRecording();
     await AudioService.instance.stop();
     setState(() {
-      _voiceState = _VoiceState.idle;
-      _recPath    = null;
-      _recSecs    = 0;
-      _elapsed    = 0;
-      for (int i = 0; i < _amps.length; i++) _amps[i] = 0.08;
+      _voice = _VoiceState.idle;
+      _recPath = null;
+      _recSecs = 0;
+      _elapsed = 0;
+      _amps = List.filled(40, 0.04);
     });
   }
 
-  // ── post ──────────────────────────────────────────────────────────────────
+  // ── Post ─────────────────────────────────────────────────────────────────
 
   Future<void> _post() async {
     if (!_canPost) return;
     HapticFeedback.mediumImpact();
-    bool ok;
     if (_isSpill) {
-      ok = await ref.read(createPostProvider.notifier).createConfession(
-        heading: _spillHeadingCtrl.text,
-        body: _spillBodyCtrl.text.isNotEmpty ? _spillBodyCtrl.text : null,
+      final ok = await ref.read(createPostProvider.notifier).createConfession(
+        heading: _headingCtrl.text,
+        body: _bodyCtrl.text.isNotEmpty ? _bodyCtrl.text : null,
         voiceNotePath: _recPath,
         voiceDurationSeconds: _recPath != null ? _recSecs : null,
       );
+      if (!mounted) return;
+      if (ok) {
+        Navigator.of(context).pop();
+        FessSnackbar.show(context, 'Posted.', type: SnackbarType.success);
+      } else {
+        FessSnackbar.show(context, 'Failed to post. Try again.',
+            type: SnackbarType.error);
+      }
     } else {
-      ok = await ref.read(createTeaProvider.notifier).createTea(
+      final ok = await ref.read(createTeaProvider.notifier).createTea(
         heading: _teaHeadingCtrl.text,
         localAudioPath: _recPath!,
         audioDurationSeconds: _recSecs,
       );
-    }
-    if (!mounted) return;
-    if (ok) {
-      Navigator.of(context).pop();
-      FessSnackbar.show(
-        context,
-        _isSpill ? 'Posted.' : 'Tea dropped.',
-        type: SnackbarType.success,
-      );
-    } else {
-      FessSnackbar.show(context, 'Failed. Try again.',
-          type: SnackbarType.error);
+      if (!mounted) return;
+      if (ok) {
+        Navigator.of(context).pop();
+        FessSnackbar.show(context, 'Tea dropped.', type: SnackbarType.success);
+      } else {
+        FessSnackbar.show(context, 'Failed to post. Try again.',
+            type: SnackbarType.error);
+      }
     }
   }
 
-  // ── build ─────────────────────────────────────────────────────────────────
+  // ── Build ─────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
-    final isPosting = ref.watch(createPostProvider) ||
-        ref.watch(createTeaProvider);
-    final bottom = MediaQuery.of(context).viewInsets.bottom;
-    final screenH = MediaQuery.of(context).size.height;
+    final isPosting =
+        ref.watch(createPostProvider) || ref.watch(createTeaProvider);
+    final profile = ref.watch(currentProfileProvider).value;
+    final avatarUrl = _buildAvatarUrlFromProfile(profile);
+    final bottomPad = MediaQuery.of(context).viewInsets.bottom;
 
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 360),
-      curve: Curves.easeInOutCubic,
-      height: _expanded ? screenH : null,
+    return Container(
       decoration: const BoxDecoration(
-        color: _kBg,
+        color: Color(0xFF09090F),
         borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
       ),
       child: SafeArea(
         child: Padding(
-          padding: EdgeInsets.only(bottom: bottom),
+          padding: EdgeInsets.only(bottom: bottomPad),
           child: Column(
-            mainAxisSize: _expanded ? MainAxisSize.max : MainAxisSize.min,
+            mainAxisSize: MainAxisSize.min,
             children: [
-              _DragHandle(),
-              _SheetHeader(
-                expanded: _expanded,
-                onClose:  () => Navigator.of(context).pop(),
-                onExpand: () => setState(() => _expanded = !_expanded),
+              // ── Handle
+              Center(
+                child: Container(
+                  margin: const EdgeInsets.only(top: 10, bottom: 6),
+                  width: 32,
+                  height: 3,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF2E2E3A),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
               ),
-              _TabRow(index: _tabIndex, onTap: _switchTab),
-              Container(height: 0.5, color: _kLine, margin:
-              const EdgeInsets.only(top: 6)),
-              Flexible(
-                child: PageView(
-                  controller: _pageCtrl,
-                  physics: const BouncingScrollPhysics(),
-                  onPageChanged: (i) {
-                    HapticFeedback.selectionClick();
-                    setState(() => _tabIndex = i);
-                  },
+
+              // ── Top bar: close + tabs + post button
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+                child: Row(
                   children: [
-                    // ── Spill tab ──────────────────────────────────────────
-                    _SpillTab(
-                      headingCtrl: _spillHeadingCtrl,
-                      bodyCtrl:    _spillBodyCtrl,
-                      focus:       _spillFocus,
-                      hint:        _spillHint,
-                      expanded:    _expanded,
-                      voiceState:  _voiceState,
-                      elapsed:     _elapsed,
-                      recSecs:     _recSecs,
-                      recPath:     _recPath,
-                      amps:        List.unmodifiable(_amps),
-                      onStart:     _startRec,
-                      onStop:      _stopRec,
-                      onDiscard:   _discardRec,
+                    // close
+                    GestureDetector(
+                      onTap: () => Navigator.of(context).pop(),
+                      child: const Icon(LucideIcons.x,
+                          size: 20, color: AppColors.textSecondary),
                     ),
-                    // ── Tea tab ────────────────────────────────────────────
-                    _TeaTab(
-                      headingCtrl: _teaHeadingCtrl,
-                      focus:       _teaFocus,
-                      voiceState:  _voiceState,
-                      elapsed:     _elapsed,
-                      recSecs:     _recSecs,
-                      recPath:     _recPath,
-                      amps:        List.unmodifiable(_amps),
-                      onStart:     _startRec,
-                      onStop:      _stopRec,
-                      onDiscard:   _discardRec,
+                    const SizedBox(width: 16),
+                    // tabs
+                    _SheetTabBar(ctrl: _tabCtrl),
+                    const Spacer(),
+                    // post button
+                    _PostBtn(
+                      label: _isSpill ? 'Post' : 'Drop',
+                      canPost: _canPost,
+                      isPosting: isPosting,
+                      onPost: _post,
                     ),
                   ],
                 ),
               ),
-              // ── Footer ───────────────────────────────────────────────────
-              Container(height: 0.5, color: _kLine),
-              _PostBar(
-                isSpill:   _isSpill,
-                bodyLen:   _spillBodyCtrl.text.length,
-                canPost:   _canPost,
-                isPosting: isPosting,
-                onPost:    _post,
+
+              const SizedBox(height: 4),
+              const Divider(
+                  height: 0.5, thickness: 0.5, color: Color(0xFF141420)),
+
+              // ── Content
+              ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxHeight: MediaQuery.of(context).size.height * 0.72,
+                ),
+                child: TabBarView(
+                  controller: _tabCtrl,
+                  physics: const NeverScrollableScrollPhysics(),
+                  children: [
+                    // Spill tab
+                    _SpillComposer(
+                      avatarUrl: avatarUrl,
+                      username: profile?['username'] as String? ?? 'anon',
+                      headingCtrl: _headingCtrl,
+                      bodyCtrl: _bodyCtrl,
+                      headingFocus: _headingFocus,
+                      voice: _voice,
+                      elapsed: _elapsed,
+                      recSecs: _recSecs,
+                      recPath: _recPath,
+                      amps: _amps,
+                      onStartRec: _startRec,
+                      onStopRec: _stopRec,
+                      onDiscardRec: _discardRec,
+                    ),
+                    // Tea tab
+                    _TeaComposer(
+                      avatarUrl: avatarUrl,
+                      username: profile?['username'] as String? ?? 'anon',
+                      headingCtrl: _teaHeadingCtrl,
+                      focus: _teaFocus,
+                      voice: _voice,
+                      elapsed: _elapsed,
+                      recSecs: _recSecs,
+                      recPath: _recPath,
+                      amps: _amps,
+                      onStartRec: _startRec,
+                      onStopRec: _stopRec,
+                      onDiscardRec: _discardRec,
+                    ),
+                  ],
+                ),
+              ),
+
+              // ── Bottom hint
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+                child: Row(
+                  children: [
+                    Icon(LucideIcons.globe,
+                        size: 12, color: AppColors.hintText),
+                    const SizedBox(width: 5),
+                    Text(
+                      'Everyone can see this',
+                      style: AppTypography.bodySmall.copyWith(
+                          fontSize: 11, color: AppColors.hintText),
+                    ),
+                    const Spacer(),
+                    if (_isSpill && _bodyCtrl.text.isNotEmpty)
+                      Text(
+                        '${_bodyCtrl.text.length}/500',
+                        style: AppTypography.bodySmall.copyWith(
+                          fontSize: 11,
+                          color: _bodyCtrl.text.length > 450
+                              ? AppColors.errorLight
+                              : AppColors.hintText,
+                        ),
+                      ),
+                  ],
+                ),
               ),
             ],
           ),
         ),
       ),
-    ).animate().slideY(
-        begin: 0.05, end: 0, duration: 300.ms, curve: Curves.easeOutCubic);
+    );
+  }
+
+  String? _buildAvatarUrlFromProfile(Map<String, dynamic>? profile) {
+    final config = profile?['avatarConfig'] as Map<String, dynamic>?;
+    if (config == null) return null;
+    final params = <String, String>{
+      'size': '72',
+      'skinColor': config['skinColor'] ?? 'f2d3b1',
+      'hair': config['hair'] ?? 'short03',
+      'hairColor': config['hairColor'] ?? '2c1b18',
+      'eyes': config['eyes'] ?? 'variant01',
+      'eyebrows': config['eyebrows'] ?? 'variant01',
+      'mouth': config['mouth'] ?? 'variant01',
+      'backgroundColor': 'transparent',
+      'radius': '50',
+    };
+    final q = params.entries
+        .map((e) => '${e.key}=${Uri.encodeComponent(e.value)}')
+        .join('&');
+    return 'https://api.dicebear.com/9.x/adventurer/png?$q';
   }
 }
 
 enum _VoiceState { idle, recording, recorded }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Sheet chrome
-// ─────────────────────────────────────────────────────────────────────────────
+// ── Sheet tab bar (X-style) ───────────────────────────────────────────────────
 
-class _DragHandle extends StatelessWidget {
+class _SheetTabBar extends StatelessWidget {
+  final TabController ctrl;
+  const _SheetTabBar({required this.ctrl});
+
   @override
-  Widget build(BuildContext context) => Center(
-    child: Container(
-      margin: const EdgeInsets.only(top: 10, bottom: 2),
-      width: 34, height: 4,
-      decoration: BoxDecoration(
-        color: const Color(0xFF2A2A3A),
-        borderRadius: BorderRadius.circular(2),
+  Widget build(BuildContext context) => TabBar(
+    controller: ctrl,
+    isScrollable: true,
+    tabAlignment: TabAlignment.start,
+    indicator: const UnderlineTabIndicator(
+      borderSide: BorderSide(
+        color: AppColors.accentPrimary,
+        width: 2,
       ),
+      insets: EdgeInsets.symmetric(horizontal: 8),
     ),
-  );
-}
-
-class _SheetHeader extends StatelessWidget {
-  final bool expanded;
-  final VoidCallback onClose;
-  final VoidCallback onExpand;
-  const _SheetHeader({
-    required this.expanded, required this.onClose, required this.onExpand});
-
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.fromLTRB(20, 8, 12, 4),
-    child: Row(children: [
-      Text('New Post',
-          style: AppTypography.labelLarge.copyWith(
-              fontSize: 15, fontWeight: FontWeight.w700,
-              color: AppColors.textPrimary, letterSpacing: -0.2)),
-      const Spacer(),
-      _ChromeBtn(
-          icon: expanded ? LucideIcons.minimize2 : LucideIcons.maximize2,
-          onTap: onExpand),
-      const SizedBox(width: 4),
-      _ChromeBtn(icon: LucideIcons.x, onTap: onClose),
-    ]),
-  );
-}
-
-class _ChromeBtn extends StatelessWidget {
-  final IconData icon;
-  final VoidCallback onTap;
-  const _ChromeBtn({required this.icon, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) => GestureDetector(
-    onTap: () { HapticFeedback.selectionClick(); onTap(); },
-    child: SizedBox(
-        width: 36, height: 36,
-        child: Center(
-            child: Icon(icon, size: 15, color: AppColors.textSecondary))),
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Tabs
-// ─────────────────────────────────────────────────────────────────────────────
-
-class _TabRow extends StatelessWidget {
-  final int index;
-  final ValueChanged<int> onTap;
-  const _TabRow({required this.index, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
-    child: Row(children: [
-      _TabChip(label: 'Spill', active: index == 0, onTap: () => onTap(0)),
-      const SizedBox(width: 8),
-      _TabChip(label: 'Tea',   active: index == 1, onTap: () => onTap(1)),
-    ]),
-  );
-}
-
-class _TabChip extends StatelessWidget {
-  final String label;
-  final bool active;
-  final VoidCallback onTap;
-  const _TabChip(
-      {required this.label, required this.active, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) => GestureDetector(
-    onTap: onTap,
-    child: AnimatedContainer(
-      duration: const Duration(milliseconds: 220),
-      curve: Curves.easeInOutCubic,
-      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 7),
-      decoration: BoxDecoration(
-        color: active
-            ? AppColors.accentPrimary.withOpacity(0.08)
-            : Colors.transparent,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(
-            color: active
-                ? AppColors.accentPrimary.withOpacity(0.40)
-                : const Color(0xFF222230),
-            width: 0.8),
-      ),
-      child: AnimatedDefaultTextStyle(
-          duration: const Duration(milliseconds: 200),
-          style: AppTypography.bodySmall.copyWith(
-              fontSize: 13, fontWeight: FontWeight.w600,
-              color: active
-                  ? AppColors.accentPrimary
-                  : AppColors.textSecondary),
-          child: Text(label)),
+    indicatorSize: TabBarIndicatorSize.label,
+    dividerColor: Colors.transparent,
+    labelStyle: AppTypography.bodyMedium.copyWith(
+      fontFamily: 'DM Sans',
+      fontWeight: FontWeight.w700,
+      fontSize: 15,
     ),
+    unselectedLabelStyle: AppTypography.bodyMedium.copyWith(
+      fontFamily: 'DM Sans',
+      fontWeight: FontWeight.w400,
+      fontSize: 15,
+    ),
+    labelColor: AppColors.textPrimary,
+    unselectedLabelColor: AppColors.hintText,
+    padding: EdgeInsets.zero,
+    labelPadding: const EdgeInsets.symmetric(horizontal: 8),
+    tabs: const [
+      Tab(text: 'Spill'),
+      Tab(text: 'Tea'),
+    ],
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Spill tab
-// ─────────────────────────────────────────────────────────────────────────────
+// ── Spill composer ────────────────────────────────────────────────────────────
 
-class _SpillTab extends StatelessWidget {
+class _SpillComposer extends StatelessWidget {
+  final String? avatarUrl;
+  final String username;
   final TextEditingController headingCtrl;
   final TextEditingController bodyCtrl;
-  final FocusNode focus;
-  final String hint;
-  final bool expanded;
-  final _VoiceState voiceState;
+  final FocusNode headingFocus;
+  final _VoiceState voice;
   final int elapsed;
   final int recSecs;
   final String? recPath;
   final List<double> amps;
-  final VoidCallback onStart;
-  final VoidCallback onStop;
-  final VoidCallback onDiscard;
+  final VoidCallback onStartRec;
+  final VoidCallback onStopRec;
+  final VoidCallback onDiscardRec;
 
-  const _SpillTab({
+  const _SpillComposer({
+    required this.avatarUrl,
+    required this.username,
     required this.headingCtrl,
     required this.bodyCtrl,
-    required this.focus,
-    required this.hint,
-    required this.expanded,
-    required this.voiceState,
+    required this.headingFocus,
+    required this.voice,
     required this.elapsed,
     required this.recSecs,
     required this.recPath,
     required this.amps,
-    required this.onStart,
-    required this.onStop,
-    required this.onDiscard,
+    required this.onStartRec,
+    required this.onStopRec,
+    required this.onDiscardRec,
   });
 
   @override
-  Widget build(BuildContext context) => SingleChildScrollView(
-    padding: const EdgeInsets.fromLTRB(20, 14, 20, 8),
-    physics: const BouncingScrollPhysics(),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // heading field
-        TextField(
-          controller: headingCtrl,
-          focusNode: focus,
-          maxLength: 100,
-          maxLines: null,
-          buildCounter: (_, {required currentLength,
-            required isFocused, maxLength}) => null,
-          style: AppTypography.bodyMedium.copyWith(
-              fontSize: 18, fontWeight: FontWeight.w600,
-              color: AppColors.textPrimary, height: 1.4),
-          decoration: InputDecoration(
-            hintText: hint,
-            hintStyle: AppTypography.bodyMedium.copyWith(
-                fontSize: 18, fontWeight: FontWeight.w600,
-                color: AppColors.hintText, height: 1.4),
-            border: InputBorder.none,
-            contentPadding: EdgeInsets.zero,
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      physics: const BouncingScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // left: avatar column with vertical line
+          Column(
+            children: [
+              _ComposerAvatar(url: avatarUrl),
+              const SizedBox(height: 4),
+              Container(
+                width: 1.5,
+                height: 28,
+                color: const Color(0xFF1E1E2A),
+              ),
+            ],
           ),
-        ),
-        const SizedBox(height: 4),
-        // char counter for heading
-        Align(
-          alignment: Alignment.centerRight,
-          child: AnimatedOpacity(
-            opacity: headingCtrl.text.length > 80 ? 1.0 : 0.0,
-            duration: 200.ms,
-            child: Text('${headingCtrl.text.length}/100',
-                style: AppTypography.bodySmall.copyWith(
-                    fontSize: 11,
-                    color: headingCtrl.text.length > 90
-                        ? AppColors.errorLight
-                        : AppColors.hintText)),
+          const SizedBox(width: 12),
+          // right: content
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // username row
+                Text(
+                  username,
+                  style: AppTypography.bodyMedium.copyWith(
+                    fontFamily: 'DM Sans',
+                    fontWeight: FontWeight.w700,
+                    fontSize: 15,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                // heading — big, inviting
+                TextField(
+                  controller: headingCtrl,
+                  focusNode: headingFocus,
+                  maxLines: null,
+                  maxLength: 100,
+                  buildCounter: (_, {required currentLength,
+                    required isFocused, maxLength}) =>
+                  null,
+                  style: const TextStyle(
+                    fontFamily: 'DM Sans',
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textPrimary,
+                    height: 1.45,
+                  ),
+                  decoration: InputDecoration(
+                    hintText: 'What\'s on your mind?',
+                    hintStyle: const TextStyle(
+                      fontFamily: 'DM Sans',
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.hintText,
+                      height: 1.45,
+                    ),
+                    border: InputBorder.none,
+                    enabledBorder: InputBorder.none,
+                    focusedBorder: InputBorder.none,
+                    contentPadding: EdgeInsets.zero,
+                    isDense: true,
+                    filled: false,
+                  ),
+                  cursorColor: AppColors.accentPrimary,
+                  cursorWidth: 2,
+                ),
+                const SizedBox(height: 6),
+                // body
+                TextField(
+                  controller: bodyCtrl,
+                  maxLines: null,
+                  maxLength: 500,
+                  buildCounter: (_, {required currentLength,
+                    required isFocused, maxLength}) =>
+                  null,
+                  style: AppTypography.bodyMedium.copyWith(
+                    fontSize: 15,
+                    color: AppColors.textSecondary,
+                    height: 1.6,
+                  ),
+                  decoration: InputDecoration(
+                    hintText: 'Add more... (optional)',
+                    hintStyle: AppTypography.bodySmall.copyWith(
+                      fontSize: 15,
+                      color: AppColors.hintText,
+                      height: 1.6,
+                    ),
+                    border: InputBorder.none,
+                    enabledBorder: InputBorder.none,
+                    focusedBorder: InputBorder.none,
+                    contentPadding: EdgeInsets.zero,
+                    isDense: true,
+                    filled: false,
+                  ),
+                  cursorColor: AppColors.accentPrimary,
+                  cursorWidth: 2,
+                ),
+                const SizedBox(height: 14),
+                // voice widget
+                _VoiceSection(
+                  optional: true,
+                  maxSecs: 30,
+                  voice: voice,
+                  elapsed: elapsed,
+                  recSecs: recSecs,
+                  recPath: recPath,
+                  amps: amps,
+                  onStart: onStartRec,
+                  onStop: onStopRec,
+                  onDiscard: onDiscardRec,
+                ),
+              ],
+            ),
           ),
-        ),
-        _Thin(),
-        // body field
-        TextField(
-          controller: bodyCtrl,
-          maxLength: 500,
-          maxLines: null,
-          minLines: expanded ? 5 : 2,
-          buildCounter: (_, {required currentLength,
-            required isFocused, maxLength}) => null,
-          style: AppTypography.bodySmall.copyWith(
-              fontSize: 14.5, color: AppColors.textSecondary, height: 1.65),
-          decoration: InputDecoration(
-            hintText: 'More detail... (optional)',
-            hintStyle: AppTypography.bodySmall.copyWith(
-                fontSize: 14.5, color: AppColors.hintText, height: 1.65),
-            border: InputBorder.none,
-            contentPadding: EdgeInsets.zero,
-          ),
-        ),
-        const SizedBox(height: 16),
-        // ── voice widget always present ───────────────────────────────────
-        VoiceWidget(
-          optional: true,
-          maxSecs: _spillMaxSecs,
-          voiceState: voiceState,
-          elapsed: elapsed,
-          recSecs: recSecs,
-          recPath: recPath,
-          amps: amps,
-          onStart: onStart,
-          onStop: onStop,
-          onDiscard: onDiscard,
-        ),
-        const SizedBox(height: 12),
-      ],
-    ),
-  );
+        ],
+      ),
+    );
+  }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Tea tab
-// ─────────────────────────────────────────────────────────────────────────────
+// ── Tea composer ──────────────────────────────────────────────────────────────
 
-class _TeaTab extends StatelessWidget {
+class _TeaComposer extends StatelessWidget {
+  final String? avatarUrl;
+  final String username;
   final TextEditingController headingCtrl;
   final FocusNode focus;
-  final _VoiceState voiceState;
+  final _VoiceState voice;
   final int elapsed;
   final int recSecs;
   final String? recPath;
   final List<double> amps;
-  final VoidCallback onStart;
-  final VoidCallback onStop;
-  final VoidCallback onDiscard;
+  final VoidCallback onStartRec;
+  final VoidCallback onStopRec;
+  final VoidCallback onDiscardRec;
 
-  const _TeaTab({
+  const _TeaComposer({
+    required this.avatarUrl,
+    required this.username,
     required this.headingCtrl,
     required this.focus,
-    required this.voiceState,
+    required this.voice,
     required this.elapsed,
     required this.recSecs,
     required this.recPath,
     required this.amps,
-    required this.onStart,
-    required this.onStop,
-    required this.onDiscard,
+    required this.onStartRec,
+    required this.onStopRec,
+    required this.onDiscardRec,
   });
 
   @override
-  Widget build(BuildContext context) => SingleChildScrollView(
-    padding: const EdgeInsets.fromLTRB(20, 14, 20, 8),
-    physics: const BouncingScrollPhysics(),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // heading
-        TextField(
-          controller: headingCtrl,
-          focusNode: focus,
-          maxLength: 100,
-          maxLines: null,
-          buildCounter: (_, {required currentLength,
-            required isFocused, maxLength}) => null,
-          style: AppTypography.bodyMedium.copyWith(
-              fontSize: 18, fontWeight: FontWeight.w600,
-              color: AppColors.textPrimary, height: 1.4),
-          decoration: InputDecoration(
-            hintText: "What's the tea?",
-            hintStyle: AppTypography.bodyMedium.copyWith(
-                fontSize: 18, fontWeight: FontWeight.w600,
-                color: AppColors.hintText, height: 1.4),
-            border: InputBorder.none,
-            contentPadding: EdgeInsets.zero,
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      physics: const BouncingScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Column(
+            children: [
+              _ComposerAvatar(url: avatarUrl),
+              const SizedBox(height: 4),
+              Container(
+                width: 1.5,
+                height: 28,
+                color: const Color(0xFF1E1E2A),
+              ),
+            ],
           ),
-        ),
-        const SizedBox(height: 4),
-        Align(
-          alignment: Alignment.centerRight,
-          child: AnimatedOpacity(
-            opacity: headingCtrl.text.length > 80 ? 1.0 : 0.0,
-            duration: 200.ms,
-            child: Text('${headingCtrl.text.length}/100',
-                style: AppTypography.bodySmall.copyWith(
-                    fontSize: 11,
-                    color: headingCtrl.text.length > 90
-                        ? AppColors.errorLight
-                        : AppColors.hintText)),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  username,
+                  style: AppTypography.bodyMedium.copyWith(
+                    fontFamily: 'DM Sans',
+                    fontWeight: FontWeight.w700,
+                    fontSize: 15,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: headingCtrl,
+                  focusNode: focus,
+                  maxLines: null,
+                  maxLength: 100,
+                  buildCounter: (_, {required currentLength,
+                    required isFocused, maxLength}) =>
+                  null,
+                  style: const TextStyle(
+                    fontFamily: 'DM Sans',
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textPrimary,
+                    height: 1.45,
+                  ),
+                  decoration: InputDecoration(
+                    hintText: 'What\'s the tea?',
+                    hintStyle: const TextStyle(
+                      fontFamily: 'DM Sans',
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.hintText,
+                      height: 1.45,
+                    ),
+                    border: InputBorder.none,
+                    enabledBorder: InputBorder.none,
+                    focusedBorder: InputBorder.none,
+                    contentPadding: EdgeInsets.zero,
+                    isDense: true,
+                    filled: false,
+                  ),
+                  cursorColor: AppColors.accentPrimary,
+                  cursorWidth: 2,
+                ),
+                const SizedBox(height: 14),
+                _VoiceSection(
+                  optional: false,
+                  maxSecs: 60,
+                  voice: voice,
+                  elapsed: elapsed,
+                  recSecs: recSecs,
+                  recPath: recPath,
+                  amps: amps,
+                  onStart: onStartRec,
+                  onStop: onStopRec,
+                  onDiscard: onDiscardRec,
+                ),
+              ],
+            ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Composer avatar ───────────────────────────────────────────────────────────
+
+class _ComposerAvatar extends StatelessWidget {
+  final String? url;
+  const _ComposerAvatar({this.url});
+
+  @override
+  Widget build(BuildContext context) => Container(
+    width: 38,
+    height: 38,
+    decoration: BoxDecoration(
+      shape: BoxShape.circle,
+      border: Border.all(
+        color: AppColors.accentPrimary.withOpacity(0.3),
+        width: 1.2,
+      ),
+    ),
+    child: ClipOval(
+      child: url != null
+          ? CachedNetworkImage(
+        imageUrl: url!,
+        fit: BoxFit.cover,
+        placeholder: (_, __) =>
+            Container(color: const Color(0xFF1A1A28)),
+        errorWidget: (_, __, ___) => Container(
+          color: const Color(0xFF1A1A28),
+          child: const Icon(LucideIcons.user,
+              size: 18, color: AppColors.hintText),
         ),
-        _Thin(),
-        const SizedBox(height: 12),
-        // voice widget — required for Tea
-        VoiceWidget(
-          optional: false,
-          maxSecs: _teaMaxSecs,
-          voiceState: voiceState,
-          elapsed: elapsed,
-          recSecs: recSecs,
-          recPath: recPath,
-          amps: amps,
-          onStart: onStart,
-          onStop: onStop,
-          onDiscard: onDiscard,
-        ),
-        const SizedBox(height: 12),
-      ],
+      )
+          : Container(
+        color: const Color(0xFF1A1A28),
+        child: const Icon(LucideIcons.user,
+            size: 18, color: AppColors.hintText),
+      ),
     ),
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Voice widget — Spotify-grade player UX
-// Public so confession_card.dart can reuse it for playback
-// ─────────────────────────────────────────────────────────────────────────────
+// ── Voice section ─────────────────────────────────────────────────────────────
 
-class VoiceWidget extends StatelessWidget {
+class _VoiceSection extends StatelessWidget {
   final bool optional;
   final int maxSecs;
-  final _VoiceState voiceState;
+  final _VoiceState voice;
   final int elapsed;
   final int recSecs;
   final String? recPath;
@@ -642,11 +716,10 @@ class VoiceWidget extends StatelessWidget {
   final VoidCallback onStop;
   final VoidCallback onDiscard;
 
-  const VoiceWidget({
-    super.key,
+  const _VoiceSection({
     required this.optional,
     required this.maxSecs,
-    required this.voiceState,
+    required this.voice,
     required this.elapsed,
     required this.recSecs,
     required this.recPath,
@@ -662,290 +735,242 @@ class VoiceWidget extends StatelessWidget {
     transitionBuilder: (child, anim) => FadeTransition(
       opacity: anim,
       child: SlideTransition(
-          position: Tween(
-            begin: const Offset(0, 0.04),
-            end: Offset.zero,
-          ).animate(CurvedAnimation(parent: anim, curve: Curves.easeOutCubic)),
-          child: child),
+        position: Tween(
+          begin: const Offset(0, 0.05),
+          end: Offset.zero,
+        ).animate(
+            CurvedAnimation(parent: anim, curve: Curves.easeOutCubic)),
+        child: child,
+      ),
     ),
-    child: switch (voiceState) {
-      _VoiceState.idle      => _VoiceIdle(
-          key: const ValueKey('v-idle'),
-          optional: optional,
-          maxSecs: maxSecs,
-          onStart: onStart),
-      _VoiceState.recording => _VoiceRecording(
-          key: const ValueKey('v-rec'),
-          elapsed: elapsed,
-          maxSecs: maxSecs,
-          amps: amps,
-          onStop: onStop),
-      _VoiceState.recorded  => _VoiceRecorded(
-          key: const ValueKey('v-done'),
-          recSecs: recSecs,
-          path: recPath!,
-          onDiscard: onDiscard),
+    child: switch (voice) {
+      _VoiceState.idle => _IdleVoice(
+        key: const ValueKey('idle'),
+        optional: optional,
+        maxSecs: maxSecs,
+        onStart: onStart,
+      ),
+      _VoiceState.recording => _RecordingVoice(
+        key: const ValueKey('recording'),
+        elapsed: elapsed,
+        maxSecs: maxSecs,
+        amps: amps,
+        onStop: onStop,
+      ),
+      _VoiceState.recorded => _RecordedVoice(
+        key: const ValueKey('recorded'),
+        recSecs: recSecs,
+        path: recPath!,
+        onDiscard: onDiscard,
+      ),
     },
   );
 }
 
-// ── Idle ──────────────────────────────────────────────────────────────────────
+// ── Idle voice ────────────────────────────────────────────────────────────────
 
-class _VoiceIdle extends StatefulWidget {
+class _IdleVoice extends StatelessWidget {
   final bool optional;
   final int maxSecs;
   final VoidCallback onStart;
-  const _VoiceIdle({super.key, required this.optional,
-    required this.maxSecs, required this.onStart});
-
-  @override
-  State<_VoiceIdle> createState() => _VoiceIdleState();
-}
-
-class _VoiceIdleState extends State<_VoiceIdle>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _press;
-  @override
-  void initState() {
-    super.initState();
-    _press = AnimationController(
-        vsync: this, duration: 100.ms, lowerBound: 0, upperBound: 1);
-  }
-  @override
-  void dispose() { _press.dispose(); super.dispose(); }
+  const _IdleVoice(
+      {super.key,
+        required this.optional,
+        required this.maxSecs,
+        required this.onStart});
 
   @override
   Widget build(BuildContext context) => GestureDetector(
-    onTapDown: (_) => _press.forward(),
-    onTapUp: (_) {
-      _press.reverse();
+    onTap: () {
       HapticFeedback.mediumImpact();
-      widget.onStart();
+      onStart();
     },
-    onTapCancel: () => _press.reverse(),
-    child: AnimatedBuilder(
-      animation: _press,
-      builder: (_, child) => Transform.scale(
-          scale: 1.0 - (_press.value * 0.03),
-          child: child),
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(vertical: 18),
-        decoration: BoxDecoration(
-          color: _kSurface,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: _kBorder, width: 0.8),
+    child: Row(
+      children: [
+        Container(
+          width: 36,
+          height: 36,
+          decoration: BoxDecoration(
+            color: const Color(0xFF141420),
+            shape: BoxShape.circle,
+            border: Border.all(
+                color: const Color(0xFF252535), width: 0.8),
+          ),
+          child: const Icon(LucideIcons.mic,
+              size: 16, color: AppColors.accentPrimary),
         ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              width: 36, height: 36,
-              decoration: BoxDecoration(
-                color: AppColors.accentPrimary.withOpacity(0.10),
-                shape: BoxShape.circle,
-              ),
-              child: const Center(
-                  child: Icon(LucideIcons.mic, size: 16,
-                      color: AppColors.accentPrimary)),
-            ),
-            const SizedBox(width: 12),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                    widget.optional
-                        ? 'Add voice note'
-                        : 'Record voice note',
-                    style: AppTypography.bodySmall.copyWith(
-                        fontSize: 14, fontWeight: FontWeight.w600,
-                        color: AppColors.textPrimary)),
-                const SizedBox(height: 2),
-                Text(
-                    widget.optional
-                        ? 'Optional  ·  max ${widget.maxSecs}s'
-                        : 'Required  ·  max ${widget.maxSecs}s',
-                    style: AppTypography.bodySmall.copyWith(
-                        fontSize: 11.5, color: AppColors.hintText)),
-              ],
-            ),
-          ],
+        const SizedBox(width: 10),
+        Text(
+          optional
+              ? 'Add voice note  ·  ${maxSecs}s max'
+              : 'Record voice  ·  ${maxSecs}s max',
+          style: AppTypography.bodySmall.copyWith(
+            fontSize: 13,
+            color: AppColors.textSecondary,
+          ),
         ),
-      ),
+      ],
     ),
   );
 }
 
-// ── Recording ─────────────────────────────────────────────────────────────────
+// ── Recording voice ───────────────────────────────────────────────────────────
 
-class _VoiceRecording extends StatelessWidget {
+class _RecordingVoice extends StatelessWidget {
   final int elapsed;
   final int maxSecs;
   final List<double> amps;
   final VoidCallback onStop;
 
-  const _VoiceRecording({super.key,
-    required this.elapsed, required this.maxSecs,
-    required this.amps, required this.onStop});
+  const _RecordingVoice({
+    super.key,
+    required this.elapsed,
+    required this.maxSecs,
+    required this.amps,
+    required this.onStop,
+  });
 
   String _fmt(int s) =>
       '${(s ~/ 60).toString().padLeft(2, '0')}:${(s % 60).toString().padLeft(2, '0')}';
 
   @override
   Widget build(BuildContext context) {
-    final pct      = (elapsed / maxSecs).clamp(0.0, 1.0);
-    final nearEnd  = (maxSecs - elapsed) <= 10;
-    final accentC  = nearEnd ? AppColors.errorLight : AppColors.accentPrimary;
+    final remaining = maxSecs - elapsed;
+    final nearEnd = remaining <= 10;
 
-    return Container(
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
-      decoration: BoxDecoration(
-        color: _kSurface,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-            color: accentC.withOpacity(0.22), width: 0.8),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // top row: timer + stop
-          Row(children: [
-            _Blinker(),
-            const SizedBox(width: 8),
-            Text(_fmt(elapsed),
-                style: AppTypography.labelLarge.copyWith(
-                    fontSize: 14, fontWeight: FontWeight.w700,
-                    color: AppColors.textPrimary,
-                    fontFeatures: [const FontFeature.tabularFigures()])),
-            const Spacer(),
-            AnimatedDefaultTextStyle(
-              duration: 200.ms,
-              style: AppTypography.bodySmall.copyWith(
-                  fontSize: 12, fontWeight: FontWeight.w500,
-                  color: nearEnd ? AppColors.errorLight : AppColors.textSecondary),
-              child: Text('-${_fmt(maxSecs - elapsed)}'),
+    return Row(
+      children: [
+        // stop button
+        GestureDetector(
+          onTap: () {
+            HapticFeedback.mediumImpact();
+            onStop();
+          },
+          child: Container(
+            width: 36,
+            height: 36,
+            decoration: const BoxDecoration(
+              color: AppColors.errorLight,
+              shape: BoxShape.circle,
             ),
-            const SizedBox(width: 16),
-            _StopBtn(onStop: onStop),
-          ]),
-          const SizedBox(height: 12),
-          // waveform
-          SizedBox(
-            height: 32,
+            child: Center(
+              child: Container(
+                width: 12,
+                height: 12,
+                decoration: const BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.all(Radius.circular(2)),
+                ),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 10),
+        // waveform
+        Expanded(
+          child: SizedBox(
+            height: 36,
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.center,
-              children: List.generate(amps.length, (i) {
-                final h = (amps[i] * 28).clamp(3.0, 28.0);
-                return Expanded(
+              children: List.generate(
+                amps.length,
+                    (i) => Expanded(
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 1.2),
+                    padding: const EdgeInsets.symmetric(horizontal: 0.8),
                     child: AnimatedContainer(
-                      duration: 60.ms,
-                      height: h,
+                      duration: const Duration(milliseconds: 60),
+                      height: (amps[i] * 32).clamp(2.5, 32.0),
                       decoration: BoxDecoration(
-                        color: accentC.withOpacity(
-                            0.35 + 0.45 * amps[i]),
+                        color: AppColors.errorLight.withOpacity(0.65),
                         borderRadius: BorderRadius.circular(1.5),
                       ),
                     ),
                   ),
-                );
-              }),
+                ),
+              ),
             ),
           ),
-          const SizedBox(height: 10),
-          // progress track
-          ClipRRect(
-            borderRadius: BorderRadius.circular(2),
-            child: LinearProgressIndicator(
-              value: pct,
-              minHeight: 2,
-              backgroundColor: const Color(0xFF1E1E2C),
-              valueColor: AlwaysStoppedAnimation<Color>(accentC),
-            ),
+        ),
+        const SizedBox(width: 10),
+        // timer
+        _RecDot(),
+        const SizedBox(width: 5),
+        Text(
+          _fmt(elapsed),
+          style: AppTypography.bodySmall.copyWith(
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: nearEnd ? AppColors.errorLight : AppColors.textPrimary,
+            fontFeatures: [const FontFeature.tabularFigures()],
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
 
-class _Blinker extends StatefulWidget {
+class _RecDot extends StatefulWidget {
   @override
-  State<_Blinker> createState() => _BlinkerState();
+  State<_RecDot> createState() => _RecDotState();
 }
-class _BlinkerState extends State<_Blinker>
-    with SingleTickerProviderStateMixin {
+
+class _RecDotState extends State<_RecDot> with SingleTickerProviderStateMixin {
   late final AnimationController _c;
+
   @override
   void initState() {
     super.initState();
-    _c = AnimationController(vsync: this, duration: 800.ms)
+    _c = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 700))
       ..repeat(reverse: true);
   }
+
   @override
-  void dispose() { _c.dispose(); super.dispose(); }
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) => FadeTransition(
     opacity: _c,
     child: Container(
-      width: 7, height: 7,
+      width: 6,
+      height: 6,
       decoration: const BoxDecoration(
           shape: BoxShape.circle, color: AppColors.errorLight),
     ),
   );
 }
 
-class _StopBtn extends StatelessWidget {
-  final VoidCallback onStop;
-  const _StopBtn({required this.onStop});
-  @override
-  Widget build(BuildContext context) => GestureDetector(
-    onTap: () { HapticFeedback.mediumImpact(); onStop(); },
-    child: Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-      decoration: BoxDecoration(
-          color: AppColors.errorLight.withOpacity(0.08),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-              color: AppColors.errorLight.withOpacity(0.25), width: 0.8)),
-      child: Row(mainAxisSize: MainAxisSize.min, children: [
-        Container(
-          width: 8, height: 8,
-          decoration: BoxDecoration(
-              color: AppColors.errorLight,
-              borderRadius: BorderRadius.circular(2)),
-        ),
-        const SizedBox(width: 7),
-        Text('Stop', style: AppTypography.bodySmall.copyWith(
-            fontSize: 13, fontWeight: FontWeight.w600,
-            color: AppColors.errorLight)),
-      ]),
-    ),
-  );
-}
+// ── Recorded voice (swipe to delete) ─────────────────────────────────────────
 
-// ── Recorded — Spotify-style player ──────────────────────────────────────────
-
-class _VoiceRecorded extends StatefulWidget {
+class _RecordedVoice extends StatefulWidget {
   final int recSecs;
   final String path;
   final VoidCallback onDiscard;
-  const _VoiceRecorded({super.key,
-    required this.recSecs, required this.path, required this.onDiscard});
+
+  const _RecordedVoice({
+    super.key,
+    required this.recSecs,
+    required this.path,
+    required this.onDiscard,
+  });
 
   @override
-  State<_VoiceRecorded> createState() => _VoiceRecordedState();
+  State<_RecordedVoice> createState() => _RecordedVoiceState();
 }
 
-class _VoiceRecordedState extends State<_VoiceRecorded> {
-  bool     _playing  = false;
+class _RecordedVoiceState extends State<_RecordedVoice> {
+  bool _playing = false;
   Duration _position = Duration.zero;
   Duration _duration = Duration.zero;
   StreamSubscription<PlayerState>? _stateSub;
-  StreamSubscription<Duration>?    _posSub;
-  StreamSubscription<Duration?>?   _durSub;
+  StreamSubscription<Duration>? _posSub;
+  StreamSubscription<Duration?>? _durSub;
+
+  String _fmt(int s) =>
+      '${(s ~/ 60).toString().padLeft(2, '0')}:${(s % 60).toString().padLeft(2, '0')}';
 
   @override
   void initState() {
@@ -953,19 +978,17 @@ class _VoiceRecordedState extends State<_VoiceRecorded> {
     _duration = Duration(seconds: widget.recSecs);
     _stateSub = AudioService.instance.playerStateStream.listen((s) {
       if (!mounted) return;
-      final p = s.playing &&
-          s.processingState != ProcessingState.completed;
-      setState(() => _playing = p);
+      final playing =
+          s.playing && s.processingState != ProcessingState.completed;
+      setState(() => _playing = playing);
       if (s.processingState == ProcessingState.completed) {
         setState(() => _position = Duration.zero);
       }
     });
-    _posSub = AudioService.instance.positionStream.listen((p) {
-      if (mounted) setState(() => _position = p);
-    });
-    _durSub = AudioService.instance.durationStream.listen((d) {
-      if (mounted && d != null) setState(() => _duration = d);
-    });
+    _posSub = AudioService.instance.positionStream
+        .listen((p) { if (mounted) setState(() => _position = p); });
+    _durSub = AudioService.instance.durationStream
+        .listen((d) { if (mounted && d != null) setState(() => _duration = d); });
   }
 
   @override
@@ -981,200 +1004,119 @@ class _VoiceRecordedState extends State<_VoiceRecorded> {
     if (_playing) {
       await AudioService.instance.pause();
     } else {
-      if (_duration > Duration.zero &&
-          _position >= _duration - const Duration(milliseconds: 300)) {
+      if (_position >= _duration && _duration > Duration.zero) {
         await AudioService.instance.seekTo(Duration.zero);
       }
       await AudioService.instance.playLocalFile(widget.path);
     }
   }
 
-  String _fmt(Duration d) {
-    final s = d.inSeconds;
-    return '${(s ~/ 60).toString().padLeft(2, '0')}:${(s % 60).toString().padLeft(2, '0')}';
-  }
-
   @override
   Widget build(BuildContext context) {
-    final pct = _duration.inMilliseconds > 0
-        ? (_position.inMilliseconds / _duration.inMilliseconds).clamp(0.0, 1.0)
-        : 0.0;
+    final total = _duration.inMilliseconds > 0
+        ? _duration.inMilliseconds
+        : widget.recSecs * 1000;
+    final pct =
+    total > 0 ? (_position.inMilliseconds / total).clamp(0.0, 1.0) : 0.0;
 
     return Dismissible(
-      key: const ValueKey('v-recorded'),
+      key: const ValueKey('rec-voice'),
       direction: DismissDirection.endToStart,
-      confirmDismiss: (_) async {
+      onDismissed: (_) {
         HapticFeedback.mediumImpact();
-        return true;
+        widget.onDiscard();
       },
-      onDismissed: (_) => widget.onDiscard(),
       background: Container(
-        decoration: BoxDecoration(
-          color: AppColors.errorLight.withOpacity(0.08),
-          borderRadius: BorderRadius.circular(12),
-        ),
         alignment: Alignment.centerRight,
-        padding: const EdgeInsets.only(right: 20),
-        child: const Icon(LucideIcons.trash2, size: 17,
-            color: AppColors.errorLight),
+        child: const Icon(LucideIcons.trash2,
+            size: 16, color: AppColors.errorLight),
       ),
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
-        decoration: BoxDecoration(
-          color: _kSurface,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-              color: AppColors.accentPrimary.withOpacity(0.20), width: 0.8),
-        ),
-        child: Column(children: [
-          Row(children: [
-            // play/pause circle — Spotify style
-            GestureDetector(
-              onTap: _toggle,
-              child: Container(
-                width: 40, height: 40,
-                decoration: const BoxDecoration(
-                  color: AppColors.accentPrimary,
-                  shape: BoxShape.circle,
-                ),
+      child: Row(
+        children: [
+          // play/pause
+          GestureDetector(
+            onTap: _toggle,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 150),
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: _playing
+                    ? AppColors.accentPrimary
+                    : AppColors.accentPrimary.withOpacity(0.12),
+                shape: BoxShape.circle,
+              ),
+              child: Center(
                 child: AnimatedSwitcher(
-                  duration: 140.ms,
+                  duration: const Duration(milliseconds: 150),
                   child: Icon(
-                      _playing ? LucideIcons.pause : LucideIcons.play,
-                      key: ValueKey(_playing),
-                      size: 15, color: Colors.black),
+                    _playing ? LucideIcons.pause : LucideIcons.play,
+                    key: ValueKey(_playing),
+                    size: 14,
+                    color: _playing ? Colors.black : AppColors.accentPrimary,
+                  ),
                 ),
               ),
             ),
-            const SizedBox(width: 14),
-            // times
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Voice note',
-                    style: AppTypography.bodySmall.copyWith(
-                        fontSize: 13, fontWeight: FontWeight.w600,
-                        color: AppColors.textPrimary)),
-                const SizedBox(height: 3),
-                Row(children: [
-                  Text(_fmt(_position),
-                      style: AppTypography.bodySmall.copyWith(
-                          fontSize: 11.5, color: AppColors.accentPrimary,
-                          fontFeatures: [const FontFeature.tabularFigures()])),
-                  Text(' / ${_fmt(Duration(seconds: widget.recSecs))}',
-                      style: AppTypography.bodySmall.copyWith(
-                          fontSize: 11.5, color: AppColors.hintText,
-                          fontFeatures: [const FontFeature.tabularFigures()])),
-                ]),
-              ],
-            ),
-            const Spacer(),
-            // swipe hint
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                const Icon(LucideIcons.chevronLeft,
-                    size: 12, color: AppColors.hintText),
-                const SizedBox(height: 2),
-                Text('swipe to\nremove',
-                    textAlign: TextAlign.right,
-                    style: AppTypography.bodySmall.copyWith(
-                        fontSize: 9.5, color: AppColors.hintText,
-                        height: 1.3)),
-              ],
-            ),
-          ]),
-          const SizedBox(height: 12),
-          // Scrubber
-          SliderTheme(
-            data: SliderTheme.of(context).copyWith(
-              trackHeight: 2.5,
-              thumbShape: const RoundSliderThumbShape(
-                  enabledThumbRadius: 5.5),
-              overlayShape: const RoundSliderOverlayShape(
-                  overlayRadius: 16),
-              activeTrackColor: AppColors.accentPrimary,
-              inactiveTrackColor: const Color(0xFF1E1E2C),
-              thumbColor: AppColors.accentPrimary,
-              overlayColor: AppColors.accentPrimary.withOpacity(0.12),
-            ),
-            child: Slider(
-              value: pct,
-              min: 0, max: 1,
-              onChanged: (v) {
-                if (_duration.inMilliseconds == 0) return;
-                AudioService.instance.seekTo(Duration(
-                    milliseconds:
-                    (v * _duration.inMilliseconds).round()));
-              },
+          ),
+          const SizedBox(width: 10),
+          // scrubber
+          Expanded(
+            child: SliderTheme(
+              data: SliderTheme.of(context).copyWith(
+                trackHeight: 2,
+                thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 4),
+                overlayShape: const RoundSliderOverlayShape(overlayRadius: 10),
+                activeTrackColor: AppColors.accentPrimary,
+                inactiveTrackColor: const Color(0xFF252535),
+                thumbColor: AppColors.accentPrimary,
+                overlayColor: AppColors.accentPrimary.withOpacity(0.1),
+              ),
+              child: Slider(
+                value: pct.toDouble(),
+                min: 0,
+                max: 1,
+                onChanged: (v) {
+                  if (total == 0) return;
+                  AudioService.instance
+                      .seekTo(Duration(milliseconds: (v * total).round()));
+                },
+              ),
             ),
           ),
-        ]),
+          const SizedBox(width: 6),
+          Text(
+            '${_fmt(_position.inSeconds)} / ${_fmt(widget.recSecs)}',
+            style: AppTypography.bodySmall.copyWith(
+              fontSize: 11,
+              color: AppColors.textSecondary,
+              fontFeatures: [const FontFeature.tabularFigures()],
+            ),
+          ),
+        ],
       ),
     );
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Post bar
-// ─────────────────────────────────────────────────────────────────────────────
+// ── Post button ───────────────────────────────────────────────────────────────
 
-class _PostBar extends StatelessWidget {
-  final bool isSpill;
-  final int bodyLen;
-  final bool canPost;
-  final bool isPosting;
-  final VoidCallback onPost;
-  const _PostBar({
-    required this.isSpill, required this.bodyLen,
-    required this.canPost, required this.isPosting,
-    required this.onPost});
-
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.fromLTRB(20, 10, 16, 10),
-    child: Row(children: [
-      AnimatedSwitcher(
-        duration: 200.ms,
-        child: isSpill && bodyLen > 0
-            ? Text('$bodyLen / 500',
-            key: const ValueKey('c'),
-            style: AppTypography.bodySmall.copyWith(
-                fontSize: 11,
-                color: bodyLen > 450
-                    ? AppColors.errorLight
-                    : AppColors.hintText))
-            : Text(
-            isSpill
-                ? 'Voice note  ·  optional'
-                : 'Voice note  ·  required',
-            key: const ValueKey('h'),
-            style: AppTypography.bodySmall.copyWith(
-                fontSize: 11, color: AppColors.hintText)),
-      ),
-      const Spacer(),
-      _PostButton(
-          label: isSpill ? 'Post' : 'Drop tea',
-          canPost: canPost,
-          isPosting: isPosting,
-          onPost: onPost),
-    ]),
-  );
-}
-
-class _PostButton extends StatefulWidget {
+class _PostBtn extends StatefulWidget {
   final String label;
   final bool canPost;
   final bool isPosting;
   final VoidCallback onPost;
-  const _PostButton({required this.label, required this.canPost,
-    required this.isPosting, required this.onPost});
+  const _PostBtn(
+      {required this.label,
+        required this.canPost,
+        required this.isPosting,
+        required this.onPost});
 
   @override
-  State<_PostButton> createState() => _PostButtonState();
+  State<_PostBtn> createState() => _PostBtnState();
 }
 
-class _PostButtonState extends State<_PostButton> {
+class _PostBtnState extends State<_PostBtn> {
   bool _pressed = false;
 
   @override
@@ -1182,45 +1124,47 @@ class _PostButtonState extends State<_PostButton> {
     final active = widget.canPost && !widget.isPosting;
     return GestureDetector(
       onTapDown: active ? (_) => setState(() => _pressed = true) : null,
-      onTapUp: active ? (_) {
+      onTapUp: active
+          ? (_) {
         setState(() => _pressed = false);
         widget.onPost();
-      } : null,
+      }
+          : null,
       onTapCancel: () => setState(() => _pressed = false),
       child: AnimatedOpacity(
-        duration: 180.ms,
-        opacity: active ? 1.0 : 0.28,
+        duration: const Duration(milliseconds: 180),
+        opacity: active ? 1.0 : 0.35,
         child: AnimatedScale(
-          scale: _pressed ? 0.95 : 1.0,
-          duration: 100.ms,
+          scale: _pressed ? 0.94 : 1.0,
+          duration: const Duration(milliseconds: 100),
           child: Container(
-            padding: const EdgeInsets.symmetric(
-                horizontal: 20, vertical: 10),
+            height: 34,
+            padding: const EdgeInsets.symmetric(horizontal: 18),
             decoration: BoxDecoration(
               color: AppColors.accentPrimary,
-              borderRadius: BorderRadius.circular(22),
+              borderRadius: BorderRadius.circular(20),
             ),
-            child: widget.isPosting
-                ? const SizedBox(
-                width: 14, height: 14,
+            child: Center(
+              child: widget.isPosting
+                  ? const SizedBox(
+                width: 14,
+                height: 14,
                 child: CircularProgressIndicator(
-                    strokeWidth: 2, color: Colors.black))
-                : Text(widget.label,
-                style: AppTypography.labelLarge.copyWith(
-                    fontSize: 13, fontWeight: FontWeight.w700,
-                    color: Colors.black, letterSpacing: 0.1)),
+                    strokeWidth: 2, color: Colors.black),
+              )
+                  : Text(
+                widget.label,
+                style: AppTypography.labelMedium.copyWith(
+                  fontFamily: 'DM Sans',
+                  color: Colors.black,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
           ),
         ),
       ),
     );
   }
-}
-
-// Helpers
-
-class _Thin extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) => Container(
-      height: 0.5, color: _kLine,
-      margin: const EdgeInsets.symmetric(vertical: 10));
 }

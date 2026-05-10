@@ -11,6 +11,8 @@ class AudioService {
 
   final AudioRecorder _recorder = AudioRecorder();
   final AudioPlayer _player = AudioPlayer();
+  String? _currentUrl;
+  String? get currentUrl => _currentUrl;
 
   // Recording
 
@@ -58,19 +60,24 @@ class AudioService {
   // Playback
 
   Future<void> playUrl(String url) async {
+    _currentUrl = url;
     await _player.stop();
     await _player.setUrl(url);
     await _player.play();
   }
 
   Future<void> playLocalFile(String path) async {
+    _currentUrl = path;
     await _player.stop();
     await _player.setFilePath(path);
     await _player.play();
   }
 
   Future<void> pause() => _player.pause();
-  Future<void> stop() => _player.stop();
+  Future<void> stop() async {
+    _currentUrl = null;
+    await _player.stop();
+  }
   Future<void> seekTo(Duration pos) => _player.seek(pos);
 
   Stream<PlayerState> get playerStateStream => _player.playerStateStream;
