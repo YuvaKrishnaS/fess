@@ -8,6 +8,7 @@ import '../../../core/constants/app_typography.dart';
 import '../../../core/widgets/fess_snackbar.dart';
 import '../providers/tea_feed_provider.dart';
 import '../providers/feed_provider.dart';
+import '../providers/scroll_visibility_provider.dart';
 import '../widgets/tea_card.dart';
 
 class TeaScreen extends ConsumerStatefulWidget {
@@ -19,6 +20,7 @@ class TeaScreen extends ConsumerStatefulWidget {
 
 class _TeaScreenState extends ConsumerState<TeaScreen> {
   final ScrollController _scroll = ScrollController();
+  double _lastOffset = 0;
 
   @override
   void initState() {
@@ -33,54 +35,41 @@ class _TeaScreenState extends ConsumerState<TeaScreen> {
   }
 
   void _onScroll() {
-    if (_scroll.position.pixels >=
-        _scroll.position.maxScrollExtent * 0.8) {
+    final offset = _scroll.position.pixels;
+    final diff = offset - _lastOffset;
+    _lastOffset = offset;
+
+    if (offset < 10) {
+      scrollVisibilityNotifier.value = true;
+    } else if (diff > 4) {
+      scrollVisibilityNotifier.value = false;
+    } else if (diff < -4) {
+      scrollVisibilityNotifier.value = true;
+    }
+
+    if (offset >= _scroll.position.maxScrollExtent * 0.8) {
       ref.read(teaFeedProvider.notifier).loadMore();
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final top = MediaQuery.of(context).padding.top;
+
     return Scaffold(
       backgroundColor: AppColors.backgroundMain,
-      body: NestedScrollView(
-        headerSliverBuilder: (_, __) => [
-          SliverAppBar(
-            backgroundColor: AppColors.backgroundMain,
-            floating: true,
-            snap: true,
-            pinned: false,
-            elevation: 0,
-            toolbarHeight: 0,
-            scrolledUnderElevation: 0,
-            automaticallyImplyLeading: false,
-            bottom: PreferredSize(
-              preferredSize: const Size.fromHeight(52),
-              child: _TeaAppBar(),
-            ),
-          ),
-        ],
-        body: _TeaBody(scrollController: _scroll),
-      ),
-    );
-  }
-}
-
-class _TeaAppBar extends ConsumerWidget {
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return Container(
-      color: AppColors.backgroundMain,
-      padding: const EdgeInsets.fromLTRB(16, 0, 8, 8),
-      child: Row(
+      body: Column(
         children: [
-          const SizedBox(width: 44), // balance right icon
-          const Spacer(),
-          RichText(
-            text: const TextSpan(
+          // ── App bar
+          Container(
+            color: AppColors.backgroundMain,
+            padding: EdgeInsets.fromLTRB(16, top + 8, 8, 8),
+            child: Row(
               children: [
-                TextSpan(
-                  text: 'Tea',
+                const SizedBox(width: 44),
+                const Spacer(),
+                const Text(
+                  'Tea',
                   style: TextStyle(
                     fontFamily: 'DM Sans',
                     fontSize: 22,
@@ -88,12 +77,16 @@ class _TeaAppBar extends ConsumerWidget {
                     color: AppColors.textPrimary,
                   ),
                 ),
+                const Spacer(),
+                const SizedBox(width: 44),
               ],
             ),
           ),
-          const Spacer(),
-          // placeholder right icon for balance
-          const SizedBox(width: 44),
+          Container(height: 0.5, color: const Color(0xFF1A1A1A)),
+          // ── Feed body
+          Expanded(
+            child: _TeaBody(scrollController: _scroll),
+          ),
         ],
       ),
     );

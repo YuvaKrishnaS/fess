@@ -24,7 +24,6 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
   late TabController _tab;
   final ScrollController _forYouScroll = ScrollController();
   final ScrollController _followingScroll = ScrollController();
-
   double _lastOffset = 0;
 
   @override
@@ -65,68 +64,51 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
     _lastOffset = offset;
 
     if (offset < 10) {
-      // Always show at very top
       scrollVisibilityNotifier.value = true;
     } else if (diff > 4) {
-      // Scrolling down (content moving up) → hide
       scrollVisibilityNotifier.value = false;
     } else if (diff < -4) {
-      // Scrolling up (content moving down) - show
       scrollVisibilityNotifier.value = true;
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final statusBarH = MediaQuery.of(context).padding.top;
-
     return Scaffold(
       backgroundColor: AppColors.backgroundMain,
-      body: NestedScrollView(
-        headerSliverBuilder: (ctx, innerScrolled) => [
-          SliverAppBar(
-            backgroundColor: AppColors.backgroundMain,
-            floating: true,
-            snap: true,
-            pinned: false,
-            elevation: 0,
-            scrolledUnderElevation: 0,
-            automaticallyImplyLeading: false,
-            // toolbar height = 0 so only the bottom PreferredSize shows
-            toolbarHeight: 0,
-            bottom: PreferredSize(
-              preferredSize: const Size.fromHeight(52),
-              child: _AppBarContent(),
+      body: Column(
+        children: [
+          // ── Floating appbar (status bar + content row)
+          _AppBarContent(),
+          // ── Pinned tab bar
+          _TabBarRow(tab: _tab),
+          // ── Feed body — fills rest, scroll drives visibility
+          Expanded(
+            child: TabBarView(
+              controller: _tab,
+              children: [
+                _ForYouTab(scrollController: _forYouScroll),
+                _FollowingTab(scrollController: _followingScroll),
+              ],
             ),
           ),
-          // Tab bar pinned - stops exactly at status bar bottom
-          SliverPersistentHeader(
-            pinned: true,
-            delegate: _TabBarDelegate(tab: _tab, topPad: statusBarH),
-          ),
         ],
-        body: TabBarView(
-          controller: _tab,
-          children: [
-            _ForYouTab(scrollController: _forYouScroll),
-            _FollowingTab(scrollController: _followingScroll),
-          ],
-        ),
       ),
     );
   }
 }
 
-// app bar content
+// ── App bar ───────────────────────────────────────────────────────────────────
 
 class _AppBarContent extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final profileAsync = ref.watch(currentProfileProvider);
+    final top = MediaQuery.of(context).padding.top;
 
     return Container(
       color: AppColors.backgroundMain,
-      padding: const EdgeInsets.fromLTRB(16, 0, 8, 8),
+      padding: EdgeInsets.fromLTRB(16, top + 8, 8, 8),
       child: Row(
         children: [
           _AppBarAvatar(profile: profileAsync.value),
@@ -197,8 +179,7 @@ class _AppBarAvatar extends StatelessWidget {
 
   Widget _fallback() => Container(
     color: const Color(0xFF1A1A1A),
-    child:
-    const Icon(LucideIcons.user, size: 14, color: Color(0xFF444444)),
+    child: const Icon(LucideIcons.user, size: 14, color: Color(0xFF444444)),
   );
 }
 
@@ -228,8 +209,7 @@ class _StreakCup extends StatelessWidget {
           color: Color(0xFF0F0F0F),
           borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
         ),
-        padding:
-        const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
         child: SafeArea(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -263,30 +243,21 @@ class _StreakCup extends StatelessWidget {
   }
 }
 
-// ── Tab bar delegate — pinned, stops at status bar ────────────────────────────
+// ── Tab bar row — always visible, no sliver ───────────────────────────────────
 
-class _TabBarDelegate extends SliverPersistentHeaderDelegate {
+class _TabBarRow extends StatelessWidget {
   final TabController tab;
-  final double topPad;
-  const _TabBarDelegate({required this.tab, required this.topPad});
+  const _TabBarRow({required this.tab});
 
   @override
-  double get minExtent => 44;
-  @override
-  double get maxExtent => 44;
-
-  @override
-  bool shouldRebuild(_TabBarDelegate old) =>
-      old.tab != tab || old.topPad != topPad;
-
-  @override
-  Widget build(
-      BuildContext context, double shrinkOffset, bool overlapsContent) {
+  Widget build(BuildContext context) {
     return Container(
       color: AppColors.backgroundMain,
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Expanded(
+          SizedBox(
+            height: 44,
             child: TabBar(
               controller: tab,
               onTap: (_) => HapticFeedback.selectionClick(),
@@ -365,8 +336,8 @@ class _ForYouTab extends ConsumerWidget {
                     type: SnackbarType.info),
                 onLike: () =>
                     ref.read(forYouFeedProvider.notifier).toggleLike(post.postId),
-                onWitness: () => FessSnackbar.show(ctx,
-                    'Witness system — Coming soon',
+                onWitness: () => FessSnackbar.show(
+                    ctx, 'Witness system — Coming soon',
                     type: SnackbarType.info),
               )
                   .animate()
@@ -431,14 +402,13 @@ class _FollowingTab extends ConsumerWidget {
               return ConfessionCard(
                 post: post,
                 currentAnonId: anonId,
-                onTap: () => FessSnackbar.show(ctx,
-                    'Post detail — Coming soon',
+                onTap: () => FessSnackbar.show(ctx, 'Post detail — Coming soon',
                     type: SnackbarType.info),
                 onLike: () => ref
                     .read(followingFeedProvider.notifier)
                     .toggleLike(post.postId),
-                onWitness: () => FessSnackbar.show(ctx,
-                    'Witness system — Coming soon',
+                onWitness: () => FessSnackbar.show(
+                    ctx, 'Witness system — Coming soon',
                     type: SnackbarType.info),
               );
             },

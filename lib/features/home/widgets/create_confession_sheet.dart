@@ -10,6 +10,7 @@ import 'package:lucide_icons/lucide_icons.dart';
 
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_typography.dart';
+import '../../../core/models/avatar_config.dart';
 import '../../../core/services/audio_service.dart';
 import '../../../core/widgets/fess_snackbar.dart';
 import '../providers/feed_provider.dart';
@@ -50,6 +51,14 @@ class _CreateConfessionSheetState
   bool get _isSpill => _tabCtrl.index == 0;
   int get _maxSecs => _isSpill ? 30 : 60;
 
+  bool get _hasContent {
+    return _headingCtrl.text.trim().isNotEmpty ||
+        _bodyCtrl.text.trim().isNotEmpty ||
+        _teaHeadingCtrl.text.trim().isNotEmpty ||
+        _recPath != null ||
+        _voice == _VoiceState.recording;
+  }
+
   bool get _canPost {
     if (_isSpill) return _headingCtrl.text.trim().isNotEmpty;
     return _teaHeadingCtrl.text.trim().isNotEmpty && _recPath != null;
@@ -59,7 +68,8 @@ class _CreateConfessionSheetState
   void initState() {
     super.initState();
     _tabCtrl = TabController(length: 2, vsync: this);
-    _tabCtrl.addListener(() => setState(() {}));
+    // intercept tab change — show discard dialog if recording/recorded
+    _tabCtrl.addListener(_onTabChange);
     for (final c in [_headingCtrl, _bodyCtrl, _teaHeadingCtrl]) {
       c.addListener(() => setState(() {}));
     }
@@ -72,6 +82,7 @@ class _CreateConfessionSheetState
 
   @override
   void dispose() {
+    _tabCtrl.removeListener(_onTabChange);
     _tabCtrl.dispose();
     _headingCtrl.dispose();
     _bodyCtrl.dispose();
@@ -81,6 +92,34 @@ class _CreateConfessionSheetState
     _timer?.cancel();
     AudioService.instance.stop();
     super.dispose();
+  }
+
+  // ── Tab switch guard ──────────────────────────────────────────────────────
+
+  void _onTabChange() {
+    if (!_tabCtrl.indexIsChanging) return;
+    // If there's a recording (in progress or saved), block and show dialog
+    if (_voice != _VoiceState.idle) {
+      // Snap back to current index before animation commits
+      final previousIndex = _tabCtrl.previousIndex;
+      // Show dialog — if confirmed, discard voice and allow switch
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        if (!mounted) return;
+        final confirmed = await _showDiscardDialog(
+          title: 'Discard recording?',
+          body: 'Switching tabs will remove your voice recording.',
+          confirmLabel: 'Discard',
+        );
+        if (confirmed == true) {
+          await _discardRec();
+          // now actually switch
+          _tabCtrl.animateTo(_tabCtrl.index);
+        } else {
+          // revert to previous tab
+          _tabCtrl.animateTo(previousIndex);
+        }
+      });
+    }
   }
 
   // ── Voice ─────────────────────────────────────────────────────────────────
@@ -138,6 +177,129 @@ class _CreateConfessionSheetState
       _elapsed = 0;
       _amps = List.filled(40, 0.04);
     });
+  }
+
+  // ── Discard dialog ────────────────────────────────────────────────────────
+
+  Future<bool?> _showDiscardDialog({
+    required String title,
+    required String body,
+    required String confirmLabel,
+  }) {
+    return showDialog<bool>(
+      context: context,
+      barrierColor: Colors.black.withOpacity(0.65),
+      builder: (ctx) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 32),
+        child: Container(
+          decoration: BoxDecoration(
+            color: const Color(0xFF111118),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: const Color(0xFF1E1E2A), width: 0.8),
+          ),
+          padding: const EdgeInsets.fromLTRB(24, 24, 24, 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: AppTypography.bodyMedium.copyWith(
+                  fontFamily: 'DM Sans',
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                body,
+                style: AppTypography.bodySmall.copyWith(
+                  fontSize: 14,
+                  color: AppColors.textSecondary,
+                  height: 1.5,
+                ),
+              ),
+              const SizedBox(height: 24),
+              Row(
+                children: [
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () => Navigator.of(ctx).pop(false),
+                      child: Container(
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF1A1A26),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                              color: const Color(0xFF2A2A3A), width: 0.8),
+                        ),
+                        child: Center(
+                          child: Text(
+                            'Keep',
+                            style: AppTypography.labelMedium.copyWith(
+                              fontFamily: 'DM Sans',
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.textPrimary,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () => Navigator.of(ctx).pop(true),
+                      child: Container(
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: AppColors.errorLight.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                              color: AppColors.errorLight.withOpacity(0.3),
+                              width: 0.8),
+                        ),
+                        child: Center(
+                          child: Text(
+                            confirmLabel,
+                            style: AppTypography.labelMedium.copyWith(
+                              fontFamily: 'DM Sans',
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.errorLight,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ── Close with discard guard ──────────────────────────────────────────────
+
+  Future<void> _onClose() async {
+    if (!_hasContent) {
+      Navigator.of(context).pop();
+      return;
+    }
+    final confirmed = await _showDiscardDialog(
+      title: 'Discard post?',
+      body: 'Everything you\'ve written will be lost.',
+      confirmLabel: 'Discard',
+    );
+    if (confirmed == true && mounted) {
+      Navigator.of(context).pop();
+    }
   }
 
   // ── Post ─────────────────────────────────────────────────────────────────
@@ -216,9 +378,9 @@ class _CreateConfessionSheetState
                 padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
                 child: Row(
                   children: [
-                    // close
+                    // close — with discard guard
                     GestureDetector(
-                      onTap: () => Navigator.of(context).pop(),
+                      onTap: _onClose,
                       child: const Icon(LucideIcons.x,
                           size: 20, color: AppColors.textSecondary),
                     ),
@@ -291,12 +453,12 @@ class _CreateConfessionSheetState
                 child: Row(
                   children: [
                     Icon(LucideIcons.globe,
-                        size: 12, color: AppColors.hintText),
+                        size: 15, color: AppColors.hintText),
                     const SizedBox(width: 5),
                     Text(
                       'Everyone can see this',
                       style: AppTypography.bodySmall.copyWith(
-                          fontSize: 11, color: AppColors.hintText),
+                          fontSize: 13, color: AppColors.hintText),
                     ),
                     const Spacer(),
                     if (_isSpill && _bodyCtrl.text.isNotEmpty)
@@ -319,30 +481,18 @@ class _CreateConfessionSheetState
     );
   }
 
+  // FIX: use 'adventurer' style, not 'avataaars'
   String? _buildAvatarUrlFromProfile(Map<String, dynamic>? profile) {
-    final config = profile?['avatarConfig'] as Map<String, dynamic>?;
-    if (config == null) return null;
-    final params = <String, String>{
-      'size': '72',
-      'skinColor': config['skinColor'] ?? 'f2d3b1',
-      'hair': config['hair'] ?? 'short03',
-      'hairColor': config['hairColor'] ?? '2c1b18',
-      'eyes': config['eyes'] ?? 'variant01',
-      'eyebrows': config['eyebrows'] ?? 'variant01',
-      'mouth': config['mouth'] ?? 'variant01',
-      'backgroundColor': 'transparent',
-      'radius': '50',
-    };
-    final q = params.entries
-        .map((e) => '${e.key}=${Uri.encodeComponent(e.value)}')
-        .join('&');
-    return 'https://api.dicebear.com/9.x/adventurer/png?$q';
+    final raw = profile?['avatarConfig'];
+    if (raw == null) return null;
+    final config = AvatarConfig.fromMap(raw as Map<String, dynamic>);
+    return config.buildUrl(size: 72);
   }
 }
 
 enum _VoiceState { idle, recording, recorded }
 
-// ── Sheet tab bar (X-style) ───────────────────────────────────────────────────
+// ── Sheet tab bar ─────────────────────────────────────────────────────────────
 
 class _SheetTabBar extends StatelessWidget {
   final TabController ctrl;
@@ -424,27 +574,22 @@ class _SpillComposer extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // left: avatar column with vertical line
           Column(
             children: [
               _ComposerAvatar(url: avatarUrl),
               const SizedBox(height: 4),
               Container(
-                width: 1.5,
-                height: 28,
-                color: const Color(0xFF1E1E2A),
-              ),
+                  width: 1.5, height: 28, color: const Color(0xFF1E1E2A)),
             ],
           ),
           const SizedBox(width: 12),
-          // right: content
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // username row
+                // FIX: @ before username
                 Text(
-                  username,
+                  '@$username',
                   style: AppTypography.bodyMedium.copyWith(
                     fontFamily: 'DM Sans',
                     fontWeight: FontWeight.w700,
@@ -453,7 +598,6 @@ class _SpillComposer extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 8),
-                // heading — big, inviting
                 TextField(
                   controller: headingCtrl,
                   focusNode: headingFocus,
@@ -469,9 +613,9 @@ class _SpillComposer extends StatelessWidget {
                     color: AppColors.textPrimary,
                     height: 1.45,
                   ),
-                  decoration: InputDecoration(
+                  decoration: const InputDecoration(
                     hintText: 'What\'s on your mind?',
-                    hintStyle: const TextStyle(
+                    hintStyle: TextStyle(
                       fontFamily: 'DM Sans',
                       fontSize: 18,
                       fontWeight: FontWeight.w600,
@@ -489,7 +633,6 @@ class _SpillComposer extends StatelessWidget {
                   cursorWidth: 2,
                 ),
                 const SizedBox(height: 6),
-                // body
                 TextField(
                   controller: bodyCtrl,
                   maxLines: null,
@@ -503,7 +646,7 @@ class _SpillComposer extends StatelessWidget {
                     height: 1.6,
                   ),
                   decoration: InputDecoration(
-                    hintText: 'Add more... (optional)',
+                    hintText: 'Say more, if you want...',
                     hintStyle: AppTypography.bodySmall.copyWith(
                       fontSize: 15,
                       color: AppColors.hintText,
@@ -520,7 +663,6 @@ class _SpillComposer extends StatelessWidget {
                   cursorWidth: 2,
                 ),
                 const SizedBox(height: 14),
-                // voice widget
                 _VoiceSection(
                   optional: true,
                   maxSecs: 30,
@@ -586,10 +728,7 @@ class _TeaComposer extends StatelessWidget {
               _ComposerAvatar(url: avatarUrl),
               const SizedBox(height: 4),
               Container(
-                width: 1.5,
-                height: 28,
-                color: const Color(0xFF1E1E2A),
-              ),
+                  width: 1.5, height: 28, color: const Color(0xFF1E1E2A)),
             ],
           ),
           const SizedBox(width: 12),
@@ -597,8 +736,9 @@ class _TeaComposer extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // FIX: @ before username
                 Text(
-                  username,
+                  '@$username',
                   style: AppTypography.bodyMedium.copyWith(
                     fontFamily: 'DM Sans',
                     fontWeight: FontWeight.w700,
@@ -622,9 +762,9 @@ class _TeaComposer extends StatelessWidget {
                     color: AppColors.textPrimary,
                     height: 1.45,
                   ),
-                  decoration: InputDecoration(
+                  decoration: const InputDecoration(
                     hintText: 'What\'s the tea?',
-                    hintStyle: const TextStyle(
+                    hintStyle: TextStyle(
                       fontFamily: 'DM Sans',
                       fontSize: 18,
                       fontWeight: FontWeight.w600,
@@ -735,7 +875,7 @@ class _VoiceSection extends StatelessWidget {
     transitionBuilder: (child, anim) => FadeTransition(
       opacity: anim,
       child: SlideTransition(
-        position: Tween(
+        position: Tween<Offset>(
           begin: const Offset(0, 0.05),
           end: Offset.zero,
         ).animate(
@@ -802,8 +942,8 @@ class _IdleVoice extends StatelessWidget {
         const SizedBox(width: 10),
         Text(
           optional
-              ? 'Add voice note  ·  ${maxSecs}s max'
-              : 'Record voice  ·  ${maxSecs}s max',
+              ? 'Add a voice note · ${maxSecs}s max'
+              : 'Record your voice · ${maxSecs}s max',
           style: AppTypography.bodySmall.copyWith(
             fontSize: 13,
             color: AppColors.textSecondary,
@@ -943,7 +1083,7 @@ class _RecDotState extends State<_RecDot> with SingleTickerProviderStateMixin {
   );
 }
 
-// ── Recorded voice (swipe to delete) ─────────────────────────────────────────
+// ── Recorded voice (swipe left to delete) ────────────────────────────────────
 
 class _RecordedVoice extends StatefulWidget {
   final int recSecs;
@@ -1026,74 +1166,99 @@ class _RecordedVoiceState extends State<_RecordedVoice> {
         HapticFeedback.mediumImpact();
         widget.onDiscard();
       },
+      // FIX: visible red background with label
       background: Container(
         alignment: Alignment.centerRight,
-        child: const Icon(LucideIcons.trash2,
-            size: 16, color: AppColors.errorLight),
-      ),
-      child: Row(
-        children: [
-          // play/pause
-          GestureDetector(
-            onTap: _toggle,
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 150),
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: _playing
-                    ? AppColors.accentPrimary
-                    : AppColors.accentPrimary.withOpacity(0.12),
-                shape: BoxShape.circle,
+        padding: const EdgeInsets.only(right: 12),
+        decoration: BoxDecoration(
+          color: AppColors.errorLight.withOpacity(0.12),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(LucideIcons.trash2,
+                size: 16, color: AppColors.errorLight),
+            const SizedBox(width: 6),
+            Text(
+              'Delete',
+              style: AppTypography.bodySmall.copyWith(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: AppColors.errorLight,
               ),
-              child: Center(
-                child: AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 150),
-                  child: Icon(
-                    _playing ? LucideIcons.pause : LucideIcons.play,
-                    key: ValueKey(_playing),
-                    size: 14,
-                    color: _playing ? Colors.black : AppColors.accentPrimary,
+            ),
+          ],
+        ),
+      ),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 2),
+        child: Row(
+          children: [
+            // play/pause
+            GestureDetector(
+              onTap: _toggle,
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 150),
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: _playing
+                      ? AppColors.accentPrimary
+                      : AppColors.accentPrimary.withOpacity(0.12),
+                  shape: BoxShape.circle,
+                ),
+                child: Center(
+                  child: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 150),
+                    child: Icon(
+                      _playing ? LucideIcons.pause : LucideIcons.play,
+                      key: ValueKey(_playing),
+                      size: 14,
+                      color: _playing ? Colors.black : AppColors.accentPrimary,
+                    ),
                   ),
                 ),
               ),
             ),
-          ),
-          const SizedBox(width: 10),
-          // scrubber
-          Expanded(
-            child: SliderTheme(
-              data: SliderTheme.of(context).copyWith(
-                trackHeight: 2,
-                thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 4),
-                overlayShape: const RoundSliderOverlayShape(overlayRadius: 10),
-                activeTrackColor: AppColors.accentPrimary,
-                inactiveTrackColor: const Color(0xFF252535),
-                thumbColor: AppColors.accentPrimary,
-                overlayColor: AppColors.accentPrimary.withOpacity(0.1),
-              ),
-              child: Slider(
-                value: pct.toDouble(),
-                min: 0,
-                max: 1,
-                onChanged: (v) {
-                  if (total == 0) return;
-                  AudioService.instance
-                      .seekTo(Duration(milliseconds: (v * total).round()));
-                },
+            const SizedBox(width: 10),
+            // scrubber
+            Expanded(
+              child: SliderTheme(
+                data: SliderTheme.of(context).copyWith(
+                  trackHeight: 2,
+                  thumbShape:
+                  const RoundSliderThumbShape(enabledThumbRadius: 4),
+                  overlayShape:
+                  const RoundSliderOverlayShape(overlayRadius: 10),
+                  activeTrackColor: AppColors.accentPrimary,
+                  inactiveTrackColor: const Color(0xFF252535),
+                  thumbColor: AppColors.accentPrimary,
+                  overlayColor: AppColors.accentPrimary.withOpacity(0.1),
+                ),
+                child: Slider(
+                  value: pct.toDouble(),
+                  min: 0,
+                  max: 1,
+                  onChanged: (v) {
+                    if (total == 0) return;
+                    AudioService.instance
+                        .seekTo(Duration(milliseconds: (v * total).round()));
+                  },
+                ),
               ),
             ),
-          ),
-          const SizedBox(width: 6),
-          Text(
-            '${_fmt(_position.inSeconds)} / ${_fmt(widget.recSecs)}',
-            style: AppTypography.bodySmall.copyWith(
-              fontSize: 11,
-              color: AppColors.textSecondary,
-              fontFeatures: [const FontFeature.tabularFigures()],
+            const SizedBox(width: 6),
+            Text(
+              '${_fmt(_position.inSeconds)} / ${_fmt(widget.recSecs)}',
+              style: AppTypography.bodySmall.copyWith(
+                fontSize: 11,
+                color: AppColors.textSecondary,
+                fontFeatures: [const FontFeature.tabularFigures()],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
