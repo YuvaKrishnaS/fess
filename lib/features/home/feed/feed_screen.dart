@@ -8,6 +8,7 @@ import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_typography.dart';
 import '../../../core/models/avatar_config.dart';
 import '../../../core/widgets/fess_snackbar.dart';
+import '../post_detail/post_detail_screen.dart';
 import '../providers/feed_provider.dart';
 import '../providers/scroll_visibility_provider.dart';
 import '../widgets/confession_card.dart';
@@ -348,7 +349,9 @@ class _ForYouTab extends ConsumerWidget {
                 currentAnonId: anonId,
                 onTap: () {
                   HapticFeedback.selectionClick();
-                  context.push('/post/${post.postId}', extra: post);
+                  Navigator.of(context).push(
+                    postDetailHeroRoute(post.postId, initialPost: post),
+                  );
                 },
                 onLike: () =>
                     ref.read(forYouFeedProvider.notifier).toggleLike(post.postId),
@@ -416,7 +419,9 @@ class _FollowingTab extends ConsumerWidget {
                 currentAnonId: anonId,
                 onTap: () {
                   HapticFeedback.selectionClick();
-                  context.push('/post/${post.postId}', extra: post);
+                  Navigator.of(context).push(
+                    postDetailHeroRoute(post.postId, initialPost: post),
+                  );
                 },
                 onLike: () => ref
                     .read(followingFeedProvider.notifier)

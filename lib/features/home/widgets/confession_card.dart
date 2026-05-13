@@ -40,59 +40,65 @@ class ConfessionCard extends StatelessWidget {
         HapticFeedback.selectionClick();
         onTap();
       },
-      child: Container(
-        color: Colors.transparent,
-        padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _CardHeader(post: post, isOwn: isOwn, onWitness: onWitness),
-            const SizedBox(height: 10),
-            Text(
-              post.heading,
-              style: AppTypography.h4.copyWith(
-                fontFamily: 'DM Sans',
-                fontSize: 16,
-                fontWeight: FontWeight.w700,
-                color: AppColors.textPrimary,
-                height: 1.4,
-              ),
-            ),
-            if (post.body != null && post.body!.isNotEmpty) ...[
-              const SizedBox(height: 5),
-              Text(
-                post.body!,
-                maxLines: 3,
-                overflow: TextOverflow.ellipsis,
-                style: AppTypography.bodyMedium.copyWith(
-                  color: AppColors.textSecondary,
-                  height: 1.55,
+      child: Hero(
+        tag: 'hero_post_${post.postId}',
+        flightShuttleBuilder: _flightShuttleBuilder,
+        child: Material(
+          type: MaterialType.transparency,
+          child: Container(
+            color: Colors.transparent,
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _CardHeader(post: post, isOwn: isOwn, onWitness: onWitness),
+                const SizedBox(height: 10),
+                Text(
+                  post.heading,
+                  style: AppTypography.h4.copyWith(
+                    fontFamily: 'DM Sans',
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.textPrimary,
+                    height: 1.4,
+                  ),
                 ),
-              ),
-            ],
-            if (post.imageUrls.isNotEmpty) ...[
-              const SizedBox(height: 10),
-              _CardImage(url: post.imageUrls.first),
-            ],
-            if (post.audioUrl != null && post.audioUrl!.isNotEmpty) ...[
-              const SizedBox(height: 10),
-              // KEY: use postId so each player is unique and isolated
-              _InlineVoicePlayer(
-                key: ValueKey('voice_${post.postId}'),
-                audioUrl: post.audioUrl!,
-                durationSecs: post.audioDuration ?? 0,
-              ),
-            ],
-            const SizedBox(height: 12),
-            _ReactionRow(
-              post: post,
-              onLike: onLike,
-              onComment: onComment ?? () {},
-              onShare: onShare ?? () {},
+                if (post.body != null && post.body!.isNotEmpty) ...[
+                  const SizedBox(height: 5),
+                  Text(
+                    post.body!,
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTypography.bodyMedium.copyWith(
+                      color: AppColors.textSecondary,
+                      height: 1.55,
+                    ),
+                  ),
+                ],
+                if (post.imageUrls.isNotEmpty) ...[
+                  const SizedBox(height: 10),
+                  _CardImage(url: post.imageUrls.first),
+                ],
+                if (post.audioUrl != null && post.audioUrl!.isNotEmpty) ...[
+                  const SizedBox(height: 10),
+                  _InlineVoicePlayer(
+                    key: ValueKey('voice_${post.postId}'),
+                    audioUrl: post.audioUrl!,
+                    durationSecs: post.audioDuration ?? 0,
+                  ),
+                ],
+                const SizedBox(height: 12),
+                _ReactionRow(
+                  post: post,
+                  onLike: onLike,
+                  onComment: onComment ?? () {},
+                  onShare: onShare ?? () {},
+                ),
+                const SizedBox(height: 14),
+                const Divider(height: 0.5, thickness: 0.5, color: Color(0xFF1A1A1A)),
+              ],
             ),
-            const SizedBox(height: 14),
-            const Divider(height: 0.5, thickness: 0.5, color: Color(0xFF1A1A1A)),
-          ],
+          ),
         ),
       ),
     )
@@ -100,9 +106,35 @@ class ConfessionCard extends StatelessWidget {
         .fadeIn(duration: 300.ms)
         .slideY(begin: 0.04, end: 0, duration: 300.ms, curve: Curves.easeOut);
   }
-}
 
-// ── Card header ───────────────────────────────────────────────────────────────
+  Widget _flightShuttleBuilder(
+      BuildContext flightContext,
+      Animation<double> animation,
+      HeroFlightDirection direction,
+      BuildContext fromHeroContext,
+      BuildContext toHeroContext,
+      ) {
+    return AnimatedBuilder(
+      animation: animation,
+      builder: (_, __) {
+        final child = direction == HeroFlightDirection.push
+            ? toHeroContext.widget
+            : fromHeroContext.widget;
+        return Material(
+          type: MaterialType.transparency,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(
+              Tween<double>(begin: 0, end: 0)
+                  .animate(CurvedAnimation(parent: animation, curve: Curves.easeOutCubic))
+                  .value,
+            ),
+            child: child,
+          ),
+        );
+      },
+    );
+  }
+}
 
 class _CardHeader extends StatelessWidget {
   final PostModel post;
@@ -117,12 +149,10 @@ class _CardHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // FIX: use AvatarConfig.fromMap().buildUrl() — correct style, correct params
     final avatarUrl = post.authorAvatarConfig != null
         ? AvatarConfig.fromMap(post.authorAvatarConfig!).buildUrl(size: 72)
         : null;
 
-    // FIX: createdAt is nullable
     final timeStr = post.createdAt != null
         ? timeago.format(post.createdAt!, locale: 'en_short')
         : 'just now';
@@ -137,7 +167,6 @@ class _CardHeader extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              // FIX: @ before username
               Text(
                 '@${post.authorUsername ?? 'anon'}',
                 style: AppTypography.bodyMedium.copyWith(
@@ -157,7 +186,6 @@ class _CardHeader extends StatelessWidget {
             ],
           ),
         ),
-        // isWitnessing doesn't exist on PostModel yet — hardcoded false until M8
         if (!isOwn)
           _WitnessButton(isWitnessing: false, onTap: onWitness),
       ],
@@ -269,8 +297,6 @@ class _WitnessButtonState extends State<_WitnessButton> {
   );
 }
 
-// ── Card image ────────────────────────────────────────────────────────────────
-
 class _CardImage extends StatelessWidget {
   final String url;
   const _CardImage({required this.url});
@@ -296,11 +322,6 @@ class _CardImage extends StatelessWidget {
     ),
   );
 }
-
-// ── Inline voice player — ISOLATED per card ───────────────────────────────────
-// FIX: each instance tracks its own playing state by comparing the
-// currently-playing URL against this card's audioUrl. When a different
-// card's audio starts, this card's UI resets automatically.
 
 class _InlineVoicePlayer extends StatefulWidget {
   final String audioUrl;
@@ -335,7 +356,6 @@ class _InlineVoicePlayerState extends State<_InlineVoicePlayer> {
 
     _stateSub = AudioService.instance.playerStateStream.listen((s) {
       if (!mounted) return;
-      // Only this card is "playing" if the current URL matches AND player is active
       final currentUrl = AudioService.instance.currentUrl;
       final playing = s.playing &&
           s.processingState != ProcessingState.completed &&
@@ -350,8 +370,6 @@ class _InlineVoicePlayerState extends State<_InlineVoicePlayer> {
         return;
       }
       setState(() => _isThisCardPlaying = playing);
-
-      // If a different card started playing, reset our position display
       if (!playing && currentUrl != widget.audioUrl) {
         setState(() => _position = Duration.zero);
       }
@@ -359,7 +377,6 @@ class _InlineVoicePlayerState extends State<_InlineVoicePlayer> {
 
     _posSub = AudioService.instance.positionStream.listen((p) {
       if (!mounted) return;
-      // Only update position if we're the active card
       if (AudioService.instance.currentUrl == widget.audioUrl) {
         setState(() => _position = p);
       }
@@ -386,7 +403,6 @@ class _InlineVoicePlayerState extends State<_InlineVoicePlayer> {
     if (_isThisCardPlaying) {
       await AudioService.instance.pause();
     } else {
-      // This will stop whatever is currently playing on another card
       await AudioService.instance.playUrl(widget.audioUrl);
     }
   }
@@ -444,10 +460,8 @@ class _InlineVoicePlayerState extends State<_InlineVoicePlayer> {
             child: SliderTheme(
               data: SliderTheme.of(context).copyWith(
                 trackHeight: 2,
-                thumbShape:
-                const RoundSliderThumbShape(enabledThumbRadius: 4),
-                overlayShape:
-                const RoundSliderOverlayShape(overlayRadius: 10),
+                thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 4),
+                overlayShape: const RoundSliderOverlayShape(overlayRadius: 10),
                 activeTrackColor: AppColors.accentPrimary,
                 inactiveTrackColor: const Color(0xFF2A2A38),
                 thumbColor: AppColors.accentPrimary,
@@ -484,8 +498,6 @@ class _InlineVoicePlayerState extends State<_InlineVoicePlayer> {
     );
   }
 }
-
-// ── Reaction row ──────────────────────────────────────────────────────────────
 
 class _ReactionRow extends StatelessWidget {
   final PostModel post;
@@ -551,7 +563,8 @@ class _ReactionBtn extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 17,
+          Icon(icon,
+              size: 17,
               color: active ? activeColor : AppColors.textSecondary),
           if (count != null) ...[
             const SizedBox(width: 5),
@@ -588,10 +601,8 @@ class _LikeBtnState extends State<_LikeBtn>
     _ctrl = AnimationController(
         vsync: this, duration: const Duration(milliseconds: 200));
     _scale = TweenSequence([
-      TweenSequenceItem(
-          tween: Tween<double>(begin: 1, end: 1.25), weight: 50),
-      TweenSequenceItem(
-          tween: Tween<double>(begin: 1.25, end: 1.0), weight: 50),
+      TweenSequenceItem(tween: Tween(begin: 1.0, end: 1.25), weight: 50),
+      TweenSequenceItem(tween: Tween(begin: 1.25, end: 1.0), weight: 50),
     ]).animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut));
   }
 
@@ -640,8 +651,6 @@ class _LikeBtnState extends State<_LikeBtn>
     ),
   );
 }
-
-// ── Shimmer card ──────────────────────────────────────────────────────────────
 
 class ConfessionShimmerCard extends StatefulWidget {
   const ConfessionShimmerCard({super.key});
@@ -700,8 +709,7 @@ class _ConfessionShimmerCardState extends State<ConfessionShimmerCard>
             _Bone(w: 40, h: 12, radius: 4, anim: _anim),
           ]),
           const SizedBox(height: 14),
-          const Divider(
-              height: 0.5, thickness: 0.5, color: Color(0xFF1A1A1A)),
+          const Divider(height: 0.5, thickness: 0.5, color: Color(0xFF1A1A1A)),
         ],
       ),
     ),
@@ -713,11 +721,7 @@ class _Bone extends StatelessWidget {
   final double h;
   final double radius;
   final Animation<double> anim;
-  const _Bone(
-      {required this.w,
-        required this.h,
-        required this.radius,
-        required this.anim});
+  const _Bone({required this.w, required this.h, required this.radius, required this.anim});
 
   @override
   Widget build(BuildContext context) => Container(

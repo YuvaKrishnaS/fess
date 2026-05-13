@@ -18,6 +18,32 @@ import '../../../core/services/audio_service.dart';
 import '../../../core/widgets/fess_snackbar.dart';
 import '../providers/post_detail_provider.dart';
 
+Route<void> postDetailHeroRoute(String postId, {PostModel? initialPost}) {
+  return PageRouteBuilder(
+    pageBuilder: (context, animation, secondaryAnimation) =>
+        PostDetailScreen(postId: postId, initialPost: initialPost),
+    transitionDuration: const Duration(milliseconds: 380),
+    reverseTransitionDuration: const Duration(milliseconds: 300),
+    transitionsBuilder: (context, animation, secondaryAnimation, child) {
+      final fade = CurvedAnimation(
+        parent: animation,
+        curve: const Interval(0.0, 0.6, curve: Curves.easeOut),
+      );
+      final scale = Tween<double>(begin: 0.97, end: 1.0).animate(
+        CurvedAnimation(parent: animation, curve: Curves.easeOutCubic),
+      );
+      return FadeTransition(
+        opacity: fade,
+        child: ScaleTransition(
+          scale: scale,
+          alignment: Alignment.topCenter,
+          child: child,
+        ),
+      );
+    },
+  );
+}
+
 class PostDetailScreen extends ConsumerStatefulWidget {
   final String postId;
   final PostModel? initialPost;
@@ -59,9 +85,12 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
     HapticFeedback.mediumImpact();
     _commentCtrl.clear();
     _commentFocus.unfocus();
-    final ok = await ref.read(postDetailProvider(widget.postId).notifier).addComment(text);
+    final ok = await ref
+        .read(postDetailProvider(widget.postId).notifier)
+        .addComment(text);
     if (!ok && mounted) {
-      FessSnackbar.show(context, 'Failed to post comment.', type: SnackbarType.error);
+      FessSnackbar.show(context, 'Failed to post comment.',
+          type: SnackbarType.error);
     } else {
       _scrollToBottom();
     }
@@ -92,14 +121,22 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
               controller: _scroll,
               slivers: [
                 SliverToBoxAdapter(
-                  child: _PostBody(
-                    post: post,
-                    onLike: () => ref
-                        .read(postDetailProvider(widget.postId).notifier)
-                        .togglePostLike(),
-                    onWitness: () => FessSnackbar.show(
-                        context, 'Witness system — Coming soon',
-                        type: SnackbarType.info),
+                  child: Hero(
+                    tag: 'hero_post_${post.postId}',
+                    flightShuttleBuilder: _detailFlightShuttle,
+                    child: Material(
+                      type: MaterialType.transparency,
+                      child: _PostBody(
+                        post: post,
+                        onLike: () => ref
+                            .read(postDetailProvider(widget.postId)
+                            .notifier)
+                            .togglePostLike(),
+                        onWitness: () => FessSnackbar.show(
+                            context, 'Witness system — Coming soon',
+                            type: SnackbarType.info),
+                      ),
+                    ),
                   ).animate().fadeIn(duration: 250.ms),
                 ),
                 SliverToBoxAdapter(
@@ -121,8 +158,10 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                     itemBuilder: (ctx, i) => _CommentTile(
                       comment: state.comments[i],
                       onLike: () => ref
-                          .read(postDetailProvider(widget.postId).notifier)
-                          .toggleCommentLike(state.comments[i].commentId),
+                          .read(postDetailProvider(widget.postId)
+                          .notifier)
+                          .toggleCommentLike(
+                          state.comments[i].commentId),
                     )
                         .animate(
                         delay: Duration(
@@ -148,9 +187,22 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
       ),
     );
   }
-}
 
-// DETAIL APP BAR
+  Widget _detailFlightShuttle(
+      BuildContext flightContext,
+      Animation<double> animation,
+      HeroFlightDirection direction,
+      BuildContext fromHeroContext,
+      BuildContext toHeroContext,
+      ) {
+    return Material(
+      type: MaterialType.transparency,
+      child: direction == HeroFlightDirection.push
+          ? toHeroContext.widget
+          : fromHeroContext.widget,
+    );
+  }
+}
 
 class _DetailAppBar extends StatelessWidget {
   final PostModel? post;
@@ -200,14 +252,13 @@ class _DetailAppBar extends StatelessWidget {
   }
 }
 
-// POST BODY
-
 class _PostBody extends StatelessWidget {
   final PostModel post;
   final VoidCallback onLike;
   final VoidCallback onWitness;
 
-  const _PostBody({required this.post, required this.onLike, required this.onWitness});
+  const _PostBody(
+      {required this.post, required this.onLike, required this.onWitness});
 
   @override
   Widget build(BuildContext context) {
@@ -294,8 +345,6 @@ class _PostBody extends StatelessWidget {
   }
 }
 
-// AVATAR RING
-
 class _AvatarRing extends StatelessWidget {
   final String? url;
   final double size;
@@ -337,8 +386,6 @@ class _AvatarRing extends StatelessWidget {
     child: const Icon(LucideIcons.user, size: 14, color: Color(0xFF444444)),
   );
 }
-
-// WITNESS BUTTON
 
 class _WitnessBtn extends StatefulWidget {
   final VoidCallback onTap;
@@ -385,8 +432,6 @@ class _WitnessBtnState extends State<_WitnessBtn> {
     ),
   );
 }
-
-// IMAGE GRID
 
 class _ImageGrid extends StatelessWidget {
   final List<String> urls;
@@ -442,12 +487,11 @@ class _ImgTile extends StatelessWidget {
   );
 }
 
-// VOICE PLAYER
-
 class _VoicePlayer extends StatefulWidget {
   final String audioUrl;
   final int durationSecs;
-  const _VoicePlayer({super.key, required this.audioUrl, required this.durationSecs});
+  const _VoicePlayer(
+      {super.key, required this.audioUrl, required this.durationSecs});
 
   @override
   State<_VoicePlayer> createState() => _VoicePlayerState();
@@ -457,9 +501,9 @@ class _VoicePlayerState extends State<_VoicePlayer> {
   bool _isPlaying = false;
   Duration _position = Duration.zero;
   Duration _duration = Duration.zero;
-  StreamSubscription? _stateSub;
-  StreamSubscription? _posSub;
-  StreamSubscription? _durSub;
+  StreamSubscription<PlayerState>? _stateSub;
+  StreamSubscription<Duration>? _posSub;
+  StreamSubscription<Duration?>? _durSub;
 
   @override
   void initState() {
@@ -472,17 +516,25 @@ class _VoicePlayerState extends State<_VoicePlayer> {
       final playing = s.playing &&
           s.processingState != ProcessingState.completed &&
           cur == widget.audioUrl;
-      if (s.processingState == ProcessingState.completed && cur == widget.audioUrl) {
-        setState(() { _isPlaying = false; _position = Duration.zero; });
+      if (s.processingState == ProcessingState.completed &&
+          cur == widget.audioUrl) {
+        setState(() {
+          _isPlaying = false;
+          _position = Duration.zero;
+        });
         return;
       }
       setState(() => _isPlaying = playing);
-      if (!playing && cur != widget.audioUrl) setState(() => _position = Duration.zero);
+      if (!playing && cur != widget.audioUrl) {
+        setState(() => _position = Duration.zero);
+      }
     });
 
     _posSub = AudioService.instance.positionStream.listen((p) {
       if (!mounted) return;
-      if (AudioService.instance.currentUrl == widget.audioUrl) setState(() => _position = p);
+      if (AudioService.instance.currentUrl == widget.audioUrl) {
+        setState(() => _position = p);
+      }
     });
 
     _durSub = AudioService.instance.durationStream.listen((d) {
@@ -518,7 +570,8 @@ class _VoicePlayerState extends State<_VoicePlayer> {
     final total = _duration.inMilliseconds > 0
         ? _duration.inMilliseconds
         : (widget.durationSecs * 1000);
-    final pct = total > 0 ? (_position.inMilliseconds / total).clamp(0.0, 1.0) : 0.0;
+    final pct =
+    total > 0 ? (_position.inMilliseconds / total).clamp(0.0, 1.0) : 0.0;
 
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
@@ -549,7 +602,8 @@ class _VoicePlayerState extends State<_VoicePlayer> {
                     _isPlaying ? LucideIcons.pause : LucideIcons.play,
                     key: ValueKey(_isPlaying),
                     size: 14,
-                    color: _isPlaying ? Colors.black : AppColors.accentPrimary,
+                    color:
+                    _isPlaying ? Colors.black : AppColors.accentPrimary,
                   ),
                 ),
               ),
@@ -560,8 +614,10 @@ class _VoicePlayerState extends State<_VoicePlayer> {
             child: SliderTheme(
               data: SliderTheme.of(context).copyWith(
                 trackHeight: 2,
-                thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5),
-                overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
+                thumbShape:
+                const RoundSliderThumbShape(enabledThumbRadius: 5),
+                overlayShape:
+                const RoundSliderOverlayShape(overlayRadius: 12),
                 activeTrackColor: AppColors.accentPrimary,
                 inactiveTrackColor: const Color(0xFF2A2A38),
                 thumbColor: AppColors.accentPrimary,
@@ -572,7 +628,10 @@ class _VoicePlayerState extends State<_VoicePlayer> {
                 min: 0,
                 max: 1,
                 onChanged: (v) {
-                  if (total == 0 || AudioService.instance.currentUrl != widget.audioUrl) return;
+                  if (total == 0 ||
+                      AudioService.instance.currentUrl != widget.audioUrl) {
+                    return;
+                  }
                   AudioService.instance
                       .seekTo(Duration(milliseconds: (v * total).round()));
                 },
@@ -595,8 +654,6 @@ class _VoicePlayerState extends State<_VoicePlayer> {
     );
   }
 }
-
-// POST REACTIONS
 
 class _PostReactions extends StatefulWidget {
   final PostModel post;
@@ -624,7 +681,10 @@ class _PostReactionsState extends State<_PostReactions>
   }
 
   @override
-  void dispose() { _ctrl.dispose(); super.dispose(); }
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) => Row(
@@ -680,8 +740,6 @@ class _PostReactionsState extends State<_PostReactions>
   );
 }
 
-// COMMENTS HEADER
-
 class _CommentsHeader extends StatelessWidget {
   final int count;
   const _CommentsHeader({required this.count});
@@ -719,8 +777,6 @@ class _CommentsHeader extends StatelessWidget {
   );
 }
 
-// EMPTY COMMENTS
-
 class _EmptyComments extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Padding(
@@ -741,8 +797,6 @@ class _EmptyComments extends StatelessWidget {
     ),
   );
 }
-
-// COMMENT TILE
 
 class _CommentTile extends StatelessWidget {
   final CommentModel comment;
@@ -803,8 +857,6 @@ class _CommentTile extends StatelessWidget {
   }
 }
 
-// COMMENT LIKE BUTTON
-
 class _CommentLikeBtn extends StatefulWidget {
   final CommentModel comment;
   final VoidCallback onLike;
@@ -831,7 +883,10 @@ class _CommentLikeBtnState extends State<_CommentLikeBtn>
   }
 
   @override
-  void dispose() { _ctrl.dispose(); super.dispose(); }
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) => GestureDetector(
@@ -873,8 +928,6 @@ class _CommentLikeBtnState extends State<_CommentLikeBtn>
     ),
   );
 }
-
-// COMMENTS SHIMMER
 
 class _CommentsShimmer extends StatelessWidget {
   @override
@@ -922,8 +975,6 @@ class _Bone extends StatelessWidget {
   );
 }
 
-// COMMENT INPUT
-
 class _CommentInput extends StatelessWidget {
   final TextEditingController controller;
   final FocusNode focusNode;
@@ -942,7 +993,9 @@ class _CommentInput extends StatelessWidget {
     return Container(
       decoration: const BoxDecoration(
         color: AppColors.backgroundMain,
-        border: Border(top: BorderSide(color: Color(0xFF1A1A1A), width: 0.5)),
+        border: Border(
+          top: BorderSide(color: Color(0xFF1A1A1A), width: 0.5),
+        ),
       ),
       padding: EdgeInsets.fromLTRB(
           16, 10, 12, MediaQuery.of(context).padding.bottom + 10),
@@ -969,10 +1022,12 @@ class _CommentInput extends StatelessWidget {
                 ),
                 decoration: InputDecoration(
                   hintText: 'Add a comment...',
-                  hintStyle: AppTypography.bodySmall
-                      .copyWith(fontSize: 14, color: AppColors.hintText),
-                  contentPadding:
-                  const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  hintStyle: AppTypography.bodySmall.copyWith(
+                    fontSize: 14,
+                    color: AppColors.hintText,
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 14, vertical: 10),
                   border: InputBorder.none,
                   counterText: '',
                 ),
@@ -992,7 +1047,8 @@ class _CommentInput extends StatelessWidget {
                 gradient: isSubmitting
                     ? null
                     : const LinearGradient(
-                    colors: [Color(0xFF7C4DFF), Color(0xFF1DE9B6)]),
+                  colors: [Color(0xFF7C4DFF), Color(0xFF1DE9B6)],
+                ),
                 color: isSubmitting ? const Color(0xFF1A1A1A) : null,
                 shape: BoxShape.circle,
               ),
@@ -1002,11 +1058,11 @@ class _CommentInput extends StatelessWidget {
                   width: 16,
                   height: 16,
                   child: CircularProgressIndicator(
-                      strokeWidth: 1.5,
-                      color: AppColors.textSecondary),
+                    strokeWidth: 1.5,
+                    color: AppColors.textSecondary,
+                  ),
                 )
-                    : const Icon(LucideIcons.send,
-                    size: 16, color: Colors.white),
+                    : const Icon(LucideIcons.send, size: 16, color: Colors.white),
               ),
             ),
           ),
@@ -1015,3 +1071,126 @@ class _CommentInput extends StatelessWidget {
     );
   }
 }
+//
+// class _CommentInputState extends State<_CommentInput> {
+//   bool _focused = false;
+//   bool _hasText = false;
+//
+//   @override
+//   void initState() {
+//     super.initState();
+//     widget.focusNode.addListener(_onFocusChange);
+//     widget.controller.addListener(_onTextChange);
+//   }
+//
+//   @override
+//   void dispose() {
+//     widget.focusNode.removeListener(_onFocusChange);
+//     widget.controller.removeListener(_onTextChange);
+//     super.dispose();
+//   }
+//
+//   void _onFocusChange() {
+//     if (mounted) setState(() => _focused = widget.focusNode.hasFocus);
+//   }
+//
+//   void _onTextChange() {
+//     final has = widget.controller.text.trim().isNotEmpty;
+//     if (has != _hasText && mounted) setState(() => _hasText = has);
+//   }
+//
+//   @override
+//   Widget build(BuildContext context) {
+//     return Container(
+//       decoration: BoxDecoration(
+//         color: AppColors.backgroundMain,
+//         border: Border(
+//           top: BorderSide(
+//             color: _focused
+//                 ? AppColors.accentPrimary.withOpacity(0.25)
+//                 : const Color(0xFF1A1A1A),
+//             width: 0.5,
+//           ),
+//         ),
+//       ),
+//       padding: EdgeInsets.fromLTRB(
+//           16, 10, 12, MediaQuery.of(context).padding.bottom + 10),
+//       child: Row(
+//         crossAxisAlignment: CrossAxisAlignment.end,
+//         children: [
+//           Expanded(
+//             child: TextField(
+//               controller: widget.controller,
+//               focusNode: widget.focusNode,
+//               maxLines: null,
+//               minLines: 1,
+//               maxLength: 300,
+//               style: AppTypography.bodySmall.copyWith(
+//                 fontSize: 14,
+//                 color: AppColors.textPrimary,
+//                 height: 1.4,
+//               ),
+//               decoration: InputDecoration(
+//                 hintText: 'say something...',
+//                 hintStyle: AppTypography.bodySmall.copyWith(
+//                   fontSize: 14,
+//                   color: AppColors.hintText,
+//                   fontStyle: FontStyle.italic,
+//                 ),
+//                 contentPadding:
+//                 const EdgeInsets.symmetric(horizontal: 0, vertical: 8),
+//                 border: InputBorder.none,
+//                 enabledBorder: UnderlineInputBorder(
+//                   borderSide: BorderSide(
+//                     color: const Color(0xFF2A2A2A),
+//                     width: 0.8,
+//                   ),
+//                 ),
+//                 focusedBorder: UnderlineInputBorder(
+//                   borderSide: BorderSide(
+//                     color: AppColors.accentPrimary.withOpacity(0.5),
+//                     width: 1.0,
+//                   ),
+//                 ),
+//                 counterText: '',
+//               ),
+//               textInputAction: TextInputAction.newline,
+//               onSubmitted: (_) => widget.onSubmit(),
+//             ),
+//           ),
+//           const SizedBox(width: 12),
+//           GestureDetector(
+//             onTap: widget.isSubmitting || !_hasText ? null : widget.onSubmit,
+//             child: AnimatedOpacity(
+//               opacity: widget.isSubmitting
+//                   ? 0.4
+//                   : _hasText
+//                   ? 1.0
+//                   : 0.3,
+//               duration: const Duration(milliseconds: 180),
+//               child: widget.isSubmitting
+//                   ? const SizedBox(
+//                 width: 20,
+//                 height: 20,
+//                 child: CircularProgressIndicator(
+//                   strokeWidth: 1.5,
+//                   color: AppColors.accentPrimary,
+//                 ),
+//               )
+//                   : ShaderMask(
+//                 shaderCallback: (bounds) => const LinearGradient(
+//                   colors: [Color(0xFF7C4DFF), Color(0xFF1DE9B6)],
+//                 ).createShader(bounds),
+//                 blendMode: BlendMode.srcIn,
+//                 child: const Icon(
+//                   LucideIcons.send,
+//                   size: 20,
+//                 ),
+//               ),
+//             ),
+//           ),
+//         ],
+//       ),
+//     );
+//   }
+// }
