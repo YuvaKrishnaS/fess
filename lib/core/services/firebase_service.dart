@@ -16,7 +16,7 @@ class FirebaseService {
   static Future<void> _disableAnalytics() async {
     // Firebase Analytics is not included in dependencies
     // This ensures no tracking is enabled by default
-    print('✓ Analytics disabled (not included in project)');
+    // print('[SUCCESS] Analytics disabled (not included in project)');
   }
 
   static void _configureFirestore() {
@@ -25,7 +25,7 @@ class FirebaseService {
       cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
     );
 
-    print('✓ Firestore configured');
+    // print('[SUCCESS] Firestore configured');
   }
 
   // Auth instance

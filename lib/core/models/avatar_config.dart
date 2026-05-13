@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 
 class AvatarConfig {
   final String skinColor;   // hex: e.g. 'edb98a'

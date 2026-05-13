@@ -1,8 +1,8 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_typography.dart';
@@ -62,7 +62,6 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
     final offset = ctrl.position.pixels;
     final diff = offset - _lastOffset;
     _lastOffset = offset;
-
     if (offset < 10) {
       scrollVisibilityNotifier.value = true;
     } else if (diff > 4) {
@@ -74,41 +73,51 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
 
   @override
   Widget build(BuildContext context) {
+    final statusBarH = MediaQuery.of(context).padding.top;
     return Scaffold(
       backgroundColor: AppColors.backgroundMain,
-      body: Column(
-        children: [
-          // ── Floating appbar (status bar + content row)
-          _AppBarContent(),
-          // ── Pinned tab bar
-          _TabBarRow(tab: _tab),
-          // ── Feed body — fills rest, scroll drives visibility
-          Expanded(
-            child: TabBarView(
-              controller: _tab,
-              children: [
-                _ForYouTab(scrollController: _forYouScroll),
-                _FollowingTab(scrollController: _followingScroll),
-              ],
+      body: NestedScrollView(
+        headerSliverBuilder: (ctx, innerScrolled) => [
+          SliverAppBar(
+            backgroundColor: AppColors.backgroundMain,
+            floating: true,
+            snap: true,
+            pinned: false,
+            elevation: 0,
+            scrolledUnderElevation: 0,
+            automaticallyImplyLeading: false,
+            toolbarHeight: 0,
+            bottom: PreferredSize(
+              preferredSize: const Size.fromHeight(52),
+              child: _AppBarContent(),
             ),
           ),
+          SliverPersistentHeader(
+            pinned: true,
+            delegate: _TabBarDelegate(tab: _tab, topPad: statusBarH),
+          ),
         ],
+        body: TabBarView(
+          controller: _tab,
+          children: [
+            _ForYouTab(scrollController: _forYouScroll),
+            _FollowingTab(scrollController: _followingScroll),
+          ],
+        ),
       ),
     );
   }
 }
 
-// ── App bar ───────────────────────────────────────────────────────────────────
+// APP BAR CONTENT
 
 class _AppBarContent extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final profileAsync = ref.watch(currentProfileProvider);
-    final top = MediaQuery.of(context).padding.top;
-
     return Container(
       color: AppColors.backgroundMain,
-      padding: EdgeInsets.fromLTRB(16, top + 8, 8, 8),
+      padding: const EdgeInsets.fromLTRB(16, 0, 8, 8),
       child: Row(
         children: [
           _AppBarAvatar(profile: profileAsync.value),
@@ -194,8 +203,8 @@ class _StreakCup extends StatelessWidget {
       width: 44,
       height: 44,
       child: Center(
-        child:
-        Icon(LucideIcons.coffee, size: 22, color: AppColors.textSecondary),
+        child: Icon(LucideIcons.coffee,
+            size: 22, color: AppColors.textSecondary),
       ),
     ),
   );
@@ -230,10 +239,11 @@ class _StreakCup extends StatelessWidget {
                   textAlign: TextAlign.center),
               const SizedBox(height: 8),
               Text(
-                  'Post a spill or tea every day to keep it alive.',
-                  style: AppTypography.bodyMedium
-                      .copyWith(color: AppColors.textSecondary),
-                  textAlign: TextAlign.center),
+                'Post a spill or tea every day to keep it alive.',
+                style: AppTypography.bodyMedium
+                    .copyWith(color: AppColors.textSecondary),
+                textAlign: TextAlign.center,
+              ),
               const SizedBox(height: 24),
             ],
           ),
@@ -243,21 +253,29 @@ class _StreakCup extends StatelessWidget {
   }
 }
 
-// ── Tab bar row — always visible, no sliver ───────────────────────────────────
+// TAB BAR DELEGATE
 
-class _TabBarRow extends StatelessWidget {
+class _TabBarDelegate extends SliverPersistentHeaderDelegate {
   final TabController tab;
-  const _TabBarRow({required this.tab});
+  final double topPad;
+  const _TabBarDelegate({required this.tab, required this.topPad});
 
   @override
-  Widget build(BuildContext context) {
+  double get minExtent => 44;
+  @override
+  double get maxExtent => 44;
+
+  @override
+  bool shouldRebuild(_TabBarDelegate old) =>
+      old.tab != tab || old.topPad != topPad;
+
+  @override
+  Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
     return Container(
       color: AppColors.backgroundMain,
       child: Column(
-        mainAxisSize: MainAxisSize.min,
         children: [
-          SizedBox(
-            height: 44,
+          Expanded(
             child: TabBar(
               controller: tab,
               onTap: (_) => HapticFeedback.selectionClick(),
@@ -268,13 +286,9 @@ class _TabBarRow extends StatelessWidget {
               labelColor: AppColors.textPrimary,
               unselectedLabelColor: AppColors.textSecondary,
               labelStyle: AppTypography.labelMedium.copyWith(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-              ),
+                  fontSize: 14, fontWeight: FontWeight.w600),
               unselectedLabelStyle: AppTypography.labelMedium.copyWith(
-                fontSize: 14,
-                fontWeight: FontWeight.w400,
-              ),
+                  fontSize: 14, fontWeight: FontWeight.w400),
               tabs: const [Tab(text: 'For You'), Tab(text: 'Following')],
             ),
           ),
@@ -285,7 +299,7 @@ class _TabBarRow extends StatelessWidget {
   }
 }
 
-// ── For You tab ───────────────────────────────────────────────────────────────
+// FOR YOU TAB
 
 class _ForYouTab extends ConsumerWidget {
   final ScrollController scrollController;
@@ -298,8 +312,8 @@ class _ForYouTab extends ConsumerWidget {
 
     return feedAsync.when(
       loading: () => _ShimmerList(),
-      error: (_, __) => _ErrorState(
-          onRetry: () => ref.read(forYouFeedProvider.notifier).refresh()),
+      error: (_, __) =>
+          _ErrorState(onRetry: () => ref.read(forYouFeedProvider.notifier).refresh()),
       data: (feed) {
         if (feed.isLoading) return _ShimmerList();
         if (feed.error != null && feed.posts.isEmpty) {
@@ -332,8 +346,10 @@ class _ForYouTab extends ConsumerWidget {
               return ConfessionCard(
                 post: post,
                 currentAnonId: anonId,
-                onTap: () => FessSnackbar.show(ctx, 'Post detail — Coming soon',
-                    type: SnackbarType.info),
+                onTap: () {
+                  HapticFeedback.selectionClick();
+                  context.push('/post/${post.postId}', extra: post);
+                },
                 onLike: () =>
                     ref.read(forYouFeedProvider.notifier).toggleLike(post.postId),
                 onWitness: () => FessSnackbar.show(
@@ -358,7 +374,7 @@ class _ForYouTab extends ConsumerWidget {
   }
 }
 
-// ── Following tab ─────────────────────────────────────────────────────────────
+// FOLLOWING TAB
 
 class _FollowingTab extends ConsumerWidget {
   final ScrollController scrollController;
@@ -372,8 +388,7 @@ class _FollowingTab extends ConsumerWidget {
     return feedAsync.when(
       loading: () => _ShimmerList(),
       error: (_, __) => _ErrorState(
-          onRetry: () =>
-              ref.read(followingFeedProvider.notifier).refresh()),
+          onRetry: () => ref.read(followingFeedProvider.notifier).refresh()),
       data: (feed) {
         if (feed.isLoading) return _ShimmerList();
         if (feed.posts.isEmpty) {
@@ -381,17 +396,14 @@ class _FollowingTab extends ConsumerWidget {
             scrollController: scrollController,
             icon: LucideIcons.users,
             title: 'Nobody here yet.',
-            subtitle:
-            'Witness people you connect with to see their spills here.',
-            onRefresh: () =>
-                ref.read(followingFeedProvider.notifier).refresh(),
+            subtitle: 'Witness people you connect with to see their spills here.',
+            onRefresh: () => ref.read(followingFeedProvider.notifier).refresh(),
           );
         }
         return RefreshIndicator(
           color: AppColors.accentPrimary,
           backgroundColor: const Color(0xFF1A1A1A),
-          onRefresh: () =>
-              ref.read(followingFeedProvider.notifier).refresh(),
+          onRefresh: () => ref.read(followingFeedProvider.notifier).refresh(),
           child: ListView.builder(
             controller: scrollController,
             physics: const AlwaysScrollableScrollPhysics(),
@@ -402,8 +414,10 @@ class _FollowingTab extends ConsumerWidget {
               return ConfessionCard(
                 post: post,
                 currentAnonId: anonId,
-                onTap: () => FessSnackbar.show(ctx, 'Post detail — Coming soon',
-                    type: SnackbarType.info),
+                onTap: () {
+                  HapticFeedback.selectionClick();
+                  context.push('/post/${post.postId}', extra: post);
+                },
                 onLike: () => ref
                     .read(followingFeedProvider.notifier)
                     .toggleLike(post.postId),
@@ -419,7 +433,7 @@ class _FollowingTab extends ConsumerWidget {
   }
 }
 
-// ── Shared widgets ────────────────────────────────────────────────────────────
+// SHARED WIDGETS
 
 class _ShimmerList extends StatelessWidget {
   @override

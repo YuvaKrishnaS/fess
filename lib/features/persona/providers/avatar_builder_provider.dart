@@ -1,6 +1,5 @@
 import 'dart:math';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/avatar_options.dart';
 import '../../../core/models/avatar_config.dart';
 
