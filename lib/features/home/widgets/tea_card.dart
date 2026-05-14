@@ -1,15 +1,22 @@
+import 'dart:async';
+
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:timeago/timeago.dart' as timeago;
-import 'package:cached_network_image/cached_network_image.dart';
+
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_typography.dart';
 import '../../../core/models/avatar_config.dart';
 import '../../../core/models/tea_post_model.dart';
+import '../../../core/services/audio_service.dart';
 
-class TeaCard extends StatelessWidget {
+// ── Tea Card ──────────────────────────────────────────────────────────────────
+
+class TeaCard extends StatefulWidget {
   final TeaPost post;
   final String? currentAnonId;
   final VoidCallback onTap;
@@ -26,351 +33,405 @@ class TeaCard extends StatelessWidget {
   });
 
   @override
+  State<TeaCard> createState() => _TeaCardState();
+}
+
+class _TeaCardState extends State<TeaCard> {
+  bool _pressed = false;
+
+  @override
   Widget build(BuildContext context) {
+    final isOwn = widget.post.authorId == widget.currentAnonId;
+
     return GestureDetector(
-      onTap: onTap,
+      onTap: () {
+        HapticFeedback.selectionClick();
+        widget.onTap();
+      },
+      onTapDown: (_) => setState(() => _pressed = true),
+      onTapUp: (_) => setState(() => _pressed = false),
+      onTapCancel: () => setState(() => _pressed = false),
       behavior: HitTestBehavior.opaque,
-      child: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _CardHeader(
-                  post: post,
-                  currentAnonId: currentAnonId,
-                  onWitness: onWitness,
-                ),
-                const SizedBox(height: 10),
-                _CardHeading(heading: post.heading),
-                const SizedBox(height: 12),
-                _AudioPlayer(
-                  audioUrl: post.audioUrl,
-                  durationSeconds: post.audioDurationSeconds,
-                ),
-                const SizedBox(height: 12),
-                _CardActions(
-                  post: post,
-                  onLike: onLike,
-                ),
-              ],
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 80),
+        color: _pressed
+            ? const Color(0xFF111111)
+            : Colors.transparent,
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _CardHeader(
+              post: widget.post,
+              isOwn: isOwn,
+              onWitness: widget.onWitness,
             ),
-          ),
-          Container(height: 0.5, color: const Color(0xFF1A1A1A)),
-        ],
+            const SizedBox(height: 10),
+            Text(
+              widget.post.heading,
+              style: AppTypography.h4.copyWith(
+                fontFamily: 'DM Sans',
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                color: AppColors.textPrimary,
+                height: 1.4,
+              ),
+            ),
+            const SizedBox(height: 10),
+            _TeaVoicePlayer(
+              key: ValueKey('tea_voice_${widget.post.postId}'),
+              audioUrl: widget.post.audioUrl,
+              durationSecs: widget.post.audioDurationSeconds,
+            ),
+            const SizedBox(height: 12),
+            _ReactionRow(
+              post: widget.post,
+              onLike: widget.onLike,
+              onComment: widget.onTap,
+            ),
+            const SizedBox(height: 14),
+            const Divider(height: 0.5, thickness: 0.5, color: Color(0xFF1A1A1A)),
+          ],
+        ),
       ),
-    );
+    )
+        .animate()
+        .fadeIn(duration: 280.ms)
+        .slideY(begin: 0.04, end: 0, duration: 280.ms, curve: Curves.easeOut);
   }
 }
 
-// header
+// ── Header ────────────────────────────────────────────────────────────────────
 
 class _CardHeader extends StatelessWidget {
   final TeaPost post;
-  final String? currentAnonId;
+  final bool isOwn;
   final VoidCallback onWitness;
 
   const _CardHeader({
     required this.post,
-    required this.currentAnonId,
+    required this.isOwn,
     required this.onWitness,
   });
 
   @override
   Widget build(BuildContext context) {
-    final avatarUrl =
-    post.authorAvatarConfig.isNotEmpty
+    final avatarUrl = post.authorAvatarConfig.isNotEmpty
         ? AvatarConfig.fromMap(post.authorAvatarConfig).buildUrl(size: 72)
         : null;
 
-    final isOwn = currentAnonId == post.authorId;
+    final timeStr = timeago.format(post.createdAt, locale: 'en_short');
 
     return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        _AvatarCircle(url: avatarUrl),
-        const SizedBox(width: 10),
+        _Avatar(url: avatarUrl),
+        const SizedBox(width: 9),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
             children: [
               Text(
                 '@${post.authorUsername}',
-                style: AppTypography.bodySmall.copyWith(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
+                style: AppTypography.bodyMedium.copyWith(
+                  fontFamily: 'DM Sans',
+                  fontWeight: FontWeight.w700,
+                  fontSize: 14,
                   color: AppColors.textPrimary,
                 ),
               ),
               Text(
-                timeago.format(post.createdAt),
+                timeStr,
                 style: AppTypography.bodySmall.copyWith(
                   fontSize: 11,
-                  color: AppColors.textSecondary,
+                  color: AppColors.hintText,
                 ),
               ),
             ],
           ),
         ),
-        if (!isOwn) _WitnessButton(onTap: onWitness),
+        if (!isOwn)
+          _WitnessButton(isWitnessing: false, onTap: onWitness),
       ],
     );
   }
 }
 
-class _AvatarCircle extends StatelessWidget {
-  final String? url;
+// Avatar - same teal ring as ConfessionCard
 
-  const _AvatarCircle({this.url});
+class _Avatar extends StatelessWidget {
+  final String? url;
+  const _Avatar({this.url});
 
   @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 36,
-      height: 36,
-      decoration: const BoxDecoration(
-        shape: BoxShape.circle,
-        gradient: LinearGradient(
-          colors: [Color(0xFF7C4DFF), Color(0xFF1DE9B6), Color(0xFF7C4DFF)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
+  Widget build(BuildContext context) => Container(
+    width: 36,
+    height: 36,
+    decoration: BoxDecoration(
+      shape: BoxShape.circle,
+      border: Border.all(
+        color: AppColors.accentPrimary.withOpacity(0.35),
+        width: 1.2,
       ),
-      padding: const EdgeInsets.all(1.5),
-      child: Container(
-        decoration: const BoxDecoration(
-          shape: BoxShape.circle,
-          color: AppColors.backgroundMain,
-        ),
-        padding: const EdgeInsets.all(1),
-        child: ClipOval(
-          child: url != null
-              ? CachedNetworkImage(
-            imageUrl: url!,
-            fit: BoxFit.cover,
-            placeholder: (_, __) =>
-                Container(color: const Color(0xFF1A1A1A)),
-            errorWidget: (_, __, ___) => _fallback(),
-          )
-              : _fallback(),
-        ),
-      ),
-    );
-  }
-
-  Widget _fallback() => Container(
-    color: const Color(0xFF1A1A1A),
-    child: const Icon(LucideIcons.user,
-        size: 14, color: Color(0xFF444444)),
+    ),
+    child: ClipOval(
+      child: url != null
+          ? CachedNetworkImage(
+        imageUrl: url!,
+        fit: BoxFit.cover,
+        placeholder: (_, __) =>
+            Container(color: const Color(0xFF1A1A1A)),
+        errorWidget: (_, __, ___) => const _AnonAvatar(),
+      )
+          : const _AnonAvatar(),
+    ),
   );
 }
 
-class _WitnessButton extends StatelessWidget {
-  final VoidCallback onTap;
+class _AnonAvatar extends StatelessWidget {
+  const _AnonAvatar();
+  @override
+  Widget build(BuildContext context) => Container(
+    color: const Color(0xFF1A1A1A),
+    child: const Icon(LucideIcons.user, size: 18, color: AppColors.hintText),
+  );
+}
 
-  const _WitnessButton({required this.onTap});
+// Witness Button - identical to ConfessionCard
+
+class _WitnessButton extends StatefulWidget {
+  final bool isWitnessing;
+  final VoidCallback onTap;
+  const _WitnessButton({required this.isWitnessing, required this.onTap});
 
   @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: () {
-        HapticFeedback.selectionClick();
-        onTap();
-      },
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+  State<_WitnessButton> createState() => _WitnessButtonState();
+}
+
+class _WitnessButtonState extends State<_WitnessButton> {
+  bool _pressed = false;
+
+  @override
+  Widget build(BuildContext context) => GestureDetector(
+    onTapDown: (_) => setState(() => _pressed = true),
+    onTapUp: (_) {
+      setState(() => _pressed = false);
+      HapticFeedback.selectionClick();
+      widget.onTap();
+    },
+    onTapCancel: () => setState(() => _pressed = false),
+    child: AnimatedScale(
+      scale: _pressed ? 0.93 : 1.0,
+      duration: const Duration(milliseconds: 100),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeInOut,
+        height: 28,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
         decoration: BoxDecoration(
-          border: Border.all(color: const Color(0xFF2A2A2A), width: 0.8),
-          borderRadius: BorderRadius.circular(14),
-        ),
-        child: Text(
-          '+ Witness',
-          style: AppTypography.bodySmall.copyWith(
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-            color: AppColors.textSecondary,
+          color: widget.isWitnessing
+              ? AppColors.accentPrimary.withOpacity(0.12)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: widget.isWitnessing
+                ? AppColors.accentPrimary.withOpacity(0.5)
+                : AppColors.accentPrimary.withOpacity(0.4),
+            width: 0.8,
           ),
         ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (widget.isWitnessing) ...[
+              const Icon(LucideIcons.check,
+                  size: 10, color: AppColors.accentPrimary),
+              const SizedBox(width: 4),
+            ],
+            AnimatedDefaultTextStyle(
+              duration: const Duration(milliseconds: 200),
+              style: AppTypography.labelSmall.copyWith(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: AppColors.accentPrimary,
+              ),
+              child: Text(widget.isWitnessing ? 'Witnessing' : 'Witness'),
+            ),
+          ],
+        ),
       ),
-    );
-  }
+    ),
+  );
 }
 
-// Heading
+//Voice Player - uses AudioService.instance, same style as ConfessionCard
 
-class _CardHeading extends StatelessWidget {
-  final String heading;
-
-  const _CardHeading({required this.heading});
-
-  @override
-  Widget build(BuildContext context) {
-    return Text(
-      heading,
-      style: AppTypography.bodyMedium.copyWith(
-        fontFamily: 'DM Sans',
-        fontSize: 15,
-        fontWeight: FontWeight.w600,
-        color: AppColors.textPrimary,
-        height: 1.4,
-      ),
-      maxLines: 3,
-      overflow: TextOverflow.ellipsis,
-    );
-  }
-}
-
-// Audioplayer
-
-class _AudioPlayer extends StatefulWidget {
+class _TeaVoicePlayer extends StatefulWidget {
   final String audioUrl;
-  final int durationSeconds;
+  final int durationSecs;
 
-  const _AudioPlayer({
+  const _TeaVoicePlayer({
+    super.key,
     required this.audioUrl,
-    required this.durationSeconds,
+    required this.durationSecs,
   });
 
   @override
-  State<_AudioPlayer> createState() => _AudioPlayerState();
+  State<_TeaVoicePlayer> createState() => _TeaVoicePlayerState();
 }
 
-class _AudioPlayerState extends State<_AudioPlayer> {
-  final AudioPlayer _player = AudioPlayer();
+class _TeaVoicePlayerState extends State<_TeaVoicePlayer> {
   bool _isPlaying = false;
-  bool _isLoading = false;
   Duration _position = Duration.zero;
   Duration _duration = Duration.zero;
+
+  StreamSubscription? _stateSub;
+  StreamSubscription? _posSub;
+  StreamSubscription? _durSub;
+
+  String _fmt(int s) =>
+      '${(s ~/ 60).toString().padLeft(2, '0')}:${(s % 60).toString().padLeft(2, '0')}';
 
   @override
   void initState() {
     super.initState();
-    _duration = Duration(seconds: widget.durationSeconds);
+    _duration = Duration(seconds: widget.durationSecs);
 
-    _player.playerStateStream.listen((s) {
+    _stateSub = AudioService.instance.playerStateStream.listen((s) {
       if (!mounted) return;
-      setState(() {
-        _isPlaying = s.playing &&
-            s.processingState != ProcessingState.completed;
-        _isLoading =
-            s.processingState == ProcessingState.loading ||
-                s.processingState == ProcessingState.buffering;
-        if (s.processingState == ProcessingState.completed) {
+      final currentUrl = AudioService.instance.currentUrl;
+      final playing = s.playing &&
+          s.processingState != ProcessingState.completed &&
+          currentUrl == widget.audioUrl;
+
+      if (s.processingState == ProcessingState.completed &&
+          currentUrl == widget.audioUrl) {
+        setState(() {
+          _isPlaying = false;
           _position = Duration.zero;
-          _player.seek(Duration.zero);
-        }
-      });
+        });
+        return;
+      }
+      setState(() => _isPlaying = playing);
+      if (!playing && currentUrl != widget.audioUrl) {
+        setState(() => _position = Duration.zero);
+      }
     });
 
-    _player.positionStream.listen((p) {
+    _posSub = AudioService.instance.positionStream.listen((p) {
       if (!mounted) return;
-      setState(() => _position = p);
+      if (AudioService.instance.currentUrl == widget.audioUrl) {
+        setState(() => _position = p);
+      }
     });
 
-    _player.durationStream.listen((d) {
-      if (d != null && mounted) setState(() => _duration = d);
+    _durSub = AudioService.instance.durationStream.listen((d) {
+      if (!mounted) return;
+      if (d != null && AudioService.instance.currentUrl == widget.audioUrl) {
+        setState(() => _duration = d);
+      }
     });
   }
 
   @override
   void dispose() {
-    _player.dispose();
+    _stateSub?.cancel();
+    _posSub?.cancel();
+    _durSub?.cancel();
     super.dispose();
   }
 
   Future<void> _toggle() async {
     HapticFeedback.selectionClick();
     if (_isPlaying) {
-      await _player.pause();
+      await AudioService.instance.pause();
     } else {
-      if (_player.processingState == ProcessingState.idle) {
-        await _player.setUrl(widget.audioUrl);
-      }
-      await _player.play();
+      await AudioService.instance.playUrl(widget.audioUrl);
     }
-  }
-
-  String _fmt(Duration d) {
-    final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
-    final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
-    return '$m:$s';
   }
 
   @override
   Widget build(BuildContext context) {
-    final progress = _duration.inMilliseconds > 0
-        ? (_position.inMilliseconds / _duration.inMilliseconds).clamp(0.0, 1.0)
-        : 0.0;
+    final total = _duration.inMilliseconds > 0
+        ? _duration.inMilliseconds
+        : (widget.durationSecs * 1000);
+    final pct =
+    total > 0 ? (_position.inMilliseconds / total).clamp(0.0, 1.0) : 0.0;
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
       decoration: BoxDecoration(
-        color: const Color(0xFF0F0F1A),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFF1E1E2E), width: 0.8),
+        color: const Color(0xFF0D0D15),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: AppColors.accentPrimary.withOpacity(0.15),
+          width: 0.8,
+        ),
       ),
       child: Row(
         children: [
-          // play/pause
           GestureDetector(
             onTap: _toggle,
-            child: Container(
-              width: 38,
-              height: 38,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 150),
+              width: 32,
+              height: 32,
               decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [Color(0xFF7C4DFF), Color(0xFF1DE9B6)],
-                ),
+                color: _isPlaying
+                    ? AppColors.accentPrimary
+                    : AppColors.accentPrimary.withOpacity(0.12),
                 shape: BoxShape.circle,
               ),
               child: Center(
-                child: _isLoading
-                    ? const SizedBox(
-                  width: 16,
-                  height: 16,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: Colors.white,
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 150),
+                  child: Icon(
+                    _isPlaying ? LucideIcons.pause : LucideIcons.play,
+                    key: ValueKey(_isPlaying),
+                    size: 13,
+                    color: _isPlaying ? Colors.black : AppColors.accentPrimary,
                   ),
-                )
-                    : Icon(
-                  _isPlaying ? LucideIcons.pause : LucideIcons.play,
-                  size: 16,
-                  color: Colors.white,
                 ),
               ),
             ),
           ),
-          const SizedBox(width: 12),
-          // waveform bar + scrubber
+          const SizedBox(width: 10),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // waveform — static decorative bars
-                _WaveformBars(progress: progress),
-                const SizedBox(height: 6),
-                // time
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      _fmt(_position),
-                      style: AppTypography.bodySmall.copyWith(
-                        fontSize: 10,
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
-                    Text(
-                      _fmt(_duration),
-                      style: AppTypography.bodySmall.copyWith(
-                        fontSize: 10,
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
+            child: SliderTheme(
+              data: SliderTheme.of(context).copyWith(
+                trackHeight: 2,
+                thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 4),
+                overlayShape: const RoundSliderOverlayShape(overlayRadius: 10),
+                activeTrackColor: AppColors.accentPrimary,
+                inactiveTrackColor: const Color(0xFF2A2A38),
+                thumbColor: AppColors.accentPrimary,
+                overlayColor: AppColors.accentPrimary.withOpacity(0.12),
+              ),
+              child: Slider(
+                value: pct.toDouble(),
+                min: 0,
+                max: 1,
+                onChanged: (v) {
+                  if (total == 0 ||
+                      AudioService.instance.currentUrl != widget.audioUrl) {
+                    return;
+                  }
+                  AudioService.instance
+                      .seekTo(Duration(milliseconds: (v * total).round()));
+                },
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            _isPlaying && _position.inSeconds > 0
+                ? _fmt(_position.inSeconds)
+                : _fmt(widget.durationSecs),
+            style: AppTypography.bodySmall.copyWith(
+              fontSize: 11,
+              color: AppColors.textSecondary,
+              fontFeatures: [const FontFeature.tabularFigures()],
             ),
           ),
         ],
@@ -379,85 +440,51 @@ class _AudioPlayerState extends State<_AudioPlayer> {
   }
 }
 
-class _WaveformBars extends StatelessWidget {
-  final double progress;
+// Reaction Row
 
-  const _WaveformBars({required this.progress});
-
-  // fixed heights to simulate a waveform (looks natural)
-  static const List<double> _heights = [
-    6, 10, 14, 8, 18, 12, 20, 16, 9, 22,
-    15, 11, 19, 7, 17, 13, 21, 10, 16, 8,
-    14, 18, 12, 20, 9, 15, 11, 17, 13, 6,
-  ];
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      height: 24,
-      child: Row(
-        children: List.generate(_heights.length, (i) {
-          final fraction = i / (_heights.length - 1);
-          final active = fraction <= progress;
-          return Expanded(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 1),
-              child: Center(
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 80),
-                  width: double.infinity,
-                  height: _heights[i],
-                  decoration: BoxDecoration(
-                    color: active
-                        ? AppColors.accentPrimary
-                        : const Color(0xFF2A2A3A),
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-              ),
-            ),
-          );
-        }),
-      ),
-    );
-  }
-}
-
-// Actions
-
-
-class _CardActions extends StatelessWidget {
+class _ReactionRow extends StatelessWidget {
   final TeaPost post;
   final VoidCallback onLike;
+  final VoidCallback onComment;
 
-  const _CardActions({required this.post, required this.onLike});
+  const _ReactionRow({
+    required this.post,
+    required this.onLike,
+    required this.onComment,
+  });
 
   @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        _ActionButton(
-          icon: LucideIcons.messageSquare,
-          count: post.commentCount,
-          onTap: () {},
-          active: false,
-          activeColor: AppColors.accentPrimary,
-        ),
-        const SizedBox(width: 20),
-        _LikeButton(post: post, onLike: onLike),
-      ],
-    );
-  }
+  Widget build(BuildContext context) => Row(
+    children: [
+      _ReactionBtn(
+        icon: LucideIcons.messageCircle,
+        count: post.commentCount,
+        onTap: onComment,
+        active: false,
+        activeColor: AppColors.accentPrimary,
+      ),
+      const SizedBox(width: 20),
+      _LikeBtn(post: post, onLike: onLike),
+      const Spacer(),
+      _ReactionBtn(
+        icon: LucideIcons.share2,
+        count: null,
+        onTap: () {},
+        active: false,
+        activeColor: AppColors.textSecondary,
+      ),
+    ],
+  );
 }
 
-class _ActionButton extends StatelessWidget {
+class _ReactionBtn extends StatelessWidget {
   final IconData icon;
-  final int count;
+  final int? count;
   final VoidCallback onTap;
   final bool active;
   final Color activeColor;
 
-  const _ActionButton({
+  const _ReactionBtn({
     required this.icon,
     required this.count,
     required this.onTap,
@@ -466,55 +493,62 @@ class _ActionButton extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: () {
-        HapticFeedback.selectionClick();
-        onTap();
-      },
+  Widget build(BuildContext context) => GestureDetector(
+    onTap: () {
+      HapticFeedback.selectionClick();
+      onTap();
+    },
+    behavior: HitTestBehavior.opaque,
+    child: Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(
-            icon,
-            size: 18,
-            color: active ? activeColor : AppColors.textSecondary,
-          ),
-          const SizedBox(width: 5),
-          Text(
-            '$count',
-            style: AppTypography.bodySmall.copyWith(
-              fontSize: 13,
-              color: active ? activeColor : AppColors.textSecondary,
+          Icon(icon,
+              size: 17,
+              color: active ? activeColor : AppColors.textSecondary),
+          if (count != null) ...[
+            const SizedBox(width: 5),
+            Text(
+              '$count',
+              style: AppTypography.bodySmall.copyWith(
+                fontSize: 13,
+                color: active ? activeColor : AppColors.textSecondary,
+                fontFeatures: [const FontFeature.tabularFigures()],
+              ),
             ),
-          ),
+          ],
         ],
       ),
-    );
-  }
+    ),
+  );
 }
 
-class _LikeButton extends StatefulWidget {
+class _LikeBtn extends StatefulWidget {
   final TeaPost post;
   final VoidCallback onLike;
-
-  const _LikeButton({required this.post, required this.onLike});
+  const _LikeBtn({required this.post, required this.onLike});
 
   @override
-  State<_LikeButton> createState() => _LikeButtonState();
+  State<_LikeBtn> createState() => _LikeBtnState();
 }
 
-class _LikeButtonState extends State<_LikeButton>
+class _LikeBtnState extends State<_LikeBtn>
     with SingleTickerProviderStateMixin {
-  late AnimationController _ctrl;
-  late Animation<double> _scale;
+  late final AnimationController _ctrl;
+  late final Animation<double> _scale;
 
   @override
   void initState() {
     super.initState();
     _ctrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 180));
-    _scale = Tween<double>(begin: 1.0, end: 1.35).animate(
-        CurvedAnimation(parent: _ctrl, curve: Curves.easeOut));
+        vsync: this, duration: const Duration(milliseconds: 200));
+    _scale = TweenSequence([
+      TweenSequenceItem(
+          tween: Tween(begin: 1.0, end: 1.25), weight: 50),
+      TweenSequenceItem(
+          tween: Tween(begin: 1.25, end: 1.0), weight: 50),
+    ]).animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut));
   }
 
   @override
@@ -523,28 +557,29 @@ class _LikeButtonState extends State<_LikeButton>
     super.dispose();
   }
 
-  void _tap() {
-    HapticFeedback.selectionClick();
-    _ctrl.forward().then((_) => _ctrl.reverse());
-    widget.onLike();
-  }
-
   @override
-  Widget build(BuildContext context) {
-    final liked = widget.post.isLikedByMe;
-    return GestureDetector(
-      onTap: _tap,
+  Widget build(BuildContext context) => GestureDetector(
+    onTap: () {
+      HapticFeedback.mediumImpact();
+      _ctrl.forward(from: 0);
+      widget.onLike();
+    },
+    behavior: HitTestBehavior.opaque,
+    child: Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
           ScaleTransition(
             scale: _scale,
             child: Icon(
-              liked ? LucideIcons.heart : LucideIcons.heart,
-              size: 18,
-              color: liked
+              widget.post.isLikedByMe
+                  ? Icons.favorite_rounded
+                  : Icons.favorite_border_rounded,
+              size: 17,
+              color: widget.post.isLikedByMe
                   ? AppColors.errorLight
                   : AppColors.textSecondary,
-              fill: liked ? 1 : 0,
             ),
           ),
           const SizedBox(width: 5),
@@ -552,85 +587,116 @@ class _LikeButtonState extends State<_LikeButton>
             '${widget.post.likeCount}',
             style: AppTypography.bodySmall.copyWith(
               fontSize: 13,
-              color: liked
+              color: widget.post.isLikedByMe
                   ? AppColors.errorLight
                   : AppColors.textSecondary,
+              fontFeatures: [const FontFeature.tabularFigures()],
             ),
           ),
         ],
       ),
-    );
-  }
+    ),
+  );
 }
 
 // Shimmer Card
 
-class TeaShimmerCard extends StatelessWidget {
+class TeaShimmerCard extends StatefulWidget {
   const TeaShimmerCard({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+  State<TeaShimmerCard> createState() => _TeaShimmerCardState();
+}
+
+class _TeaShimmerCardState extends State<TeaShimmerCard>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl;
+  late final Animation<double> _anim;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 1500))
+      ..repeat();
+    _anim = CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut);
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AnimatedBuilder(
+    animation: _anim,
+    builder: (_, __) => Container(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              _Shimmer(width: 36, height: 36, radius: 18),
-              const SizedBox(width: 10),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _Shimmer(width: 90, height: 11),
-                  const SizedBox(height: 4),
-                  _Shimmer(width: 50, height: 9),
-                ],
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          _Shimmer(width: double.infinity, height: 13),
-          const SizedBox(height: 4),
-          _Shimmer(width: 160, height: 13),
+          Row(children: [
+            _Bone(w: 36, h: 36, radius: 18, anim: _anim),
+            const SizedBox(width: 9),
+            Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              _Bone(w: 100, h: 12, radius: 4, anim: _anim),
+              const SizedBox(height: 4),
+              _Bone(w: 50, h: 10, radius: 4, anim: _anim),
+            ]),
+          ]),
           const SizedBox(height: 12),
-          _Shimmer(width: double.infinity, height: 58, radius: 12),
+          _Bone(w: double.infinity, h: 14, radius: 4, anim: _anim),
+          const SizedBox(height: 6),
+          _Bone(w: 220, h: 12, radius: 4, anim: _anim),
           const SizedBox(height: 12),
-          Row(
-            children: [
-              _Shimmer(width: 44, height: 13),
-              const SizedBox(width: 20),
-              _Shimmer(width: 44, height: 13),
-            ],
-          ),
+          _Bone(w: double.infinity, h: 52, radius: 10, anim: _anim),
           const SizedBox(height: 12),
-          Container(height: 0.5, color: const Color(0xFF1A1A1A)),
+          Row(children: [
+            _Bone(w: 40, h: 12, radius: 4, anim: _anim),
+            const SizedBox(width: 20),
+            _Bone(w: 40, h: 12, radius: 4, anim: _anim),
+          ]),
+          const SizedBox(height: 14),
+          const Divider(
+              height: 0.5, thickness: 0.5, color: Color(0xFF1A1A1A)),
         ],
       ),
-    );
-  }
+    ),
+  );
 }
 
-class _Shimmer extends StatelessWidget {
-  final double width;
-  final double height;
+class _Bone extends StatelessWidget {
+  final double w;
+  final double h;
   final double radius;
-
-  const _Shimmer({
-    required this.width,
-    required this.height,
-    this.radius = 4,
-  });
+  final Animation<double> anim;
+  const _Bone(
+      {required this.w,
+        required this.h,
+        required this.radius,
+        required this.anim});
 
   @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: width,
-      height: height,
-      decoration: BoxDecoration(
-        color: const Color(0xFF1A1A1A),
-        borderRadius: BorderRadius.circular(radius),
+  Widget build(BuildContext context) => Container(
+    width: w,
+    height: h,
+    decoration: BoxDecoration(
+      borderRadius: BorderRadius.circular(radius),
+      gradient: LinearGradient(
+        begin: Alignment.centerLeft,
+        end: Alignment.centerRight,
+        colors: const [
+          Color(0xFF1A1A28),
+          Color(0xFF252535),
+          Color(0xFF1A1A28),
+        ],
+        stops: [
+          (anim.value - 0.5).clamp(0.0, 1.0),
+          anim.value.clamp(0.0, 1.0),
+          (anim.value + 0.5).clamp(0.0, 1.0),
+        ],
       ),
-    );
-  }
+    ),
+  );
 }
