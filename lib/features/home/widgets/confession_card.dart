@@ -1,4 +1,5 @@
 import 'dart:async';
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -6,13 +7,15 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:timeago/timeago.dart' as timeago;
+
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_typography.dart';
 import '../../../core/models/avatar_config.dart';
 import '../../../core/models/post_model.dart';
 import '../../../core/services/audio_service.dart';
+import '../../../core/widgets/fess_snackbar.dart';
 
-class ConfessionCard extends StatelessWidget {
+class ConfessionCard extends StatefulWidget {
   final PostModel post;
   final String? currentAnonId;
   final VoidCallback onLike;
@@ -33,23 +36,43 @@ class ConfessionCard extends StatelessWidget {
   });
 
   @override
+  State<ConfessionCard> createState() => _ConfessionCardState();
+}
+
+class _ConfessionCardState extends State<ConfessionCard> {
+  bool _pressed = false;
+
+  @override
   Widget build(BuildContext context) {
-    final isOwn = post.authorId == currentAnonId;
+    final isOwn = widget.post.authorId == widget.currentAnonId;
+
     return GestureDetector(
       onTap: () {
         HapticFeedback.selectionClick();
-        onTap();
+        widget.onTap();
       },
-      child: Container(
-        color: Colors.transparent,
+      onTapDown: (_) => setState(() => _pressed = true),
+      onTapUp: (_) => setState(() => _pressed = false),
+      onTapCancel: () => setState(() => _pressed = false),
+      onLongPress: () {
+        HapticFeedback.mediumImpact();
+        FessSnackbar.show(
+          context,
+          'Report & Block — coming soon',
+          type: SnackbarType.info,
+        );
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 80),
+        color: _pressed ? const Color(0xFF111111) : Colors.transparent,
         padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _CardHeader(post: post, isOwn: isOwn, onWitness: onWitness),
+            _CardHeader(post: widget.post, isOwn: isOwn, onWitness: widget.onWitness),
             const SizedBox(height: 10),
             Text(
-              post.heading,
+              widget.post.heading,
               style: AppTypography.h4.copyWith(
                 fontFamily: 'DM Sans',
                 fontSize: 16,
@@ -58,10 +81,10 @@ class ConfessionCard extends StatelessWidget {
                 height: 1.4,
               ),
             ),
-            if (post.body != null && post.body!.isNotEmpty) ...[
+            if (widget.post.body != null && widget.post.body!.isNotEmpty) ...[
               const SizedBox(height: 5),
               Text(
-                post.body!,
+                widget.post.body!,
                 maxLines: 3,
                 overflow: TextOverflow.ellipsis,
                 style: AppTypography.bodyMedium.copyWith(
@@ -70,25 +93,25 @@ class ConfessionCard extends StatelessWidget {
                 ),
               ),
             ],
-            if (post.imageUrls.isNotEmpty) ...[
+            if (widget.post.imageUrls.isNotEmpty) ...[
               const SizedBox(height: 10),
-              _CardImage(url: post.imageUrls.first),
+              _CardImage(url: widget.post.imageUrls.first),
             ],
-            if (post.audioUrl != null && post.audioUrl!.isNotEmpty) ...[
+            if (widget.post.audioUrl != null &&
+                widget.post.audioUrl!.isNotEmpty) ...[
               const SizedBox(height: 10),
-              // KEY: use postId so each player is unique and isolated
               _InlineVoicePlayer(
-                key: ValueKey('voice_${post.postId}'),
-                audioUrl: post.audioUrl!,
-                durationSecs: post.audioDuration ?? 0,
+                key: ValueKey('voice_${widget.post.postId}'),
+                audioUrl: widget.post.audioUrl!,
+                durationSecs: widget.post.audioDuration ?? 0,
               ),
             ],
             const SizedBox(height: 12),
             _ReactionRow(
-              post: post,
-              onLike: onLike,
-              onComment: onComment ?? () {},
-              onShare: onShare ?? () {},
+              post: widget.post,
+              onLike: widget.onLike,
+              onComment: widget.onComment ?? widget.onTap,
+              onShare: widget.onShare ?? () {},
             ),
             const SizedBox(height: 14),
             const Divider(height: 0.5, thickness: 0.5, color: Color(0xFF1A1A1A)),
@@ -102,7 +125,7 @@ class ConfessionCard extends StatelessWidget {
   }
 }
 
-// ── Card header ───────────────────────────────────────────────────────────────
+// Card Header
 
 class _CardHeader extends StatelessWidget {
   final PostModel post;
@@ -117,12 +140,10 @@ class _CardHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // FIX: use AvatarConfig.fromMap().buildUrl() — correct style, correct params
     final avatarUrl = post.authorAvatarConfig != null
         ? AvatarConfig.fromMap(post.authorAvatarConfig!).buildUrl(size: 72)
         : null;
 
-    // FIX: createdAt is nullable
     final timeStr = post.createdAt != null
         ? timeago.format(post.createdAt!, locale: 'en_short')
         : 'just now';
@@ -137,7 +158,6 @@ class _CardHeader extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              // FIX: @ before username
               Text(
                 '@${post.authorUsername ?? 'anon'}',
                 style: AppTypography.bodyMedium.copyWith(
@@ -147,17 +167,25 @@ class _CardHeader extends StatelessWidget {
                   color: AppColors.textPrimary,
                 ),
               ),
-              Text(
-                timeStr,
-                style: AppTypography.bodySmall.copyWith(
-                  fontSize: 11,
-                  color: AppColors.hintText,
+              GestureDetector(
+                onLongPress: () {
+                  if (post.createdAt == null) return;
+                  final full =
+                      '${post.createdAt!.day}/${post.createdAt!.month}/${post.createdAt!.year}  '
+                      '${post.createdAt!.hour.toString().padLeft(2, '0')}:${post.createdAt!.minute.toString().padLeft(2, '0')}';
+                  FessSnackbar.show(context, full, type: SnackbarType.info);
+                },
+                child: Text(
+                  timeStr,
+                  style: AppTypography.bodySmall.copyWith(
+                    fontSize: 11,
+                    color: AppColors.hintText,
+                  ),
                 ),
               ),
             ],
           ),
         ),
-        // isWitnessing doesn't exist on PostModel yet — hardcoded false until M8
         if (!isOwn)
           _WitnessButton(isWitnessing: false, onTap: onWitness),
       ],
@@ -259,8 +287,7 @@ class _WitnessButtonState extends State<_WitnessButton> {
                 fontWeight: FontWeight.w600,
                 color: AppColors.accentPrimary,
               ),
-              child:
-              Text(widget.isWitnessing ? 'Witnessing' : 'Witness'),
+              child: Text(widget.isWitnessing ? 'Witnessing' : 'Witness'),
             ),
           ],
         ),
@@ -269,7 +296,7 @@ class _WitnessButtonState extends State<_WitnessButton> {
   );
 }
 
-// ── Card image ────────────────────────────────────────────────────────────────
+// Card Image
 
 class _CardImage extends StatelessWidget {
   final String url;
@@ -283,8 +310,7 @@ class _CardImage extends StatelessWidget {
       child: CachedNetworkImage(
         imageUrl: url,
         fit: BoxFit.cover,
-        placeholder: (_, __) =>
-            Container(color: const Color(0xFF1A1A1A)),
+        placeholder: (_, __) => Container(color: const Color(0xFF1A1A1A)),
         errorWidget: (_, __, ___) => Container(
           color: const Color(0xFF1A1A1A),
           child: const Center(
@@ -297,10 +323,7 @@ class _CardImage extends StatelessWidget {
   );
 }
 
-// ── Inline voice player — ISOLATED per card ───────────────────────────────────
-// FIX: each instance tracks its own playing state by comparing the
-// currently-playing URL against this card's audioUrl. When a different
-// card's audio starts, this card's UI resets automatically.
+// Inline Voice player
 
 class _InlineVoicePlayer extends StatefulWidget {
   final String audioUrl;
@@ -317,13 +340,13 @@ class _InlineVoicePlayer extends StatefulWidget {
 }
 
 class _InlineVoicePlayerState extends State<_InlineVoicePlayer> {
-  bool _isThisCardPlaying = false;
+  bool _isPlaying = false;
   Duration _position = Duration.zero;
   Duration _duration = Duration.zero;
 
-  StreamSubscription<PlayerState>? _stateSub;
-  StreamSubscription<Duration>? _posSub;
-  StreamSubscription<Duration?>? _durSub;
+  StreamSubscription? _stateSub;
+  StreamSubscription? _posSub;
+  StreamSubscription? _durSub;
 
   String _fmt(int s) =>
       '${(s ~/ 60).toString().padLeft(2, '0')}:${(s % 60).toString().padLeft(2, '0')}';
@@ -335,7 +358,6 @@ class _InlineVoicePlayerState extends State<_InlineVoicePlayer> {
 
     _stateSub = AudioService.instance.playerStateStream.listen((s) {
       if (!mounted) return;
-      // Only this card is "playing" if the current URL matches AND player is active
       final currentUrl = AudioService.instance.currentUrl;
       final playing = s.playing &&
           s.processingState != ProcessingState.completed &&
@@ -344,14 +366,12 @@ class _InlineVoicePlayerState extends State<_InlineVoicePlayer> {
       if (s.processingState == ProcessingState.completed &&
           currentUrl == widget.audioUrl) {
         setState(() {
-          _isThisCardPlaying = false;
+          _isPlaying = false;
           _position = Duration.zero;
         });
         return;
       }
-      setState(() => _isThisCardPlaying = playing);
-
-      // If a different card started playing, reset our position display
+      setState(() => _isPlaying = playing);
       if (!playing && currentUrl != widget.audioUrl) {
         setState(() => _position = Duration.zero);
       }
@@ -359,7 +379,6 @@ class _InlineVoicePlayerState extends State<_InlineVoicePlayer> {
 
     _posSub = AudioService.instance.positionStream.listen((p) {
       if (!mounted) return;
-      // Only update position if we're the active card
       if (AudioService.instance.currentUrl == widget.audioUrl) {
         setState(() => _position = p);
       }
@@ -383,10 +402,9 @@ class _InlineVoicePlayerState extends State<_InlineVoicePlayer> {
 
   Future<void> _toggle() async {
     HapticFeedback.selectionClick();
-    if (_isThisCardPlaying) {
+    if (_isPlaying) {
       await AudioService.instance.pause();
     } else {
-      // This will stop whatever is currently playing on another card
       await AudioService.instance.playUrl(widget.audioUrl);
     }
   }
@@ -396,9 +414,8 @@ class _InlineVoicePlayerState extends State<_InlineVoicePlayer> {
     final total = _duration.inMilliseconds > 0
         ? _duration.inMilliseconds
         : (widget.durationSecs * 1000);
-    final pct = total > 0
-        ? (_position.inMilliseconds / total).clamp(0.0, 1.0)
-        : 0.0;
+    final pct =
+    total > 0 ? (_position.inMilliseconds / total).clamp(0.0, 1.0) : 0.0;
 
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
@@ -419,7 +436,7 @@ class _InlineVoicePlayerState extends State<_InlineVoicePlayer> {
               width: 32,
               height: 32,
               decoration: BoxDecoration(
-                color: _isThisCardPlaying
+                color: _isPlaying
                     ? AppColors.accentPrimary
                     : AppColors.accentPrimary.withOpacity(0.12),
                 shape: BoxShape.circle,
@@ -428,12 +445,10 @@ class _InlineVoicePlayerState extends State<_InlineVoicePlayer> {
                 child: AnimatedSwitcher(
                   duration: const Duration(milliseconds: 150),
                   child: Icon(
-                    _isThisCardPlaying ? LucideIcons.pause : LucideIcons.play,
-                    key: ValueKey(_isThisCardPlaying),
+                    _isPlaying ? LucideIcons.pause : LucideIcons.play,
+                    key: ValueKey(_isPlaying),
                     size: 13,
-                    color: _isThisCardPlaying
-                        ? Colors.black
-                        : AppColors.accentPrimary,
+                    color: _isPlaying ? Colors.black : AppColors.accentPrimary,
                   ),
                 ),
               ),
@@ -470,7 +485,7 @@ class _InlineVoicePlayerState extends State<_InlineVoicePlayer> {
           ),
           const SizedBox(width: 8),
           Text(
-            _isThisCardPlaying && _position.inSeconds > 0
+            _isPlaying && _position.inSeconds > 0
                 ? _fmt(_position.inSeconds)
                 : _fmt(widget.durationSecs),
             style: AppTypography.bodySmall.copyWith(
@@ -485,7 +500,7 @@ class _InlineVoicePlayerState extends State<_InlineVoicePlayer> {
   }
 }
 
-// ── Reaction row ──────────────────────────────────────────────────────────────
+// Reaction Row
 
 class _ReactionRow extends StatelessWidget {
   final PostModel post;
@@ -551,16 +566,19 @@ class _ReactionBtn extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 17,
+          Icon(icon,
+              size: 17,
               color: active ? activeColor : AppColors.textSecondary),
           if (count != null) ...[
             const SizedBox(width: 5),
-            Text('$count',
-                style: AppTypography.bodySmall.copyWith(
-                  fontSize: 13,
-                  color: active ? activeColor : AppColors.textSecondary,
-                  fontFeatures: [const FontFeature.tabularFigures()],
-                )),
+            Text(
+              '$count',
+              style: AppTypography.bodySmall.copyWith(
+                fontSize: 13,
+                color: active ? activeColor : AppColors.textSecondary,
+                fontFeatures: [const FontFeature.tabularFigures()],
+              ),
+            ),
           ],
         ],
       ),
@@ -589,9 +607,9 @@ class _LikeBtnState extends State<_LikeBtn>
         vsync: this, duration: const Duration(milliseconds: 200));
     _scale = TweenSequence([
       TweenSequenceItem(
-          tween: Tween<double>(begin: 1, end: 1.25), weight: 50),
+          tween: Tween(begin: 1.0, end: 1.25), weight: 50),
       TweenSequenceItem(
-          tween: Tween<double>(begin: 1.25, end: 1.0), weight: 50),
+          tween: Tween(begin: 1.25, end: 1.0), weight: 50),
     ]).animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut));
   }
 
@@ -604,7 +622,7 @@ class _LikeBtnState extends State<_LikeBtn>
   @override
   Widget build(BuildContext context) => GestureDetector(
     onTap: () {
-      HapticFeedback.selectionClick();
+      HapticFeedback.mediumImpact();
       _ctrl.forward(from: 0);
       widget.onLike();
     },
@@ -627,21 +645,23 @@ class _LikeBtnState extends State<_LikeBtn>
             ),
           ),
           const SizedBox(width: 5),
-          Text('${widget.post.likeCount}',
-              style: AppTypography.bodySmall.copyWith(
-                fontSize: 13,
-                color: widget.post.isLiked
-                    ? AppColors.errorLight
-                    : AppColors.textSecondary,
-                fontFeatures: [const FontFeature.tabularFigures()],
-              )),
+          Text(
+            '${widget.post.likeCount}',
+            style: AppTypography.bodySmall.copyWith(
+              fontSize: 13,
+              color: widget.post.isLiked
+                  ? AppColors.errorLight
+                  : AppColors.textSecondary,
+              fontFeatures: [const FontFeature.tabularFigures()],
+            ),
+          ),
         ],
       ),
     ),
   );
 }
 
-// ── Shimmer card ──────────────────────────────────────────────────────────────
+// Shimmer Card
 
 class ConfessionShimmerCard extends StatefulWidget {
   const ConfessionShimmerCard({super.key});
@@ -681,11 +701,13 @@ class _ConfessionShimmerCardState extends State<ConfessionShimmerCard>
           Row(children: [
             _Bone(w: 36, h: 36, radius: 18, anim: _anim),
             const SizedBox(width: 9),
-            Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              _Bone(w: 100, h: 12, radius: 4, anim: _anim),
-              const SizedBox(height: 4),
-              _Bone(w: 50, h: 10, radius: 4, anim: _anim),
-            ]),
+            Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _Bone(w: 100, h: 12, radius: 4, anim: _anim),
+                  const SizedBox(height: 4),
+                  _Bone(w: 50, h: 10, radius: 4, anim: _anim),
+                ]),
           ]),
           const SizedBox(height: 12),
           _Bone(w: double.infinity, h: 14, radius: 4, anim: _anim),

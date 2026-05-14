@@ -1,6 +1,4 @@
 import 'dart:async';
-import 'dart:math';
-
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -339,7 +337,7 @@ class _CreateConfessionSheetState
     }
   }
 
-  // ── Build ─────────────────────────────────────────────────────────────────
+  // BUILD
 
   @override
   Widget build(BuildContext context) {
@@ -492,7 +490,7 @@ class _CreateConfessionSheetState
 
 enum _VoiceState { idle, recording, recorded }
 
-// ── Sheet tab bar ─────────────────────────────────────────────────────────────
+// SHEET TEA BAR
 
 class _SheetTabBar extends StatelessWidget {
   final TabController ctrl;
@@ -533,7 +531,7 @@ class _SheetTabBar extends StatelessWidget {
   );
 }
 
-// ── Spill composer ────────────────────────────────────────────────────────────
+// SPILL COMPOSER
 
 class _SpillComposer extends StatelessWidget {
   final String? avatarUrl;
@@ -614,7 +612,7 @@ class _SpillComposer extends StatelessWidget {
                     height: 1.45,
                   ),
                   decoration: const InputDecoration(
-                    hintText: 'What\'s on your mind?',
+                    hintText: 'Title',
                     hintStyle: TextStyle(
                       fontFamily: 'DM Sans',
                       fontSize: 18,
@@ -646,7 +644,7 @@ class _SpillComposer extends StatelessWidget {
                     height: 1.6,
                   ),
                   decoration: InputDecoration(
-                    hintText: 'Say more, if you want...',
+                    hintText: 'Spill it Completely..!',
                     hintStyle: AppTypography.bodySmall.copyWith(
                       fontSize: 15,
                       color: AppColors.hintText,
@@ -684,7 +682,7 @@ class _SpillComposer extends StatelessWidget {
   }
 }
 
-// ── Tea composer ──────────────────────────────────────────────────────────────
+// Tea Composer
 
 class _TeaComposer extends StatelessWidget {
   final String? avatarUrl;
@@ -803,7 +801,7 @@ class _TeaComposer extends StatelessWidget {
   }
 }
 
-// ── Composer avatar ───────────────────────────────────────────────────────────
+// Compose avatar
 
 class _ComposerAvatar extends StatelessWidget {
   final String? url;
@@ -842,7 +840,7 @@ class _ComposerAvatar extends StatelessWidget {
   );
 }
 
-// ── Voice section ─────────────────────────────────────────────────────────────
+// Voice Section
 
 class _VoiceSection extends StatelessWidget {
   final bool optional;
@@ -907,7 +905,7 @@ class _VoiceSection extends StatelessWidget {
   );
 }
 
-// ── Idle voice ────────────────────────────────────────────────────────────────
+// Idle Voice
 
 class _IdleVoice extends StatelessWidget {
   final bool optional;
@@ -954,7 +952,7 @@ class _IdleVoice extends StatelessWidget {
   );
 }
 
-// ── Recording voice ───────────────────────────────────────────────────────────
+// RECORDING VOICE
 
 class _RecordingVoice extends StatelessWidget {
   final int elapsed;
@@ -1083,7 +1081,7 @@ class _RecDotState extends State<_RecDot> with SingleTickerProviderStateMixin {
   );
 }
 
-// ── Recorded voice (swipe left to delete) ────────────────────────────────────
+// RECORD VOICE (SWIPE TO DELETE)
 
 class _RecordedVoice extends StatefulWidget {
   final int recSecs;
@@ -1264,7 +1262,7 @@ class _RecordedVoiceState extends State<_RecordedVoice> {
   }
 }
 
-// ── Post button ───────────────────────────────────────────────────────────────
+// POST BUTTON
 
 class _PostBtn extends StatefulWidget {
   final String label;
