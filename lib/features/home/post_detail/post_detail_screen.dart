@@ -17,6 +17,7 @@ import '../../../core/models/post_model.dart';
 import '../../../core/services/audio_service.dart';
 import '../../../core/widgets/fess_snackbar.dart';
 import '../providers/post_detail_provider.dart';
+import '../providers/witness_provider.dart';
 
 Route<void> postDetailHeroRoute(String postId, {PostModel? initialPost}) {
   return PageRouteBuilder(
@@ -29,7 +30,7 @@ Route<void> postDetailHeroRoute(String postId, {PostModel? initialPost}) {
         parent: animation,
         curve: const Interval(0.0, 0.6, curve: Curves.easeOut),
       );
-      final scale = Tween<double>(begin: 0.97, end: 1.0).animate(
+      final scale = Tween(begin: 0.97, end: 1.0).animate(
         CurvedAnimation(parent: animation, curve: Curves.easeOutCubic),
       );
       return FadeTransition(
@@ -132,9 +133,6 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                             .read(postDetailProvider(widget.postId)
                             .notifier)
                             .togglePostLike(),
-                        onWitness: () => FessSnackbar.show(
-                            context, 'Witness system — Coming soon',
-                            type: SnackbarType.info),
                       ),
                     ),
                   ).animate().fadeIn(duration: 250.ms),
@@ -252,21 +250,24 @@ class _DetailAppBar extends StatelessWidget {
   }
 }
 
-class _PostBody extends StatelessWidget {
+class _PostBody extends ConsumerWidget {
   final PostModel post;
   final VoidCallback onLike;
-  final VoidCallback onWitness;
 
-  const _PostBody(
-      {required this.post, required this.onLike, required this.onWitness});
+  const _PostBody({required this.post, required this.onLike});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final avatarUrl = post.authorAvatarConfig != null
         ? AvatarConfig.fromMap(post.authorAvatarConfig!).buildUrl(size: 72)
         : null;
     final timeStr =
     post.createdAt != null ? timeago.format(post.createdAt!) : 'just now';
+
+    final authorId = post.authorId ?? '';
+    final isWitnessing = authorId.isNotEmpty
+        ? ref.watch(witnessStateProvider(authorId))
+        : false;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
@@ -298,7 +299,13 @@ class _PostBody extends StatelessWidget {
                   ],
                 ),
               ),
-              _WitnessBtn(onTap: onWitness),
+              if (authorId.isNotEmpty)
+                _WitnessBtn(
+                  isWitnessing: isWitnessing,
+                  onTap: () => ref
+                      .read(witnessStateProvider(authorId).notifier)
+                      .toggle(),
+                ),
             ],
           ),
           const SizedBox(height: 14),
@@ -388,8 +395,9 @@ class _AvatarRing extends StatelessWidget {
 }
 
 class _WitnessBtn extends StatefulWidget {
+  final bool isWitnessing;
   final VoidCallback onTap;
-  const _WitnessBtn({required this.onTap});
+  const _WitnessBtn({required this.isWitnessing, required this.onTap});
 
   @override
   State<_WitnessBtn> createState() => _WitnessBtnState();
@@ -410,23 +418,42 @@ class _WitnessBtnState extends State<_WitnessBtn> {
     child: AnimatedScale(
       scale: _pressed ? 0.93 : 1.0,
       duration: const Duration(milliseconds: 100),
-      child: Container(
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeInOut,
         height: 28,
         padding: const EdgeInsets.symmetric(horizontal: 12),
         decoration: BoxDecoration(
+          color: widget.isWitnessing
+              ? AppColors.accentPrimary.withOpacity(0.12)
+              : Colors.transparent,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
-              color: AppColors.accentPrimary.withOpacity(0.4), width: 0.8),
-        ),
-        child: Center(
-          child: Text(
-            'Witness',
-            style: AppTypography.labelSmall.copyWith(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: AppColors.accentPrimary,
-            ),
+            color: widget.isWitnessing
+                ? AppColors.accentPrimary.withOpacity(0.5)
+                : AppColors.accentPrimary.withOpacity(0.4),
+            width: 0.8,
           ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (widget.isWitnessing) ...[
+              const Icon(LucideIcons.check,
+                  size: 10, color: AppColors.accentPrimary),
+              const SizedBox(width: 4),
+            ],
+            AnimatedDefaultTextStyle(
+              duration: const Duration(milliseconds: 200),
+              style: AppTypography.labelSmall.copyWith(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: AppColors.accentPrimary,
+              ),
+              child:
+              Text(widget.isWitnessing ? 'Witnessing' : 'Witness'),
+            ),
+          ],
         ),
       ),
     ),
@@ -991,78 +1018,67 @@ class _CommentInput extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
+      padding: EdgeInsets.only(
+        left: 16,
+        right: 12,
+        top: 10,
+        bottom: MediaQuery.of(context).viewInsets.bottom + 10,
+      ),
       decoration: const BoxDecoration(
         color: AppColors.backgroundMain,
-        border: Border(
-          top: BorderSide(color: Color(0xFF1A1A1A), width: 0.5),
-        ),
+        border:
+        Border(top: BorderSide(color: Color(0xFF1A1A1A), width: 0.5)),
       ),
-      padding: EdgeInsets.fromLTRB(
-          16, 10, 12, MediaQuery.of(context).padding.bottom + 10),
       child: Row(
         children: [
           Expanded(
-            child: Container(
-              constraints: const BoxConstraints(maxHeight: 100),
-              decoration: BoxDecoration(
-                color: const Color(0xFF0F0F0F),
-                borderRadius: BorderRadius.circular(22),
-                border: Border.all(color: const Color(0xFF2A2A2A), width: 0.8),
+            child: TextField(
+              controller: controller,
+              focusNode: focusNode,
+              style: AppTypography.bodyMedium.copyWith(
+                fontSize: 14,
+                color: AppColors.textPrimary,
               ),
-              child: TextField(
-                controller: controller,
-                focusNode: focusNode,
-                maxLines: null,
-                minLines: 1,
-                maxLength: 300,
-                style: AppTypography.bodySmall.copyWith(
+              decoration: InputDecoration(
+                hintText: 'Add a comment…',
+                hintStyle: AppTypography.bodyMedium.copyWith(
                   fontSize: 14,
-                  color: AppColors.textPrimary,
-                  height: 1.4,
+                  color: AppColors.hintText,
                 ),
-                decoration: InputDecoration(
-                  hintText: 'Add a comment...',
-                  hintStyle: AppTypography.bodySmall.copyWith(
-                    fontSize: 14,
-                    color: AppColors.hintText,
-                  ),
-                  contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 14, vertical: 10),
-                  border: InputBorder.none,
-                  counterText: '',
-                ),
-                textInputAction: TextInputAction.newline,
-                onSubmitted: (_) => onSubmit(),
+                border: InputBorder.none,
+                isDense: true,
+                contentPadding: const EdgeInsets.symmetric(vertical: 8),
               ),
+              maxLines: null,
+              textInputAction: TextInputAction.send,
+              onSubmitted: (_) => onSubmit(),
             ),
           ),
           const SizedBox(width: 8),
           GestureDetector(
             onTap: isSubmitting ? null : onSubmit,
-            child: AnimatedContainer(
+            child: AnimatedOpacity(
+              opacity: isSubmitting ? 0.4 : 1.0,
               duration: const Duration(milliseconds: 150),
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(
-                gradient: isSubmitting
-                    ? null
-                    : const LinearGradient(
-                  colors: [Color(0xFF7C4DFF), Color(0xFF1DE9B6)],
+              child: Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  color: AppColors.accentPrimary.withOpacity(0.15),
+                  shape: BoxShape.circle,
                 ),
-                color: isSubmitting ? const Color(0xFF1A1A1A) : null,
-                shape: BoxShape.circle,
-              ),
-              child: Center(
                 child: isSubmitting
-                    ? const SizedBox(
-                  width: 16,
-                  height: 16,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 1.5,
-                    color: AppColors.textSecondary,
+                    ? const Center(
+                  child: SizedBox(
+                    width: 14,
+                    height: 14,
+                    child: CircularProgressIndicator(
+                        strokeWidth: 1.5,
+                        color: AppColors.accentPrimary),
                   ),
                 )
-                    : const Icon(LucideIcons.send, size: 16, color: Colors.white),
+                    : const Icon(LucideIcons.send,
+                    size: 15, color: AppColors.accentPrimary),
               ),
             ),
           ),
@@ -1071,126 +1087,3 @@ class _CommentInput extends StatelessWidget {
     );
   }
 }
-//
-// class _CommentInputState extends State<_CommentInput> {
-//   bool _focused = false;
-//   bool _hasText = false;
-//
-//   @override
-//   void initState() {
-//     super.initState();
-//     widget.focusNode.addListener(_onFocusChange);
-//     widget.controller.addListener(_onTextChange);
-//   }
-//
-//   @override
-//   void dispose() {
-//     widget.focusNode.removeListener(_onFocusChange);
-//     widget.controller.removeListener(_onTextChange);
-//     super.dispose();
-//   }
-//
-//   void _onFocusChange() {
-//     if (mounted) setState(() => _focused = widget.focusNode.hasFocus);
-//   }
-//
-//   void _onTextChange() {
-//     final has = widget.controller.text.trim().isNotEmpty;
-//     if (has != _hasText && mounted) setState(() => _hasText = has);
-//   }
-//
-//   @override
-//   Widget build(BuildContext context) {
-//     return Container(
-//       decoration: BoxDecoration(
-//         color: AppColors.backgroundMain,
-//         border: Border(
-//           top: BorderSide(
-//             color: _focused
-//                 ? AppColors.accentPrimary.withOpacity(0.25)
-//                 : const Color(0xFF1A1A1A),
-//             width: 0.5,
-//           ),
-//         ),
-//       ),
-//       padding: EdgeInsets.fromLTRB(
-//           16, 10, 12, MediaQuery.of(context).padding.bottom + 10),
-//       child: Row(
-//         crossAxisAlignment: CrossAxisAlignment.end,
-//         children: [
-//           Expanded(
-//             child: TextField(
-//               controller: widget.controller,
-//               focusNode: widget.focusNode,
-//               maxLines: null,
-//               minLines: 1,
-//               maxLength: 300,
-//               style: AppTypography.bodySmall.copyWith(
-//                 fontSize: 14,
-//                 color: AppColors.textPrimary,
-//                 height: 1.4,
-//               ),
-//               decoration: InputDecoration(
-//                 hintText: 'say something...',
-//                 hintStyle: AppTypography.bodySmall.copyWith(
-//                   fontSize: 14,
-//                   color: AppColors.hintText,
-//                   fontStyle: FontStyle.italic,
-//                 ),
-//                 contentPadding:
-//                 const EdgeInsets.symmetric(horizontal: 0, vertical: 8),
-//                 border: InputBorder.none,
-//                 enabledBorder: UnderlineInputBorder(
-//                   borderSide: BorderSide(
-//                     color: const Color(0xFF2A2A2A),
-//                     width: 0.8,
-//                   ),
-//                 ),
-//                 focusedBorder: UnderlineInputBorder(
-//                   borderSide: BorderSide(
-//                     color: AppColors.accentPrimary.withOpacity(0.5),
-//                     width: 1.0,
-//                   ),
-//                 ),
-//                 counterText: '',
-//               ),
-//               textInputAction: TextInputAction.newline,
-//               onSubmitted: (_) => widget.onSubmit(),
-//             ),
-//           ),
-//           const SizedBox(width: 12),
-//           GestureDetector(
-//             onTap: widget.isSubmitting || !_hasText ? null : widget.onSubmit,
-//             child: AnimatedOpacity(
-//               opacity: widget.isSubmitting
-//                   ? 0.4
-//                   : _hasText
-//                   ? 1.0
-//                   : 0.3,
-//               duration: const Duration(milliseconds: 180),
-//               child: widget.isSubmitting
-//                   ? const SizedBox(
-//                 width: 20,
-//                 height: 20,
-//                 child: CircularProgressIndicator(
-//                   strokeWidth: 1.5,
-//                   color: AppColors.accentPrimary,
-//                 ),
-//               )
-//                   : ShaderMask(
-//                 shaderCallback: (bounds) => const LinearGradient(
-//                   colors: [Color(0xFF7C4DFF), Color(0xFF1DE9B6)],
-//                 ).createShader(bounds),
-//                 blendMode: BlendMode.srcIn,
-//                 child: const Icon(
-//                   LucideIcons.send,
-//                   size: 20,
-//                 ),
-//               ),
-//             ),
-//           ),
-//         ],
-//       ),
-//     );
-//   }
-// }

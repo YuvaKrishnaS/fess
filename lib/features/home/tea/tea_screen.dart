@@ -150,11 +150,11 @@ class _TeaBody extends ConsumerWidget {
                 ),
                 onLike: () =>
                     ref.read(teaFeedProvider.notifier).toggleLike(post.postId),
-                onWitness: () => FessSnackbar.show(
-                  ctx,
-                  'Witness system — Coming soon',
-                  type: SnackbarType.info,
-                ),
+                // onWitness: () => FessSnackbar.show(
+                //   ctx,
+                //   'Witness system — Coming soon',
+                //   type: SnackbarType.info,
+                // ),
               );
             },
           ),
