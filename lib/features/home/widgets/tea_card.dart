@@ -4,24 +4,23 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:timeago/timeago.dart' as timeago;
 
+import '../providers/witness_provider.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_typography.dart';
 import '../../../core/models/avatar_config.dart';
 import '../../../core/models/tea_post_model.dart';
 import '../../../core/services/audio_service.dart';
 
-// ── Tea Card ──────────────────────────────────────────────────────────────────
-
 class TeaCard extends StatefulWidget {
   final TeaPost post;
   final String? currentAnonId;
   final VoidCallback onTap;
   final VoidCallback onLike;
-  final VoidCallback onWitness;
 
   const TeaCard({
     super.key,
@@ -29,7 +28,6 @@ class TeaCard extends StatefulWidget {
     required this.currentAnonId,
     required this.onTap,
     required this.onLike,
-    required this.onWitness,
   });
 
   @override
@@ -54,18 +52,12 @@ class _TeaCardState extends State<TeaCard> {
       behavior: HitTestBehavior.opaque,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 80),
-        color: _pressed
-            ? const Color(0xFF111111)
-            : Colors.transparent,
+        color: _pressed ? const Color(0xFF111111) : Colors.transparent,
         padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _CardHeader(
-              post: widget.post,
-              isOwn: isOwn,
-              onWitness: widget.onWitness,
-            ),
+            _CardHeader(post: widget.post, isOwn: isOwn),
             const SizedBox(height: 10),
             Text(
               widget.post.heading,
@@ -101,26 +93,23 @@ class _TeaCardState extends State<TeaCard> {
   }
 }
 
-// ── Header ────────────────────────────────────────────────────────────────────
-
-class _CardHeader extends StatelessWidget {
+class _CardHeader extends ConsumerWidget {
   final TeaPost post;
   final bool isOwn;
-  final VoidCallback onWitness;
 
-  const _CardHeader({
-    required this.post,
-    required this.isOwn,
-    required this.onWitness,
-  });
+  const _CardHeader({required this.post, required this.isOwn});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final avatarUrl = post.authorAvatarConfig.isNotEmpty
         ? AvatarConfig.fromMap(post.authorAvatarConfig).buildUrl(size: 72)
         : null;
 
     final timeStr = timeago.format(post.createdAt, locale: 'en_short');
+
+    final isWitnessing = isOwn
+        ? false
+        : ref.watch(witnessStateProvider(post.authorId));
 
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
@@ -151,14 +140,16 @@ class _CardHeader extends StatelessWidget {
             ],
           ),
         ),
-        if (!isOwn)
-          _WitnessButton(isWitnessing: false, onTap: onWitness),
+        if (!isOwn && post.authorId.isNotEmpty)
+          _WitnessButton(
+            isWitnessing: isWitnessing,
+            onTap: () =>
+                ref.read(witnessStateProvider(post.authorId).notifier).toggle(),
+          ),
       ],
     );
   }
 }
-
-// Avatar - same teal ring as ConfessionCard
 
 class _Avatar extends StatelessWidget {
   final String? url;
@@ -197,8 +188,6 @@ class _AnonAvatar extends StatelessWidget {
     child: const Icon(LucideIcons.user, size: 18, color: AppColors.hintText),
   );
 }
-
-// Witness Button - identical to ConfessionCard
 
 class _WitnessButton extends StatefulWidget {
   final bool isWitnessing;
@@ -264,8 +253,6 @@ class _WitnessButtonState extends State<_WitnessButton> {
     ),
   );
 }
-
-//Voice Player - uses AudioService.instance, same style as ConfessionCard
 
 class _TeaVoicePlayer extends StatefulWidget {
   final String audioUrl;
@@ -440,8 +427,6 @@ class _TeaVoicePlayerState extends State<_TeaVoicePlayer> {
   }
 }
 
-// Reaction Row
-
 class _ReactionRow extends StatelessWidget {
   final TeaPost post;
   final VoidCallback onLike;
@@ -599,8 +584,6 @@ class _LikeBtnState extends State<_LikeBtn>
   );
 }
 
-// Shimmer Card
-
 class TeaShimmerCard extends StatefulWidget {
   const TeaShimmerCard({super.key});
 
@@ -639,11 +622,13 @@ class _TeaShimmerCardState extends State<TeaShimmerCard>
           Row(children: [
             _Bone(w: 36, h: 36, radius: 18, anim: _anim),
             const SizedBox(width: 9),
-            Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              _Bone(w: 100, h: 12, radius: 4, anim: _anim),
-              const SizedBox(height: 4),
-              _Bone(w: 50, h: 10, radius: 4, anim: _anim),
-            ]),
+            Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _Bone(w: 100, h: 12, radius: 4, anim: _anim),
+                  const SizedBox(height: 4),
+                  _Bone(w: 50, h: 10, radius: 4, anim: _anim),
+                ]),
           ]),
           const SizedBox(height: 12),
           _Bone(w: double.infinity, h: 14, radius: 4, anim: _anim),

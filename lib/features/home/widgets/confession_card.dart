@@ -4,10 +4,12 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:timeago/timeago.dart' as timeago;
 
+import '../providers/witness_provider.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_typography.dart';
 import '../../../core/models/avatar_config.dart';
@@ -19,7 +21,6 @@ class ConfessionCard extends StatefulWidget {
   final PostModel post;
   final String? currentAnonId;
   final VoidCallback onLike;
-  final VoidCallback onWitness;
   final VoidCallback onTap;
   final VoidCallback? onComment;
   final VoidCallback? onShare;
@@ -29,7 +30,6 @@ class ConfessionCard extends StatefulWidget {
     required this.post,
     required this.currentAnonId,
     required this.onLike,
-    required this.onWitness,
     required this.onTap,
     this.onComment,
     this.onShare,
@@ -69,7 +69,7 @@ class _ConfessionCardState extends State<ConfessionCard> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _CardHeader(post: widget.post, isOwn: isOwn, onWitness: widget.onWitness),
+            _CardHeader(post: widget.post, isOwn: isOwn),
             const SizedBox(height: 10),
             Text(
               widget.post.heading,
@@ -125,21 +125,14 @@ class _ConfessionCardState extends State<ConfessionCard> {
   }
 }
 
-// Card Header
-
-class _CardHeader extends StatelessWidget {
+class _CardHeader extends ConsumerWidget {
   final PostModel post;
   final bool isOwn;
-  final VoidCallback onWitness;
 
-  const _CardHeader({
-    required this.post,
-    required this.isOwn,
-    required this.onWitness,
-  });
+  const _CardHeader({required this.post, required this.isOwn});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final avatarUrl = post.authorAvatarConfig != null
         ? AvatarConfig.fromMap(post.authorAvatarConfig!).buildUrl(size: 72)
         : null;
@@ -147,6 +140,10 @@ class _CardHeader extends StatelessWidget {
     final timeStr = post.createdAt != null
         ? timeago.format(post.createdAt!, locale: 'en_short')
         : 'just now';
+
+    final isWitnessing = isOwn
+        ? false
+        : ref.watch(witnessStateProvider(post.authorId ?? ''));
 
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
@@ -171,7 +168,7 @@ class _CardHeader extends StatelessWidget {
                 onLongPress: () {
                   if (post.createdAt == null) return;
                   final full =
-                      '${post.createdAt!.day}/${post.createdAt!.month}/${post.createdAt!.year}  '
+                      '${post.createdAt!.day}/${post.createdAt!.month}/${post.createdAt!.year} '
                       '${post.createdAt!.hour.toString().padLeft(2, '0')}:${post.createdAt!.minute.toString().padLeft(2, '0')}';
                   FessSnackbar.show(context, full, type: SnackbarType.info);
                 },
@@ -186,8 +183,13 @@ class _CardHeader extends StatelessWidget {
             ],
           ),
         ),
-        if (!isOwn)
-          _WitnessButton(isWitnessing: false, onTap: onWitness),
+        if (!isOwn && (post.authorId ?? '').isNotEmpty)
+          _WitnessButton(
+            isWitnessing: isWitnessing,
+            onTap: () => ref
+                .read(witnessStateProvider(post.authorId!).notifier)
+                .toggle(),
+          ),
       ],
     );
   }
@@ -296,8 +298,6 @@ class _WitnessButtonState extends State<_WitnessButton> {
   );
 }
 
-// Card Image
-
 class _CardImage extends StatelessWidget {
   final String url;
   const _CardImage({required this.url});
@@ -322,8 +322,6 @@ class _CardImage extends StatelessWidget {
     ),
   );
 }
-
-// Inline Voice player
 
 class _InlineVoicePlayer extends StatefulWidget {
   final String audioUrl;
@@ -459,10 +457,8 @@ class _InlineVoicePlayerState extends State<_InlineVoicePlayer> {
             child: SliderTheme(
               data: SliderTheme.of(context).copyWith(
                 trackHeight: 2,
-                thumbShape:
-                const RoundSliderThumbShape(enabledThumbRadius: 4),
-                overlayShape:
-                const RoundSliderOverlayShape(overlayRadius: 10),
+                thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 4),
+                overlayShape: const RoundSliderOverlayShape(overlayRadius: 10),
                 activeTrackColor: AppColors.accentPrimary,
                 inactiveTrackColor: const Color(0xFF2A2A38),
                 thumbColor: AppColors.accentPrimary,
@@ -499,8 +495,6 @@ class _InlineVoicePlayerState extends State<_InlineVoicePlayer> {
     );
   }
 }
-
-// Reaction Row
 
 class _ReactionRow extends StatelessWidget {
   final PostModel post;
@@ -661,8 +655,6 @@ class _LikeBtnState extends State<_LikeBtn>
   );
 }
 
-// Shimmer Card
-
 class ConfessionShimmerCard extends StatefulWidget {
   const ConfessionShimmerCard({super.key});
 
@@ -702,12 +694,13 @@ class _ConfessionShimmerCardState extends State<ConfessionShimmerCard>
             _Bone(w: 36, h: 36, radius: 18, anim: _anim),
             const SizedBox(width: 9),
             Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _Bone(w: 100, h: 12, radius: 4, anim: _anim),
-                  const SizedBox(height: 4),
-                  _Bone(w: 50, h: 10, radius: 4, anim: _anim),
-                ]),
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _Bone(w: 100, h: 12, radius: 4, anim: _anim),
+                const SizedBox(height: 4),
+                _Bone(w: 50, h: 10, radius: 4, anim: _anim),
+              ],
+            ),
           ]),
           const SizedBox(height: 12),
           _Bone(w: double.infinity, h: 14, radius: 4, anim: _anim),
