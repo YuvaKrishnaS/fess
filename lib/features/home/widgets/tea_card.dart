@@ -4,12 +4,10 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:timeago/timeago.dart' as timeago;
 
-import '../providers/witness_provider.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_typography.dart';
 import '../../../core/models/avatar_config.dart';
@@ -39,8 +37,6 @@ class _TeaCardState extends State<TeaCard> {
 
   @override
   Widget build(BuildContext context) {
-    final isOwn = widget.post.authorId == widget.currentAnonId;
-
     return GestureDetector(
       onTap: () {
         HapticFeedback.selectionClick();
@@ -57,7 +53,7 @@ class _TeaCardState extends State<TeaCard> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _CardHeader(post: widget.post, isOwn: isOwn),
+            _CardHeader(post: widget.post),
             const SizedBox(height: 10),
             Text(
               widget.post.heading,
@@ -93,23 +89,18 @@ class _TeaCardState extends State<TeaCard> {
   }
 }
 
-class _CardHeader extends ConsumerWidget {
+class _CardHeader extends StatelessWidget {
   final TeaPost post;
-  final bool isOwn;
 
-  const _CardHeader({required this.post, required this.isOwn});
+  const _CardHeader({required this.post});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final avatarUrl = post.authorAvatarConfig.isNotEmpty
         ? AvatarConfig.fromMap(post.authorAvatarConfig).buildUrl(size: 72)
         : null;
 
     final timeStr = timeago.format(post.createdAt, locale: 'en_short');
-
-    final isWitnessing = isOwn
-        ? false
-        : ref.watch(witnessStateProvider(post.authorId));
 
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
@@ -140,12 +131,6 @@ class _CardHeader extends ConsumerWidget {
             ],
           ),
         ),
-        if (!isOwn && post.authorId.isNotEmpty)
-          _WitnessButton(
-            isWitnessing: isWitnessing,
-            onTap: () =>
-                ref.read(witnessStateProvider(post.authorId).notifier).toggle(),
-          ),
       ],
     );
   }
@@ -186,71 +171,6 @@ class _AnonAvatar extends StatelessWidget {
   Widget build(BuildContext context) => Container(
     color: const Color(0xFF1A1A1A),
     child: const Icon(LucideIcons.user, size: 18, color: AppColors.hintText),
-  );
-}
-
-class _WitnessButton extends StatefulWidget {
-  final bool isWitnessing;
-  final VoidCallback onTap;
-  const _WitnessButton({required this.isWitnessing, required this.onTap});
-
-  @override
-  State<_WitnessButton> createState() => _WitnessButtonState();
-}
-
-class _WitnessButtonState extends State<_WitnessButton> {
-  bool _pressed = false;
-
-  @override
-  Widget build(BuildContext context) => GestureDetector(
-    onTapDown: (_) => setState(() => _pressed = true),
-    onTapUp: (_) {
-      setState(() => _pressed = false);
-      HapticFeedback.selectionClick();
-      widget.onTap();
-    },
-    onTapCancel: () => setState(() => _pressed = false),
-    child: AnimatedScale(
-      scale: _pressed ? 0.93 : 1.0,
-      duration: const Duration(milliseconds: 100),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        curve: Curves.easeInOut,
-        height: 28,
-        padding: const EdgeInsets.symmetric(horizontal: 12),
-        decoration: BoxDecoration(
-          color: widget.isWitnessing
-              ? AppColors.accentPrimary.withOpacity(0.12)
-              : Colors.transparent,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: widget.isWitnessing
-                ? AppColors.accentPrimary.withOpacity(0.5)
-                : AppColors.accentPrimary.withOpacity(0.4),
-            width: 0.8,
-          ),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (widget.isWitnessing) ...[
-              const Icon(LucideIcons.check,
-                  size: 10, color: AppColors.accentPrimary),
-              const SizedBox(width: 4),
-            ],
-            AnimatedDefaultTextStyle(
-              duration: const Duration(milliseconds: 200),
-              style: AppTypography.labelSmall.copyWith(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: AppColors.accentPrimary,
-              ),
-              child: Text(widget.isWitnessing ? 'Witnessing' : 'Witness'),
-            ),
-          ],
-        ),
-      ),
-    ),
   );
 }
 
@@ -388,8 +308,10 @@ class _TeaVoicePlayerState extends State<_TeaVoicePlayer> {
             child: SliderTheme(
               data: SliderTheme.of(context).copyWith(
                 trackHeight: 2,
-                thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 4),
-                overlayShape: const RoundSliderOverlayShape(overlayRadius: 10),
+                thumbShape:
+                const RoundSliderThumbShape(enabledThumbRadius: 4),
+                overlayShape:
+                const RoundSliderOverlayShape(overlayRadius: 10),
                 activeTrackColor: AppColors.accentPrimary,
                 inactiveTrackColor: const Color(0xFF2A2A38),
                 thumbColor: AppColors.accentPrimary,
@@ -529,10 +451,8 @@ class _LikeBtnState extends State<_LikeBtn>
     _ctrl = AnimationController(
         vsync: this, duration: const Duration(milliseconds: 200));
     _scale = TweenSequence([
-      TweenSequenceItem(
-          tween: Tween(begin: 1.0, end: 1.25), weight: 50),
-      TweenSequenceItem(
-          tween: Tween(begin: 1.25, end: 1.0), weight: 50),
+      TweenSequenceItem(tween: Tween(begin: 1.0, end: 1.25), weight: 50),
+      TweenSequenceItem(tween: Tween(begin: 1.25, end: 1.0), weight: 50),
     ]).animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut));
   }
 
@@ -623,12 +543,13 @@ class _TeaShimmerCardState extends State<TeaShimmerCard>
             _Bone(w: 36, h: 36, radius: 18, anim: _anim),
             const SizedBox(width: 9),
             Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _Bone(w: 100, h: 12, radius: 4, anim: _anim),
-                  const SizedBox(height: 4),
-                  _Bone(w: 50, h: 10, radius: 4, anim: _anim),
-                ]),
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _Bone(w: 100, h: 12, radius: 4, anim: _anim),
+                const SizedBox(height: 4),
+                _Bone(w: 50, h: 10, radius: 4, anim: _anim),
+              ],
+            ),
           ]),
           const SizedBox(height: 12),
           _Bone(w: double.infinity, h: 14, radius: 4, anim: _anim),
@@ -643,8 +564,7 @@ class _TeaShimmerCardState extends State<TeaShimmerCard>
             _Bone(w: 40, h: 12, radius: 4, anim: _anim),
           ]),
           const SizedBox(height: 14),
-          const Divider(
-              height: 0.5, thickness: 0.5, color: Color(0xFF1A1A1A)),
+          const Divider(height: 0.5, thickness: 0.5, color: Color(0xFF1A1A1A)),
         ],
       ),
     ),
