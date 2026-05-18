@@ -1,3 +1,4 @@
+import 'package:fessv2/features/home/widgets/profile_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -150,8 +151,7 @@ class _AppBarAvatar extends StatelessWidget {
     return GestureDetector(
       onTap: () {
         HapticFeedback.selectionClick();
-        FessSnackbar.show(context, 'Profile — Coming soon',
-            type: SnackbarType.info);
+        showProfileSheet(context);
       },
       child: Container(
         width: 34,
