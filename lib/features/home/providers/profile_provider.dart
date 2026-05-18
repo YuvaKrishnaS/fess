@@ -5,8 +5,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/models/post_model.dart';
 import '../../../core/services/firebase_service.dart';
 import '../../../core/services/local_storage_service.dart';
-import '../providers/feed_provider.dart';
-// import 'package:flutter_riverpod/legacy.dart';
+import 'feed_provider.dart';
+
+// Profile data model
 
 class ProfileData {
   final String anonId;
@@ -42,10 +43,9 @@ FutureProvider.family<ProfileData?, String>((ref, anonId) async {
   if (anonId.isEmpty) return null;
   try {
     final doc = await FirebaseService.firestore
-        .collection('publicProfiles')
+        .collection('publicprofiles')
         .doc(anonId)
         .get();
-
     if (!doc.exists || doc.data() == null) return null;
     return ProfileData.fromMap(anonId, doc.data()!);
   } catch (e) {
@@ -53,6 +53,8 @@ FutureProvider.family<ProfileData?, String>((ref, anonId) async {
     return null;
   }
 });
+
+// Profile Feed State
 
 class ProfileFeedState {
   final List<PostModel> posts;
@@ -92,24 +94,38 @@ class ProfileFeedState {
   }
 }
 
-class MySpillsNotifier extends FamilyAsyncNotifier<ProfileFeedState, String> {
+// My Spilld
+
+class MySpillsNotifier extends AsyncNotifier<ProfileFeedState> {
   static const int _limit = 15;
+  late final String _anonId;
 
   @override
-  Future<ProfileFeedState> build(String anonId) async {
-    return _fetchInitial(anonId);
+  Future<ProfileFeedState> build() async {
+    throw UnimplementedError('Use mySpillsProvider.family');
   }
+}
 
-  Future<ProfileFeedState> _fetchInitial(String anonId) async {
+class _MySpillsNotifier extends AsyncNotifier<ProfileFeedState> {
+  static const int _limit = 15;
+  final String _anonId;
+
+  _MySpillsNotifier(this._anonId);
+
+  @override
+  Future<ProfileFeedState> build() => _fetch();
+
+  Future<ProfileFeedState> _fetch({DocumentSnapshot? after}) async {
     try {
-      final snap = await FirebaseService.firestore
+      var q = FirebaseService.firestore
           .collection('posts')
-          .where('authorId', isEqualTo: anonId)
+          .where('authorId', isEqualTo: _anonId)
           .where('type', isEqualTo: 'confession')
           .orderBy('createdAt', descending: true)
-          .limit(_limit)
-          .get();
+          .limit(_limit);
+      if (after != null) q = q.startAfterDocument(after);
 
+      final snap = await q.get();
       final posts = await _enrichPosts(snap.docs);
 
       return ProfileFeedState(
@@ -119,74 +135,67 @@ class MySpillsNotifier extends FamilyAsyncNotifier<ProfileFeedState, String> {
         lastDoc: snap.docs.isNotEmpty ? snap.docs.last : null,
       );
     } catch (e) {
-      debugPrint('MySpillsNotifier: $e');
+      debugPrint('_MySpillsNotifier: $e');
       return const ProfileFeedState(
-        isLoading: false,
-        hasMore: false,
-        error: 'Could not load spills.',
-      );
+          isLoading: false, hasMore: false, error: 'Could not load spills.');
     }
   }
 
   Future<void> loadMore() async {
-    final current = state.value;
-    if (current == null ||
-        current.isLoadingMore ||
-        !current.hasMore ||
-        current.lastDoc == null) {
+    final cur = state.value;
+    if (cur == null || cur.isLoadingMore || !cur.hasMore || cur.lastDoc == null)
       return;
-    }
-
-    state = AsyncValue.data(current.copyWith(isLoadingMore: true));
-
+    state = AsyncValue.data(cur.copyWith(isLoadingMore: true));
     try {
       final snap = await FirebaseService.firestore
           .collection('posts')
-          .where('authorId', isEqualTo: arg)
+          .where('authorId', isEqualTo: _anonId)
           .where('type', isEqualTo: 'confession')
           .orderBy('createdAt', descending: true)
-          .startAfterDocument(current.lastDoc!)
+          .startAfterDocument(cur.lastDoc!)
           .limit(_limit)
           .get();
-
       final more = await _enrichPosts(snap.docs);
-
-      state = AsyncValue.data(
-        current.copyWith(
-          posts: [...current.posts, ...more],
-          isLoadingMore: false,
-          hasMore: snap.docs.length == _limit,
-          lastDoc: snap.docs.isNotEmpty ? snap.docs.last : current.lastDoc,
-        ),
-      );
+      state = AsyncValue.data(cur.copyWith(
+        posts: [...cur.posts, ...more],
+        isLoadingMore: false,
+        hasMore: snap.docs.length == _limit,
+        lastDoc: snap.docs.isNotEmpty ? snap.docs.last : cur.lastDoc,
+      ));
     } catch (e) {
-      debugPrint('MySpillsNotifier loadMore: $e');
-      state = AsyncValue.data(current.copyWith(isLoadingMore: false));
+      debugPrint('_MySpillsNotifier loadMore: $e');
+      state = AsyncValue.data(cur.copyWith(isLoadingMore: false));
     }
   }
 }
 
-final mySpillsProvider = AsyncNotifierProvider.family<MySpillsNotifier,
-    ProfileFeedState, String>(MySpillsNotifier.new);
+final mySpillsProvider =
+AsyncNotifierProvider.family<_MySpillsNotifier, ProfileFeedState, String>(
+      (ref, anonId) => _MySpillsNotifier(anonId),
+);
 
-class MyTeaNotifier extends FamilyAsyncNotifier<ProfileFeedState, String> {
+// My Tea
+
+class _MyTeaNotifier extends AsyncNotifier<ProfileFeedState> {
   static const int _limit = 15;
+  final String _anonId;
+
+  _MyTeaNotifier(this._anonId);
 
   @override
-  Future<ProfileFeedState> build(String anonId) async {
-    return _fetchInitial(anonId);
-  }
+  Future<ProfileFeedState> build() => _fetch();
 
-  Future<ProfileFeedState> _fetchInitial(String anonId) async {
+  Future<ProfileFeedState> _fetch({DocumentSnapshot? after}) async {
     try {
-      final snap = await FirebaseService.firestore
+      var q = FirebaseService.firestore
           .collection('posts')
-          .where('authorId', isEqualTo: anonId)
+          .where('authorId', isEqualTo: _anonId)
           .where('type', isEqualTo: 'tea')
           .orderBy('createdAt', descending: true)
-          .limit(_limit)
-          .get();
+          .limit(_limit);
+      if (after != null) q = q.startAfterDocument(after);
 
+      final snap = await q.get();
       final posts = await _enrichPosts(snap.docs);
 
       return ProfileFeedState(
@@ -196,79 +205,67 @@ class MyTeaNotifier extends FamilyAsyncNotifier<ProfileFeedState, String> {
         lastDoc: snap.docs.isNotEmpty ? snap.docs.last : null,
       );
     } catch (e) {
-      debugPrint('MyTeaNotifier: $e');
+      debugPrint('_MyTeaNotifier: $e');
       return const ProfileFeedState(
-        isLoading: false,
-        hasMore: false,
-        error: 'Could not load tea.',
-      );
+          isLoading: false, hasMore: false, error: 'Could not load tea.');
     }
   }
 
   Future<void> loadMore() async {
-    final current = state.value;
-    if (current == null ||
-        current.isLoadingMore ||
-        !current.hasMore ||
-        current.lastDoc == null) {
+    final cur = state.value;
+    if (cur == null || cur.isLoadingMore || !cur.hasMore || cur.lastDoc == null)
       return;
-    }
-
-    state = AsyncValue.data(current.copyWith(isLoadingMore: true));
-
+    state = AsyncValue.data(cur.copyWith(isLoadingMore: true));
     try {
       final snap = await FirebaseService.firestore
           .collection('posts')
-          .where('authorId', isEqualTo: arg)
+          .where('authorId', isEqualTo: _anonId)
           .where('type', isEqualTo: 'tea')
           .orderBy('createdAt', descending: true)
-          .startAfterDocument(current.lastDoc!)
+          .startAfterDocument(cur.lastDoc!)
           .limit(_limit)
           .get();
-
       final more = await _enrichPosts(snap.docs);
-
-      state = AsyncValue.data(
-        current.copyWith(
-          posts: [...current.posts, ...more],
-          isLoadingMore: false,
-          hasMore: snap.docs.length == _limit,
-          lastDoc: snap.docs.isNotEmpty ? snap.docs.last : current.lastDoc,
-        ),
-      );
+      state = AsyncValue.data(cur.copyWith(
+        posts: [...cur.posts, ...more],
+        isLoadingMore: false,
+        hasMore: snap.docs.length == _limit,
+        lastDoc: snap.docs.isNotEmpty ? snap.docs.last : cur.lastDoc,
+      ));
     } catch (e) {
-      debugPrint('MyTeaNotifier loadMore: $e');
-      state = AsyncValue.data(current.copyWith(isLoadingMore: false));
+      debugPrint('_MyTeaNotifier loadMore: $e');
+      state = AsyncValue.data(cur.copyWith(isLoadingMore: false));
     }
   }
 }
 
-final myTeaProvider = AsyncNotifierProvider.family<MyTeaNotifier,
-    ProfileFeedState, String>(MyTeaNotifier.new);
+final myTeaProvider =
+AsyncNotifierProvider.family<_MyTeaNotifier, ProfileFeedState, String>(
+      (ref, anonId) => _MyTeaNotifier(anonId),
+);
 
-class MyLikedNotifier extends FamilyAsyncNotifier<ProfileFeedState, String> {
+// My Liked
+
+class _MyLikedNotifier extends AsyncNotifier<ProfileFeedState> {
   static const int _limit = 15;
+  final String _anonId;
+
+  _MyLikedNotifier(this._anonId);
 
   @override
-  Future<ProfileFeedState> build(String anonId) async {
-    return _fetchInitial(anonId);
-  }
+  Future<ProfileFeedState> build() => _fetch();
 
-  Future<ProfileFeedState> _fetchInitial(String anonId) async {
+  Future<ProfileFeedState> _fetch() async {
     try {
       final likeSnap = await FirebaseService.firestore
           .collection('postlikes')
-          .where('anonId', isEqualTo: anonId)
+          .where('anonId', isEqualTo: _anonId)
           .orderBy('likedAt', descending: true)
           .limit(_limit)
           .get();
 
       if (likeSnap.docs.isEmpty) {
-        return const ProfileFeedState(
-          isLoading: false,
-          hasMore: false,
-          posts: [],
-        );
+        return const ProfileFeedState(isLoading: false, hasMore: false);
       }
 
       final postIds = likeSnap.docs
@@ -277,11 +274,7 @@ class MyLikedNotifier extends FamilyAsyncNotifier<ProfileFeedState, String> {
           .toList();
 
       if (postIds.isEmpty) {
-        return const ProfileFeedState(
-          isLoading: false,
-          hasMore: false,
-          posts: [],
-        );
+        return const ProfileFeedState(isLoading: false, hasMore: false);
       }
 
       final postSnap = await FirebaseService.firestore
@@ -290,7 +283,6 @@ class MyLikedNotifier extends FamilyAsyncNotifier<ProfileFeedState, String> {
           .get();
 
       final enriched = await _enrichPosts(postSnap.docs);
-
       final postMap = {for (final p in enriched) p.postId: p};
       final ordered = postIds
           .where(postMap.containsKey)
@@ -304,18 +296,21 @@ class MyLikedNotifier extends FamilyAsyncNotifier<ProfileFeedState, String> {
         lastDoc: likeSnap.docs.isNotEmpty ? likeSnap.docs.last : null,
       );
     } catch (e) {
-      debugPrint('MyLikedNotifier: $e');
+      debugPrint('_MyLikedNotifier: $e');
       return const ProfileFeedState(
-        isLoading: false,
-        hasMore: false,
-        error: 'Could not load liked posts.',
-      );
+          isLoading: false,
+          hasMore: false,
+          error: 'Could not load liked posts.');
     }
   }
 }
 
-final myLikedProvider = AsyncNotifierProvider.family<MyLikedNotifier,
-    ProfileFeedState, String>(MyLikedNotifier.new);
+final myLikedProvider =
+AsyncNotifierProvider.family<_MyLikedNotifier, ProfileFeedState, String>(
+      (ref, anonId) => _MyLikedNotifier(anonId),
+);
+
+// Enrich Helper
 
 Future<List<PostModel>> _enrichPosts(
     List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
@@ -331,19 +326,16 @@ Future<List<PostModel>> _enrichPosts(
       .toSet()
       .toList();
 
-  Map<String, Map<String, dynamic>> profileMap = {};
-
+  final profileMap = <String, Map<String, dynamic>>{};
   if (authorIds.isNotEmpty) {
     try {
       for (var i = 0; i < authorIds.length; i += 30) {
-        final end = (i + 30 > authorIds.length) ? authorIds.length : i + 30;
-        final chunk = authorIds.sublist(i, end);
-
+        final chunk = authorIds.sublist(
+            i, (i + 30).clamp(0, authorIds.length));
         final snap = await FirebaseService.firestore
             .collection('publicprofiles')
             .where(FieldPath.documentId, whereIn: chunk)
             .get();
-
         for (final d in snap.docs) {
           profileMap[d.id] = d.data();
         }
@@ -355,22 +347,18 @@ Future<List<PostModel>> _enrichPosts(
 
   final anonId = LocalStorageService.getCachedAnonId();
   final likedIds = <String>{};
-
   if (anonId != null && anonId.isNotEmpty) {
     try {
       final checks = await Future.wait(
-        posts.map(
-              (p) => FirebaseService.firestore
-              .collection('postlikes')
-              .doc('${p.postId}$anonId')
-              .get(),
-        ),
+        posts.map((p) => FirebaseService.firestore
+            .collection('postlikes')
+            .doc('${p.postId}$anonId')
+            .get()),
       );
-
       for (final d in checks) {
         if (d.exists) {
           final id = d.data()?['postId'] as String?;
-          if (id != null && id.isNotEmpty) likedIds.add(id);
+          if (id != null) likedIds.add(id);
         }
       }
     } catch (e) {
@@ -387,6 +375,8 @@ Future<List<PostModel>> _enrichPosts(
     );
   }).toList();
 }
+
+// Sign Out
 
 final signOutProvider = Provider<Future<void> Function()>((ref) {
   return () async {

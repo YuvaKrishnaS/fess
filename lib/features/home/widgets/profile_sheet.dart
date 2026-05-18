@@ -267,7 +267,7 @@ class _AnonAvatar extends StatelessWidget {
   );
 }
 
-// ── Stats row ─────────────────────────────────────────────────────────────────
+// Stats Row
 
 class _StatsRow extends StatelessWidget {
   final ProfileData profile;
@@ -327,7 +327,7 @@ class _StatCell extends StatelessWidget {
   }
 }
 
-// ── Tab bar ───────────────────────────────────────────────────────────────────
+// Tab Bar
 
 class _ProfileTabBar extends StatelessWidget {
   final TabController tab;
@@ -361,7 +361,7 @@ class _ProfileTabBar extends StatelessWidget {
   );
 }
 
-// ── Spills tab ────────────────────────────────────────────────────────────────
+// Spills Tab
 
 class _SpillsTab extends ConsumerWidget {
   final String anonId;
@@ -400,7 +400,7 @@ class _SpillsTab extends ConsumerWidget {
   }
 }
 
-// ── Tea tab ───────────────────────────────────────────────────────────────────
+// Tea Tab
 
 class _TeaTab extends ConsumerWidget {
   final String anonId;
@@ -437,7 +437,7 @@ class _TeaTab extends ConsumerWidget {
   }
 }
 
-// ── Liked tab ─────────────────────────────────────────────────────────────────
+// Liked Tab
 
 class _LikedTab extends ConsumerWidget {
   final String anonId;
@@ -474,7 +474,7 @@ class _LikedTab extends ConsumerWidget {
   }
 }
 
-// ── Settings footer ───────────────────────────────────────────────────────────
+// Settings Footer
 
 class _SettingsFooter extends ConsumerWidget {
   @override
@@ -570,7 +570,7 @@ class _SettingsRow extends StatelessWidget {
   );
 }
 
-// ── Shared helpers ────────────────────────────────────────────────────────────
+// Shared Helpers
 
 Widget _shimmerList() => ListView.builder(
   physics: const NeverScrollableScrollPhysics(),
@@ -602,7 +602,7 @@ Widget _loadMore() => const Padding(
   ),
 );
 
-// ── Shimmer header ────────────────────────────────────────────────────────────
+// Shimmer Header
 
 class _HeaderShimmer extends StatefulWidget {
   const _HeaderShimmer();

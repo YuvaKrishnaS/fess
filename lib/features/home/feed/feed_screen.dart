@@ -1,14 +1,12 @@
 import 'package:fessv2/features/home/widgets/profile_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_typography.dart';
 import '../../../core/models/avatar_config.dart';
-import '../../../core/widgets/fess_snackbar.dart';
 import '../post_detail/post_detail_screen.dart';
 import '../providers/feed_provider.dart';
 import '../providers/scroll_visibility_provider.dart';
