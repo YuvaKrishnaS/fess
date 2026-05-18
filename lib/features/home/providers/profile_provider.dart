@@ -171,7 +171,7 @@ class _MySpillsNotifier extends AsyncNotifier<ProfileFeedState> {
 
 final mySpillsProvider =
 AsyncNotifierProvider.family<_MySpillsNotifier, ProfileFeedState, String>(
-      (ref, anonId) => _MySpillsNotifier(anonId),
+      (anonId) => _MySpillsNotifier(anonId),
 );
 
 // My Tea
@@ -241,7 +241,7 @@ class _MyTeaNotifier extends AsyncNotifier<ProfileFeedState> {
 
 final myTeaProvider =
 AsyncNotifierProvider.family<_MyTeaNotifier, ProfileFeedState, String>(
-      (ref, anonId) => _MyTeaNotifier(anonId),
+      (anonId) => _MyTeaNotifier(anonId),
 );
 
 // My Liked
@@ -307,7 +307,7 @@ class _MyLikedNotifier extends AsyncNotifier<ProfileFeedState> {
 
 final myLikedProvider =
 AsyncNotifierProvider.family<_MyLikedNotifier, ProfileFeedState, String>(
-      (ref, anonId) => _MyLikedNotifier(anonId),
+      (anonId) => _MyLikedNotifier(anonId),
 );
 
 // Enrich Helper

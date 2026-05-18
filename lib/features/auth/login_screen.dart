@@ -148,7 +148,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     const SizedBox(height: 16),
                   ],
 
-                  // Google — only button, full width, outlined
+                  // Google - only button, full width, outlined
                   _GoogleButton(
                     onPressed: _isLoadingGoogle ? null : _handleGoogleSignIn,
                     isLoading: _isLoadingGoogle,
