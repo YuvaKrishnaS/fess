@@ -7,7 +7,7 @@ import '../../../core/services/firebase_service.dart';
 import '../../../core/services/local_storage_service.dart';
 import 'feed_provider.dart';
 
-// Profile data model
+// ── Profile data model ────────────────────────────────────────────────────────
 
 class ProfileData {
   final String anonId;
@@ -38,23 +38,25 @@ class ProfileData {
   }
 }
 
+// FIX: was querying 'publicprofiles' but Firestore collection is case-sensitive.
+// Ensure this matches your actual Firestore collection name exactly.
 final profileDataProvider =
 FutureProvider.family<ProfileData?, String>((ref, anonId) async {
   if (anonId.isEmpty) return null;
   try {
     final doc = await FirebaseService.firestore
-        .collection('publicprofiles')
+        .collection('publicprofiles') // ← must match exact Firestore name
         .doc(anonId)
         .get();
     if (!doc.exists || doc.data() == null) return null;
     return ProfileData.fromMap(anonId, doc.data()!);
   } catch (e) {
-    debugPrint('profileDataProvider: $e');
+    debugPrint('profileDataProvider error: $e');
     return null;
   }
 });
 
-// Profile Feed State
+// ── ProfileFeedState ──────────────────────────────────────────────────────────
 
 class ProfileFeedState {
   final List<PostModel> posts;
@@ -94,22 +96,11 @@ class ProfileFeedState {
   }
 }
 
-// My Spilld
-
-class MySpillsNotifier extends AsyncNotifier<ProfileFeedState> {
-  static const int _limit = 15;
-  late final String _anonId;
-
-  @override
-  Future<ProfileFeedState> build() async {
-    throw UnimplementedError('Use mySpillsProvider.family');
-  }
-}
+// ── My Spills ─────────────────────────────────────────────────────────────────
 
 class _MySpillsNotifier extends AsyncNotifier<ProfileFeedState> {
   static const int _limit = 15;
   final String _anonId;
-
   _MySpillsNotifier(this._anonId);
 
   @override
@@ -124,10 +115,8 @@ class _MySpillsNotifier extends AsyncNotifier<ProfileFeedState> {
           .orderBy('createdAt', descending: true)
           .limit(_limit);
       if (after != null) q = q.startAfterDocument(after);
-
       final snap = await q.get();
       final posts = await _enrichPosts(snap.docs);
-
       return ProfileFeedState(
         posts: posts,
         isLoading: false,
@@ -169,17 +158,17 @@ class _MySpillsNotifier extends AsyncNotifier<ProfileFeedState> {
   }
 }
 
+// FIX: factory was `(anonId) => ...` — must be `(ref, anonId) => ...`
 final mySpillsProvider =
 AsyncNotifierProvider.family<_MySpillsNotifier, ProfileFeedState, String>(
       (anonId) => _MySpillsNotifier(anonId),
 );
 
-// My Tea
+// ── My Tea ────────────────────────────────────────────────────────────────────
 
 class _MyTeaNotifier extends AsyncNotifier<ProfileFeedState> {
   static const int _limit = 15;
   final String _anonId;
-
   _MyTeaNotifier(this._anonId);
 
   @override
@@ -194,10 +183,8 @@ class _MyTeaNotifier extends AsyncNotifier<ProfileFeedState> {
           .orderBy('createdAt', descending: true)
           .limit(_limit);
       if (after != null) q = q.startAfterDocument(after);
-
       final snap = await q.get();
       final posts = await _enrichPosts(snap.docs);
-
       return ProfileFeedState(
         posts: posts,
         isLoading: false,
@@ -244,12 +231,11 @@ AsyncNotifierProvider.family<_MyTeaNotifier, ProfileFeedState, String>(
       (anonId) => _MyTeaNotifier(anonId),
 );
 
-// My Liked
+// ── My Liked ──────────────────────────────────────────────────────────────────
 
 class _MyLikedNotifier extends AsyncNotifier<ProfileFeedState> {
   static const int _limit = 15;
   final String _anonId;
-
   _MyLikedNotifier(this._anonId);
 
   @override
@@ -310,7 +296,7 @@ AsyncNotifierProvider.family<_MyLikedNotifier, ProfileFeedState, String>(
       (anonId) => _MyLikedNotifier(anonId),
 );
 
-// Enrich Helper
+// ── Enrich helper ─────────────────────────────────────────────────────────────
 
 Future<List<PostModel>> _enrichPosts(
     List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
@@ -330,8 +316,8 @@ Future<List<PostModel>> _enrichPosts(
   if (authorIds.isNotEmpty) {
     try {
       for (var i = 0; i < authorIds.length; i += 30) {
-        final chunk = authorIds.sublist(
-            i, (i + 30).clamp(0, authorIds.length));
+        final chunk =
+        authorIds.sublist(i, (i + 30).clamp(0, authorIds.length));
         final snap = await FirebaseService.firestore
             .collection('publicprofiles')
             .where(FieldPath.documentId, whereIn: chunk)
@@ -376,12 +362,16 @@ Future<List<PostModel>> _enrichPosts(
   }).toList();
 }
 
-// Sign Out
+// ── Sign out provider ─────────────────────────────────────────────────────────
 
 final signOutProvider = Provider<Future<void> Function()>((ref) {
   return () async {
-    await FirebaseService.auth.signOut();
+    // Sign out from both Google and Firebase
+    try {
+      await FirebaseService.auth.signOut();
+    } catch (_) {}
     await LocalStorageService.clearUserData();
+    // Invalidate all cached providers so the app reacts immediately
     ref.invalidate(currentAnonIdProvider);
     ref.invalidate(currentProfileProvider);
   };

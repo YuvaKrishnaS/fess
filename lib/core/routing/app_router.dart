@@ -1,6 +1,7 @@
 import 'package:fessv2/features/home/post_detail/post_detail_screen.dart';
 import 'package:fessv2/features/persona/persona_creation_screen.dart';
 import 'package:go_router/go_router.dart';
+import '../../features/home/screens/profile_page.dart';
 import '../../features/persona/avatar_builder_screen.dart';
 import '../../features/splash/splash_screen.dart';
 import '../../features/onboarding/onboarding_screen.dart';
@@ -49,6 +50,15 @@ class AppRouter {
           final postId = state.pathParameters['postId']!;
           final initialPost = state.extra as PostModel?;
           return PostDetailScreen(postId: postId, initialPost: initialPost);
+        },
+      ),
+      GoRoute(
+        path: '/profile/:anonId',
+        builder: (context, state) {
+          final anonId = state.pathParameters['anonId']!;
+          final tabParam = state.uri.queryParameters['tab'];
+          final tab = int.tryParse(tabParam ?? '') ?? 0;
+          return ProfilePage(anonId: anonId, initialTab: tab);
         },
       ),
     ],

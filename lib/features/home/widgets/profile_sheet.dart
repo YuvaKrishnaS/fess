@@ -2,200 +2,373 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_typography.dart';
 import '../../../core/models/avatar_config.dart';
-import '../../home/post_detail/post_detail_screen.dart';
+import '../../../core/widgets/app_dialog.dart';
 import '../providers/feed_provider.dart';
 import '../providers/profile_provider.dart';
-import 'confession_card.dart';
 
-// ── Entry point ───────────────────────────────────────────────────────────────
+// ENTRY POINT :))))))))
 
-void showProfileSheet(BuildContext context, {String? anonId}) {
-  showModalBottomSheet(
-    context: context,
-    isScrollControlled: true,
-    backgroundColor: Colors.transparent,
-    barrierColor: Colors.black.withOpacity(0.6),
-    builder: (_) => _ProfileSheet(anonId: anonId),
+/// Opens the left-slide profile drawer. Call from any avatar/profile tap.
+void showProfileDrawer(BuildContext context, {String? anonId}) {
+  Navigator.of(context).push(
+    PageRouteBuilder(
+      opaque: false,
+      barrierDismissible: true,
+      barrierColor: Colors.transparent,
+      transitionDuration: const Duration(milliseconds: 300),
+      reverseTransitionDuration: const Duration(milliseconds: 250),
+      pageBuilder: (_, __, ___) => _ProfileDrawerOverlay(anonId: anonId),
+      transitionsBuilder: (_, anim, __, child) => child,
+    ),
   );
 }
 
-// ── Sheet root ────────────────────────────────────────────────────────────────
+// OVERLAY
 
-class _ProfileSheet extends ConsumerStatefulWidget {
+class _ProfileDrawerOverlay extends ConsumerWidget {
   final String? anonId;
-  const _ProfileSheet({this.anonId});
+  const _ProfileDrawerOverlay({this.anonId});
 
   @override
-  ConsumerState<_ProfileSheet> createState() => _ProfileSheetState();
+  Widget build(BuildContext context, WidgetRef ref) {
+    return GestureDetector(
+      onTap: () => Navigator.of(context).pop(),
+      behavior: HitTestBehavior.opaque,
+      child: Stack(
+        children: [
+          // Dark scrim
+          _Scrim(),
+          // The drawer itself
+          _ProfileDrawer(anonId: anonId),
+        ],
+      ),
+    );
+  }
 }
 
-class _ProfileSheetState extends ConsumerState<_ProfileSheet>
-    with SingleTickerProviderStateMixin {
-  late TabController _tab;
-  String? _resolvedId;
+class _Scrim extends StatefulWidget {
+  @override
+  State<_Scrim> createState() => _ScrimState();
+}
+
+class _ScrimState extends State<_Scrim> with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl;
+  late final Animation<double> _opacity;
 
   @override
   void initState() {
     super.initState();
-    _tab = TabController(length: 3, vsync: this);
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 300),
+    )..forward();
+    _opacity = CurvedAnimation(parent: _ctrl, curve: Curves.easeOut);
   }
 
   @override
   void dispose() {
-    _tab.dispose();
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FadeTransition(
+      opacity: _opacity,
+      child: Container(color: Colors.black.withOpacity(0.55)),
+    );
+  }
+}
+
+// DRAWER
+
+class _ProfileDrawer extends ConsumerStatefulWidget {
+  final String? anonId;
+  const _ProfileDrawer({this.anonId});
+
+  @override
+  ConsumerState<_ProfileDrawer> createState() => _ProfileDrawerState();
+}
+
+class _ProfileDrawerState extends ConsumerState<_ProfileDrawer>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl;
+  late final Animation<Offset> _slide;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 300),
+    )..forward();
+    _slide = Tween<Offset>(
+      begin: const Offset(-1.0, 0),
+      end: Offset.zero,
+    ).animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeOutCubic));
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final myIdAsync = ref.watch(currentAnonIdProvider);
+    final screenW = MediaQuery.of(context).size.width;
 
-    return myIdAsync.when(
-      loading: () => const _SheetScaffold(child: _LoadingBody()),
-      error: (_, __) => const _SheetScaffold(child: _ErrorBody()),
-      data: (myId) {
-        _resolvedId = widget.anonId ?? myId;
-        final isOwn = _resolvedId == myId || widget.anonId == null;
-        if (_resolvedId == null) {
-          return const _SheetScaffold(child: _ErrorBody());
-        }
-        return _SheetScaffold(
-          child: _ProfileBody(
-            anonId: _resolvedId!,
-            isOwn: isOwn,
-            tab: _tab,
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: SlideTransition(
+        position: _slide,
+        child: GestureDetector(
+          onTap: () {}, // prevent scrim tap from passing through
+          child: Container(
+            width: screenW * 0.78,
+            height: double.infinity,
+            decoration: const BoxDecoration(
+              color: Color(0xFF0C0C0C),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black54,
+                  blurRadius: 32,
+                  offset: Offset(8, 0),
+                ),
+              ],
+            ),
+            child: myIdAsync.when(
+              loading: () => const _DrawerLoadingState(),
+              error: (_, __) => const _DrawerErrorState(),
+              data: (myId) {
+                final resolvedId = widget.anonId ?? myId;
+                final isOwn =
+                    resolvedId == myId || widget.anonId == null;
+                if (resolvedId == null) {
+                  return const _DrawerErrorState();
+                }
+                return _DrawerContent(
+                  anonId: resolvedId,
+                  isOwn: isOwn,
+                );
+              },
+            ),
           ),
-        );
-      },
-    );
-  }
-}
-
-// ── Scaffold wrapper ──────────────────────────────────────────────────────────
-
-class _SheetScaffold extends StatelessWidget {
-  final Widget child;
-  const _SheetScaffold({required this.child});
-
-  @override
-  Widget build(BuildContext context) {
-    final screenH = MediaQuery.of(context).size.height;
-    return Container(
-      height: screenH * 0.92,
-      decoration: const BoxDecoration(
-        color: Color(0xFF0C0C0C),
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
       ),
-      child: child,
     );
   }
 }
 
-// ── Full body ─────────────────────────────────────────────────────────────────
+// DRAWER CONTENT
 
-class _ProfileBody extends ConsumerWidget {
+class _DrawerContent extends ConsumerWidget {
   final String anonId;
   final bool isOwn;
-  final TabController tab;
 
-  const _ProfileBody({
-    required this.anonId,
-    required this.isOwn,
-    required this.tab,
-  });
+  const _DrawerContent({required this.anonId, required this.isOwn});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final profileAsync = ref.watch(profileDataProvider(anonId));
+    final topPad = MediaQuery.of(context).padding.top;
+    final bottomPad = MediaQuery.of(context).padding.bottom;
 
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // Drag handle
-        const SizedBox(height: 12),
-        Container(
-          width: 36,
-          height: 4,
-          decoration: BoxDecoration(
-            color: const Color(0xFF3A3A3A),
-            borderRadius: BorderRadius.circular(2),
-          ),
-        ),
-        const SizedBox(height: 20),
+        SizedBox(height: topPad + 16),
 
-        // Header
-        profileAsync.when(
-          loading: () => const _HeaderShimmer(),
-          error: (_, __) => const _ErrorBody(),
-          data: (profile) {
-            if (profile == null) return const _ErrorBody();
-            return _ProfileHeader(
-              profile: profile,
-              isOwn: isOwn,
-            );
-          },
-        ),
-
-        const SizedBox(height: 16),
-        Container(height: 0.5, color: const Color(0xFF1A1A1A)),
-
-        // Tab bar
-        _ProfileTabBar(tab: tab, isOwn: isOwn),
-        Container(height: 0.5, color: const Color(0xFF1A1A1A)),
-
-        // Tab content
-        Expanded(
-          child: TabBarView(
-            controller: tab,
+        // FESS LOGO + CLOSE
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          child: Row(
             children: [
-              _SpillsTab(anonId: anonId),
-              _TeaTab(anonId: anonId),
-              _LikedTab(anonId: anonId),
+              // Fess logo
+              _FessLogo(),
+              const Spacer(),
+              GestureDetector(
+                onTap: () => Navigator.of(context).pop(),
+                child: Container(
+                  width: 34,
+                  height: 34,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1A1A1A),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(
+                    LucideIcons.x,
+                    size: 16,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+              ),
             ],
           ),
         ),
 
-        // Settings footer — own profile only
+        const SizedBox(height: 28),
+
+        // PROFILE HEADER
+        profileAsync.when(
+          loading: () => const _DrawerHeaderShimmer(),
+          error: (_, __) => const _DrawerErrorState(),
+          data: (profile) {
+            if (profile == null) {
+              return const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 20),
+                child: _DrawerErrorState(),
+              );
+            }
+            return _DrawerHeader(profile: profile);
+          },
+        ),
+
+        const SizedBox(height: 24),
+
+        // Divider
+        Container(
+          height: 1,
+          color: const Color(0xFF1A1A1A),
+          margin: const EdgeInsets.symmetric(horizontal: 20),
+        ),
+
+        const SizedBox(height: 16),
+
+        // QUICK NAV
+        _DrawerNavItem(
+          icon: LucideIcons.layoutGrid,
+          label: 'View Full Profile',
+          onTap: () {
+            HapticFeedback.selectionClick();
+            Navigator.of(context).pop();
+            context.push('/profile/$anonId');
+          },
+          isHighlight: true,
+        ),
+        _DrawerNavItem(
+          icon: LucideIcons.messageSquare,
+          label: 'My Spills',
+          onTap: () {
+            HapticFeedback.selectionClick();
+            Navigator.of(context).pop();
+            context.push('/profile/$anonId?tab=0');
+          },
+        ),
+        _DrawerNavItem(
+          icon: LucideIcons.coffee,
+          label: 'My Tea',
+          onTap: () {
+            HapticFeedback.selectionClick();
+            Navigator.of(context).pop();
+            context.push('/profile/$anonId?tab=1');
+          },
+        ),
+        _DrawerNavItem(
+          icon: LucideIcons.heart,
+          label: 'Liked',
+          onTap: () {
+            HapticFeedback.selectionClick();
+            Navigator.of(context).pop();
+            context.push('/profile/$anonId?tab=2');
+          },
+        ),
+
+        const SizedBox(height: 16),
+        Container(
+          height: 1,
+          color: const Color(0xFF1A1A1A),
+          margin: const EdgeInsets.symmetric(horizontal: 20),
+        ),
+        const SizedBox(height: 8),
+
+        // SETTINGS SECTION
+
         if (isOwn) ...[
-          Container(height: 0.5, color: const Color(0xFF1A1A1A)),
-          _SettingsFooter(),
+          _DrawerNavItem(
+            icon: LucideIcons.settings,
+            label: 'Settings',
+            onTap: () {
+              HapticFeedback.selectionClick();
+              Navigator.of(context).pop();
+              context.push('/profile/$anonId?tab=settings');
+            },
+          ),
+          _DrawerNavItem(
+            icon: LucideIcons.logOut,
+            label: 'Sign Out',
+            labelColor: AppColors.errorLight,
+            iconColor: AppColors.errorLight,
+            onTap: () async {
+              final confirmed = await AppDialog.show(
+                context,
+                title: 'Sign out?',
+                body:
+                'You\'ll be signed out of your anonymous persona. Your posts stay.',
+                confirmLabel: 'Sign Out',
+                cancelLabel: 'Stay',
+                isDestructive: true,
+              );
+              if (confirmed && context.mounted) {
+                Navigator.of(context).pop();
+                final signOut = ref.read(signOutProvider);
+                await signOut();
+                if (context.mounted) context.go('/login');
+              }
+            },
+          ),
         ],
-        SizedBox(height: MediaQuery.of(context).padding.bottom + 8),
+
+        const Spacer(),
+
+        // Bottom version tag
+        Padding(
+          padding: EdgeInsets.fromLTRB(20, 0, 20, bottomPad + 20),
+          child: Text(
+            'Fess v2 • Everything stays anon.',
+            style: AppTypography.bodySmall.copyWith(
+              fontSize: 10,
+              color: const Color(0xFF2A2A2A),
+            ),
+          ),
+        ),
       ],
     );
   }
 }
 
-// ── Profile header ────────────────────────────────────────────────────────────
+// DRAWER HEADER
 
-class _ProfileHeader extends StatelessWidget {
+class _DrawerHeader extends StatelessWidget {
   final ProfileData profile;
-  final bool isOwn;
-
-  const _ProfileHeader({required this.profile, required this.isOwn});
+  const _DrawerHeader({required this.profile});
 
   @override
   Widget build(BuildContext context) {
     final avatarUrl = profile.avatarConfig.isNotEmpty
-        ? AvatarConfig.fromMap(profile.avatarConfig).buildUrl(size: 160)
+        ? AvatarConfig.fromMap(profile.avatarConfig).buildUrl(size: 120)
         : null;
 
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24),
-      child: Row(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // Avatar
           Container(
-            width: 64,
-            height: 64,
+            width: 60,
+            height: 60,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               border: Border.all(
-                color: AppColors.accentPrimary.withOpacity(0.4),
+                color: AppColors.accentPrimary.withOpacity(0.35),
                 width: 1.5,
               ),
             ),
@@ -211,46 +384,56 @@ class _ProfileHeader extends StatelessWidget {
                   : const _AnonAvatar(),
             ),
           ),
-          const SizedBox(width: 16),
 
-          // Name + id
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '@${profile.username}',
-                  style: AppTypography.bodyMedium.copyWith(
-                    fontFamily: 'DM Sans',
-                    fontSize: 18,
-                    fontWeight: FontWeight.w800,
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                GestureDetector(
-                  onLongPress: () {
-                    Clipboard.setData(ClipboardData(text: profile.anonId));
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Anon ID copied'),
-                        duration: Duration(seconds: 1),
-                      ),
-                    );
-                  },
-                  child: Text(
-                    profile.anonId.length > 16
-                        ? '${profile.anonId.substring(0, 16)}…'
-                        : profile.anonId,
-                    style: AppTypography.bodySmall.copyWith(
-                      fontSize: 11,
-                      color: AppColors.hintText,
-                      fontFamily: 'monospace',
-                    ),
-                  ),
-                ),
-              ],
+          const SizedBox(height: 12),
+
+          Text(
+            '@${profile.username}',
+            style: AppTypography.bodyMedium.copyWith(
+              fontSize: 18,
+              fontWeight: FontWeight.w800,
+              color: AppColors.textPrimary,
             ),
+          ),
+
+          const SizedBox(height: 2),
+
+          GestureDetector(
+            onLongPress: () {
+              Clipboard.setData(ClipboardData(text: profile.anonId));
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Anon ID copied'),
+                  duration: Duration(seconds: 1),
+                ),
+              );
+            },
+            child: Text(
+              profile.anonId.length > 14
+                  ? '#${profile.anonId.substring(0, 14)}…'
+                  : '#${profile.anonId}',
+              style: AppTypography.bodySmall.copyWith(
+                fontSize: 11,
+                color: AppColors.hintText,
+                fontFamily: 'monospace',
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 16),
+
+          // Stats row
+          Row(
+            children: [
+              _MiniStat(
+                  value: profile.totalPostCount, label: 'Posts'),
+              const SizedBox(width: 20),
+              _MiniStat(
+                  value: profile.totalLikeCount, label: 'Likes'),
+              const SizedBox(width: 20),
+              _MiniStat(
+                  value: profile.totalCommentCount, label: 'Replies'),
+            ],
           ),
         ],
       ),
@@ -258,360 +441,199 @@ class _ProfileHeader extends StatelessWidget {
   }
 }
 
-class _AnonAvatar extends StatelessWidget {
-  const _AnonAvatar();
-  @override
-  Widget build(BuildContext context) => Container(
-    color: const Color(0xFF1A1A1A),
-    child: const Icon(LucideIcons.user, size: 28, color: AppColors.hintText),
-  );
-}
-
-// Stats Row
-
-class _StatsRow extends StatelessWidget {
-  final ProfileData profile;
-
-  const _StatsRow({required this.profile});
-
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.symmetric(horizontal: 24),
-    child: Row(
-      mainAxisAlignment: MainAxisAlignment.start,
-      children: [
-        _StatCell(label: 'Posts', value: profile.totalPostCount),
-        const SizedBox(width: 28),
-        _StatCell(label: 'Likes', value: profile.totalLikeCount),
-        const SizedBox(width: 28),
-        _StatCell(label: 'Comments', value: profile.totalCommentCount),
-      ],
-    ),
-  );
-}
-
-class _StatCell extends StatelessWidget {
-  final String label;
+class _MiniStat extends StatelessWidget {
   final int value;
-
-  const _StatCell({required this.label, required this.value});
-
-  @override
-  Widget build(BuildContext context) => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      Text(
-        _fmt(value),
-        style: AppTypography.bodyMedium.copyWith(
-          fontFamily: 'DM Sans',
-          fontSize: 17,
-          fontWeight: FontWeight.w800,
-          color: AppColors.textPrimary,
-          fontFeatures: [const FontFeature.tabularFigures()],
-        ),
-      ),
-      Text(
-        label,
-        style: AppTypography.bodySmall.copyWith(
-          fontSize: 11,
-          color: AppColors.textSecondary,
-        ),
-      ),
-    ],
-  );
+  final String label;
+  const _MiniStat({required this.value, required this.label});
 
   String _fmt(int n) {
     if (n >= 1000000) return '${(n / 1000000).toStringAsFixed(1)}M';
     if (n >= 1000) return '${(n / 1000).toStringAsFixed(1)}K';
     return '$n';
   }
-}
-
-// Tab Bar
-
-class _ProfileTabBar extends StatelessWidget {
-  final TabController tab;
-  final bool isOwn;
-
-  const _ProfileTabBar({required this.tab, required this.isOwn});
 
   @override
-  Widget build(BuildContext context) => TabBar(
-    controller: tab,
-    onTap: (_) => HapticFeedback.selectionClick(),
-    indicatorColor: AppColors.accentPrimary,
-    indicatorWeight: 2,
-    indicatorSize: TabBarIndicatorSize.label,
-    dividerColor: Colors.transparent,
-    labelColor: AppColors.textPrimary,
-    unselectedLabelColor: AppColors.textSecondary,
-    labelStyle: AppTypography.labelMedium.copyWith(
-      fontSize: 13,
-      fontWeight: FontWeight.w600,
-    ),
-    unselectedLabelStyle: AppTypography.labelMedium.copyWith(
-      fontSize: 13,
-      fontWeight: FontWeight.w400,
-    ),
-    tabs: [
-      Tab(text: isOwn ? 'My Spills' : 'Spills'),
-      Tab(text: isOwn ? 'My Tea' : 'Tea'),
-      Tab(text: 'Liked'),
-    ],
-  );
-}
-
-// Spills Tab
-
-class _SpillsTab extends ConsumerWidget {
-  final String anonId;
-  const _SpillsTab({required this.anonId});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final async = ref.watch(mySpillsProvider(anonId));
-    return async.when(
-      loading: () => _shimmerList(),
-      error: (_, __) => _emptyState('Could not load spills.'),
-      data: (feed) {
-        if (feed.isLoading) return _shimmerList();
-        if (feed.posts.isEmpty) {
-          return _emptyState('No spills yet.');
-        }
-        return ListView.builder(
-          itemCount: feed.posts.length + (feed.isLoadingMore ? 1 : 0),
-          itemBuilder: (ctx, i) {
-            if (i == feed.posts.length) return _loadMore();
-            final post = feed.posts[i];
-            return ConfessionCard(
-              key: ValueKey(post.postId),
-              post: post,
-              currentAnonId: anonId,
-              onTap: () => Navigator.of(ctx).push(
-                postDetailHeroRoute(post.postId, initialPost: post),
-              ),
-              onLike: () =>
-                  ref.read(mySpillsProvider(anonId).notifier).loadMore(),
-            );
-          },
-        );
-      },
-    );
-  }
-}
-
-// Tea Tab
-
-class _TeaTab extends ConsumerWidget {
-  final String anonId;
-  const _TeaTab({required this.anonId});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final async = ref.watch(myTeaProvider(anonId));
-    return async.when(
-      loading: () => _shimmerList(),
-      error: (_, __) => _emptyState('Could not load tea.'),
-      data: (feed) {
-        if (feed.isLoading) return _shimmerList();
-        if (feed.posts.isEmpty) {
-          return _emptyState('No tea yet.');
-        }
-        return ListView.builder(
-          itemCount: feed.posts.length,
-          itemBuilder: (ctx, i) {
-            final post = feed.posts[i];
-            return ConfessionCard(
-              key: ValueKey(post.postId),
-              post: post,
-              currentAnonId: anonId,
-              onTap: () => Navigator.of(ctx).push(
-                postDetailHeroRoute(post.postId, initialPost: post),
-              ),
-              onLike: () {},
-            );
-          },
-        );
-      },
-    );
-  }
-}
-
-// Liked Tab
-
-class _LikedTab extends ConsumerWidget {
-  final String anonId;
-  const _LikedTab({required this.anonId});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final async = ref.watch(myLikedProvider(anonId));
-    return async.when(
-      loading: () => _shimmerList(),
-      error: (_, __) => _emptyState('Could not load liked posts.'),
-      data: (feed) {
-        if (feed.isLoading) return _shimmerList();
-        if (feed.posts.isEmpty) {
-          return _emptyState('Nothing liked yet.');
-        }
-        return ListView.builder(
-          itemCount: feed.posts.length,
-          itemBuilder: (ctx, i) {
-            final post = feed.posts[i];
-            return ConfessionCard(
-              key: ValueKey(post.postId),
-              post: post,
-              currentAnonId: anonId,
-              onTap: () => Navigator.of(ctx).push(
-                postDetailHeroRoute(post.postId, initialPost: post),
-              ),
-              onLike: () {},
-            );
-          },
-        );
-      },
-    );
-  }
-}
-
-// Settings Footer
-
-class _SettingsFooter extends ConsumerWidget {
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      child: Column(
-        children: [
-          _SettingsRow(
-            icon: LucideIcons.bell,
-            label: 'Notifications',
-            onTap: () {},
-            trailing: Text(
-              'Coming soon',
-              style: AppTypography.bodySmall.copyWith(
-                fontSize: 11,
-                color: AppColors.hintText,
-              ),
-            ),
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          _fmt(value),
+          style: AppTypography.bodyMedium.copyWith(
+            fontSize: 15,
+            fontWeight: FontWeight.w800,
+            color: AppColors.textPrimary,
+            fontFeatures: [const FontFeature.tabularFigures()],
           ),
-          _SettingsRow(
-            icon: LucideIcons.shieldOff,
-            label: 'Blocked Users',
-            onTap: () {},
-            trailing: Text(
-              'Coming soon',
-              style: AppTypography.bodySmall.copyWith(
-                fontSize: 11,
-                color: AppColors.hintText,
-              ),
-            ),
+        ),
+        Text(
+          label,
+          style: AppTypography.bodySmall.copyWith(
+            fontSize: 11,
+            color: AppColors.textSecondary,
           ),
-          _SettingsRow(
-            icon: LucideIcons.logOut,
-            label: 'Sign Out',
-            labelColor: AppColors.errorLight,
-            onTap: () async {
-              Navigator.of(context).pop();
-              final signOut = ref.read(signOutProvider);
-              await signOut();
-            },
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
 
-class _SettingsRow extends StatelessWidget {
+// DRAWER NAV ITEM
+
+class _DrawerNavItem extends StatefulWidget {
   final IconData icon;
   final String label;
-  final Color? labelColor;
   final VoidCallback onTap;
-  final Widget? trailing;
+  final bool isHighlight;
+  final Color? labelColor;
+  final Color? iconColor;
 
-  const _SettingsRow({
+  const _DrawerNavItem({
     required this.icon,
     required this.label,
     required this.onTap,
+    this.isHighlight = false,
     this.labelColor,
-    this.trailing,
+    this.iconColor,
   });
 
   @override
-  Widget build(BuildContext context) => GestureDetector(
-    onTap: () {
-      HapticFeedback.selectionClick();
-      onTap();
-    },
-    behavior: HitTestBehavior.opaque,
-    child: Padding(
-      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-      child: Row(
-        children: [
-          Icon(icon,
-              size: 18,
-              color: labelColor ?? AppColors.textSecondary),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              label,
+  State<_DrawerNavItem> createState() => _DrawerNavItemState();
+}
+
+class _DrawerNavItemState extends State<_DrawerNavItem> {
+  bool _pressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final fg = widget.labelColor ??
+        (widget.isHighlight ? AppColors.accentPrimary : AppColors.textPrimary);
+    final iconFg = widget.iconColor ??
+        (widget.isHighlight
+            ? AppColors.accentPrimary
+            : AppColors.textSecondary);
+
+    return GestureDetector(
+      onTapDown: (_) => setState(() => _pressed = true),
+      onTapUp: (_) {
+        setState(() => _pressed = false);
+        widget.onTap();
+      },
+      onTapCancel: () => setState(() => _pressed = false),
+      behavior: HitTestBehavior.opaque,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 80),
+        margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+        padding:
+        const EdgeInsets.symmetric(horizontal: 12, vertical: 13),
+        decoration: BoxDecoration(
+          color: _pressed
+              ? const Color(0xFF1A1A1A)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          children: [
+            Icon(widget.icon, size: 18, color: iconFg),
+            const SizedBox(width: 14),
+            Text(
+              widget.label,
               style: AppTypography.bodyMedium.copyWith(
-                fontSize: 14,
-                color: labelColor ?? AppColors.textPrimary,
-                fontWeight: FontWeight.w500,
+                fontSize: 15,
+                fontWeight: widget.isHighlight
+                    ? FontWeight.w700
+                    : FontWeight.w500,
+                color: fg,
               ),
             ),
-          ),
-          if (trailing != null) trailing!,
-        ],
+            if (widget.isHighlight) ...[
+              const Spacer(),
+              Icon(
+                LucideIcons.arrowRight,
+                size: 14,
+                color: AppColors.accentPrimary.withOpacity(0.6),
+              ),
+            ],
+          ],
+        ),
       ),
-    ),
+    );
+  }
+}
+
+// FESS LOGO SVG INLINE
+class _FessLogo extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    // Uses Image.asset for the logo you already have in assets
+    return Row(
+      children: [
+        Image.asset(
+          'assets/images/logo.png',
+          width: 28,
+          height: 28,
+        ),
+        const SizedBox(width: 8),
+        Text(
+          'Fess',
+          style: AppTypography.h3.copyWith(
+            fontSize: 20,
+            fontWeight: FontWeight.w800,
+            color: AppColors.textPrimary,
+            letterSpacing: -0.5,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// HELPERS
+
+class _AnonAvatar extends StatelessWidget {
+  const _AnonAvatar();
+  @override
+  Widget build(BuildContext context) => Container(
+    color: const Color(0xFF1A1A1A),
+    child: const Icon(LucideIcons.user,
+        size: 24, color: AppColors.hintText),
   );
 }
 
-// Shared Helpers
-
-Widget _shimmerList() => ListView.builder(
-  physics: const NeverScrollableScrollPhysics(),
-  itemCount: 4,
-  itemBuilder: (_, __) => const ConfessionShimmerCard(),
-);
-
-Widget _emptyState(String msg) => Center(
-  child: Text(
-    msg,
-    style: const TextStyle(
-      fontSize: 14,
-      color: AppColors.textSecondary,
-    ),
-  ),
-);
-
-Widget _loadMore() => const Padding(
-  padding: EdgeInsets.symmetric(vertical: 20),
-  child: Center(
+class _DrawerLoadingState extends StatelessWidget {
+  const _DrawerLoadingState();
+  @override
+  Widget build(BuildContext context) => const Center(
     child: SizedBox(
-      width: 18,
-      height: 18,
+      width: 20,
+      height: 20,
       child: CircularProgressIndicator(
         strokeWidth: 1.5,
         color: AppColors.textSecondary,
       ),
     ),
-  ),
-);
-
-// Shimmer Header
-
-class _HeaderShimmer extends StatefulWidget {
-  const _HeaderShimmer();
-
-  @override
-  State<_HeaderShimmer> createState() => _HeaderShimmerState();
+  );
 }
 
-class _HeaderShimmerState extends State<_HeaderShimmer>
+class _DrawerErrorState extends StatelessWidget {
+  const _DrawerErrorState();
+  @override
+  Widget build(BuildContext context) => Center(
+    child: Text(
+      'Could not load.',
+      style: AppTypography.bodySmall
+          .copyWith(color: AppColors.textSecondary),
+    ),
+  );
+}
+
+class _DrawerHeaderShimmer extends StatefulWidget {
+  const _DrawerHeaderShimmer();
+  @override
+  State<_DrawerHeaderShimmer> createState() => _DrawerHeaderShimmerState();
+}
+
+class _DrawerHeaderShimmerState extends State<_DrawerHeaderShimmer>
     with SingleTickerProviderStateMixin {
   late final AnimationController _ctrl;
   late final Animation<double> _anim;
@@ -632,26 +654,24 @@ class _HeaderShimmerState extends State<_HeaderShimmer>
   }
 
   @override
-  Widget build(BuildContext context) => AnimatedBuilder(
-    animation: _anim,
-    builder: (_, __) => Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24),
-      child: Row(
-        children: [
-          _Bone(w: 64, h: 64, radius: 32, anim: _anim),
-          const SizedBox(width: 16),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _Bone(w: 120, h: 16, radius: 4, anim: _anim),
-              const SizedBox(height: 6),
-              _Bone(w: 80, h: 11, radius: 4, anim: _anim),
-            ],
-          ),
-        ],
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _anim,
+      builder: (_, __) => Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _Bone(w: 60, h: 60, radius: 30, anim: _anim),
+            const SizedBox(height: 12),
+            _Bone(w: 130, h: 16, radius: 5, anim: _anim),
+            const SizedBox(height: 6),
+            _Bone(w: 90, h: 11, radius: 5, anim: _anim),
+          ],
+        ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 class _Bone extends StatelessWidget {
@@ -670,12 +690,10 @@ class _Bone extends StatelessWidget {
     decoration: BoxDecoration(
       borderRadius: BorderRadius.circular(radius),
       gradient: LinearGradient(
-        begin: Alignment.centerLeft,
-        end: Alignment.centerRight,
         colors: const [
-          Color(0xFF1A1A28),
-          Color(0xFF252535),
-          Color(0xFF1A1A28),
+          Color(0xFF1A1A1A),
+          Color(0xFF252525),
+          Color(0xFF1A1A1A),
         ],
         stops: [
           (anim.value - 0.5).clamp(0.0, 1.0),
@@ -683,32 +701,6 @@ class _Bone extends StatelessWidget {
           (anim.value + 0.5).clamp(0.0, 1.0),
         ],
       ),
-    ),
-  );
-}
-
-class _LoadingBody extends StatelessWidget {
-  const _LoadingBody();
-  @override
-  Widget build(BuildContext context) => const Center(
-    child: SizedBox(
-      width: 20,
-      height: 20,
-      child: CircularProgressIndicator(
-        strokeWidth: 1.5,
-        color: AppColors.textSecondary,
-      ),
-    ),
-  );
-}
-
-class _ErrorBody extends StatelessWidget {
-  const _ErrorBody();
-  @override
-  Widget build(BuildContext context) => Center(
-    child: Text(
-      'Could not load profile.',
-      style: AppTypography.bodySmall.copyWith(color: AppColors.textSecondary),
     ),
   );
 }

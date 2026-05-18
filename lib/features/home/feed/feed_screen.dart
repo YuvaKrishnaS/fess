@@ -149,7 +149,7 @@ class _AppBarAvatar extends StatelessWidget {
     return GestureDetector(
       onTap: () {
         HapticFeedback.selectionClick();
-        showProfileSheet(context);
+        showProfileDrawer(context);
       },
       child: Container(
         width: 34,
