@@ -1,6 +1,7 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons/lucide_icons.dart';
@@ -10,7 +11,7 @@ import '../../../core/constants/app_typography.dart';
 import '../../../core/models/avatar_config.dart';
 import '../../../core/widgets/app_dialog.dart';
 import '../providers/feed_provider.dart';
-import '../providers/profile_provider.dart';
+import '../providers/profile_provider.dart' hide currentAnonIdProvider;
 
 // ENTRY POINT :))))))))
 
@@ -31,21 +32,93 @@ void showProfileDrawer(BuildContext context, {String? anonId}) {
 
 // OVERLAY
 
-class _ProfileDrawerOverlay extends ConsumerWidget {
+class _ProfileDrawerOverlay extends ConsumerStatefulWidget {
   final String? anonId;
   const _ProfileDrawerOverlay({this.anonId});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_ProfileDrawerOverlay> createState() =>
+      _ProfileDrawerOverlayState();
+}
+
+class _ProfileDrawerOverlayState extends ConsumerState<_ProfileDrawerOverlay>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final Animation<double> _scrimOpacity;
+  late final Animation<Offset> _drawerOffset;
+  bool _isClosing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 280),
+      reverseDuration: const Duration(milliseconds: 230),
+    );
+
+    _scrimOpacity = CurvedAnimation(
+      parent: _controller,
+      curve: Curves.easeOut,
+      reverseCurve: Curves.easeIn,
+    );
+
+    _drawerOffset = Tween<Offset>(
+      begin: const Offset(-1.0, 0),
+      end: Offset.zero,
+    ).animate(
+      CurvedAnimation(
+        parent: _controller,
+        curve: Curves.easeOutCubic,
+        reverseCurve: Curves.easeInCubic,
+      ),
+    );
+
+    _controller.forward();
+  }
+
+  Future<void> closeDrawer() async {
+    if (_isClosing) return;
+    _isClosing = true;
+    await _controller.reverse();
+    if (mounted) Navigator.of(context).pop();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: () => Navigator.of(context).pop(),
+      onTap: closeDrawer,
       behavior: HitTestBehavior.opaque,
       child: Stack(
         children: [
-          // Dark scrim
-          _Scrim(),
-          // The drawer itself
-          _ProfileDrawer(anonId: anonId),
+          FadeTransition(                                   // FIX 1: was FadetransitionS
+            opacity: _scrimOpacity,
+            child: Container(color: Colors.black.withOpacity(0.55)),
+          ),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: SlideTransition(
+              position: _drawerOffset,
+              child: GestureDetector(
+                onHorizontalDragUpdate: (details) {
+                  if (details.delta.dx < -8) {
+                    closeDrawer();
+                  }
+                },
+                onTap: () {},
+                child: _ProfileDrawerContent(             // FIX 2: was _profileDrawerContent
+                  anonId: widget.anonId,
+                  onClose: closeDrawer,
+                ),
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -88,92 +161,67 @@ class _ScrimState extends State<_Scrim> with SingleTickerProviderStateMixin {
 
 // DRAWER
 
-class _ProfileDrawer extends ConsumerStatefulWidget {
+class _ProfileDrawerContent extends ConsumerWidget {
   final String? anonId;
-  const _ProfileDrawer({this.anonId});
+  final Future<void> Function() onClose;
+
+  const _ProfileDrawerContent({
+    required this.anonId,
+    required this.onClose,
+  });
 
   @override
-  ConsumerState<_ProfileDrawer> createState() => _ProfileDrawerState();
-}
-
-class _ProfileDrawerState extends ConsumerState<_ProfileDrawer>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _ctrl;
-  late final Animation<Offset> _slide;
-
-  @override
-  void initState() {
-    super.initState();
-    _ctrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 300),
-    )..forward();
-    _slide = Tween<Offset>(
-      begin: const Offset(-1.0, 0),
-      end: Offset.zero,
-    ).animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeOutCubic));
-  }
-
-  @override
-  void dispose() {
-    _ctrl.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final myIdAsync = ref.watch(currentAnonIdProvider);
     final screenW = MediaQuery.of(context).size.width;
 
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: SlideTransition(
-        position: _slide,
-        child: GestureDetector(
-          onTap: () {}, // prevent scrim tap from passing through
-          child: Container(
-            width: screenW * 0.78,
-            height: double.infinity,
-            decoration: const BoxDecoration(
-              color: Color(0xFF0C0C0C),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black54,
-                  blurRadius: 32,
-                  offset: Offset(8, 0),
-                ),
-              ],
-            ),
-            child: myIdAsync.when(
-              loading: () => const _DrawerLoadingState(),
-              error: (_, __) => const _DrawerErrorState(),
-              data: (myId) {
-                final resolvedId = widget.anonId ?? myId;
-                final isOwn =
-                    resolvedId == myId || widget.anonId == null;
-                if (resolvedId == null) {
-                  return const _DrawerErrorState();
-                }
-                return _DrawerContent(
-                  anonId: resolvedId,
-                  isOwn: isOwn,
-                );
-              },
-            ),
+    return Container(
+      width: screenW * 0.78,
+      height: double.infinity,
+      decoration: const BoxDecoration(
+        color: Color(0xFF0C0C0C),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black54,
+            blurRadius: 32,
+            offset: Offset(8, 0),
           ),
-        ),
+        ],
+      ),
+      child: myIdAsync.when(
+        loading: () => const _DrawerLoadingState(),
+        error: (_, __) => const _DrawerErrorState(),
+        data: (myId) {
+          final resolvedId = anonId ?? myId;
+          final isOwn = resolvedId == myId || anonId == null;
+
+          if (resolvedId == null) return const _DrawerErrorState();
+
+          return _DrawerContent(
+            anonId: resolvedId,
+            isOwn: isOwn,
+            onClose: onClose,
+          );
+        },
       ),
     );
   }
 }
+
+// FIX 3: removed dead _ProfileDrawerState / _ProfileDrawer orphan block entirely
 
 // DRAWER CONTENT
 
 class _DrawerContent extends ConsumerWidget {
   final String anonId;
   final bool isOwn;
+  final Future<void> Function() onClose;
 
-  const _DrawerContent({required this.anonId, required this.isOwn});
+  const _DrawerContent({
+    required this.anonId,
+    required this.isOwn,
+    required this.onClose,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -191,11 +239,10 @@ class _DrawerContent extends ConsumerWidget {
           padding: const EdgeInsets.symmetric(horizontal: 20),
           child: Row(
             children: [
-              // Fess logo
               _FessLogo(),
               const Spacer(),
               GestureDetector(
-                onTap: () => Navigator.of(context).pop(),
+                onTap: () => onClose(),
                 child: Container(
                   width: 34,
                   height: 34,
@@ -290,15 +337,14 @@ class _DrawerContent extends ConsumerWidget {
         const SizedBox(height: 8),
 
         // SETTINGS SECTION
-
         if (isOwn) ...[
           _DrawerNavItem(
             icon: LucideIcons.settings,
             label: 'Settings',
-            onTap: () {
+            onTap: () async {
               HapticFeedback.selectionClick();
-              Navigator.of(context).pop();
-              context.push('/profile/$anonId?tab=settings');
+              await onClose();
+              if (context.mounted) context.push('/settings/profile');
             },
           ),
           _DrawerNavItem(
@@ -310,17 +356,21 @@ class _DrawerContent extends ConsumerWidget {
               final confirmed = await AppDialog.show(
                 context,
                 title: 'Sign out?',
-                body:
-                'You\'ll be signed out of your anonymous persona. Your posts stay.',
+                body: 'You\'ll be signed out of your anonymous persona.',
                 confirmLabel: 'Sign Out',
                 cancelLabel: 'Stay',
                 isDestructive: true,
               );
-              if (confirmed && context.mounted) {
-                Navigator.of(context).pop();
-                final signOut = ref.read(signOutProvider);
-                await signOut();
-                if (context.mounted) context.go('/login');
+
+              if (!confirmed || !context.mounted) return;
+
+              await onClose();
+
+              final signOut = ref.read(signOutProvider);
+              await signOut();
+
+              if (context.mounted) {
+                context.go('/auth/login');
               }
             },
           ),
@@ -334,7 +384,7 @@ class _DrawerContent extends ConsumerWidget {
           child: Text(
             'Fess v2 • Everything stays anon.',
             style: AppTypography.bodySmall.copyWith(
-              fontSize: 10,
+              fontSize: 13,
               color: const Color(0xFF2A2A2A),
             ),
           ),
@@ -425,14 +475,11 @@ class _DrawerHeader extends StatelessWidget {
           // Stats row
           Row(
             children: [
-              _MiniStat(
-                  value: profile.totalPostCount, label: 'Posts'),
+              _MiniStat(value: profile.totalPostCount, label: 'Posts'),
               const SizedBox(width: 20),
-              _MiniStat(
-                  value: profile.totalLikeCount, label: 'Likes'),
+              _MiniStat(value: profile.totalLikeCount, label: 'Likes'),
               const SizedBox(width: 20),
-              _MiniStat(
-                  value: profile.totalCommentCount, label: 'Replies'),
+              _MiniStat(value: profile.totalCommentCount, label: 'Replies'),
             ],
           ),
         ],
@@ -524,12 +571,9 @@ class _DrawerNavItemState extends State<_DrawerNavItem> {
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 80),
         margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
-        padding:
-        const EdgeInsets.symmetric(horizontal: 12, vertical: 13),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 13),
         decoration: BoxDecoration(
-          color: _pressed
-              ? const Color(0xFF1A1A1A)
-              : Colors.transparent,
+          color: _pressed ? const Color(0xFF1A1A1A) : Colors.transparent,
           borderRadius: BorderRadius.circular(12),
         ),
         child: Row(
@@ -540,9 +584,8 @@ class _DrawerNavItemState extends State<_DrawerNavItem> {
               widget.label,
               style: AppTypography.bodyMedium.copyWith(
                 fontSize: 15,
-                fontWeight: widget.isHighlight
-                    ? FontWeight.w700
-                    : FontWeight.w500,
+                fontWeight:
+                widget.isHighlight ? FontWeight.w700 : FontWeight.w500,
                 color: fg,
               ),
             ),
@@ -565,7 +608,6 @@ class _DrawerNavItemState extends State<_DrawerNavItem> {
 class _FessLogo extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    // Uses Image.asset for the logo you already have in assets
     return Row(
       children: [
         Image.asset(
@@ -595,8 +637,7 @@ class _AnonAvatar extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Container(
     color: const Color(0xFF1A1A1A),
-    child: const Icon(LucideIcons.user,
-        size: 24, color: AppColors.hintText),
+    child: const Icon(LucideIcons.user, size: 24, color: AppColors.hintText),
   );
 }
 
@@ -642,8 +683,9 @@ class _DrawerHeaderShimmerState extends State<_DrawerHeaderShimmer>
   void initState() {
     super.initState();
     _ctrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 1500))
-      ..repeat();
+      vsync: this,
+      duration: const Duration(milliseconds: 1500),
+    )..repeat();
     _anim = CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut);
   }
 
@@ -677,11 +719,12 @@ class _DrawerHeaderShimmerState extends State<_DrawerHeaderShimmer>
 class _Bone extends StatelessWidget {
   final double w, h, radius;
   final Animation<double> anim;
-  const _Bone(
-      {required this.w,
-        required this.h,
-        required this.radius,
-        required this.anim});
+  const _Bone({
+    required this.w,
+    required this.h,
+    required this.radius,
+    required this.anim,
+  });
 
   @override
   Widget build(BuildContext context) => Container(

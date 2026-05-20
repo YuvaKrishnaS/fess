@@ -14,7 +14,10 @@ class AvatarBuilderState {
     this.tab = AvatarBuilderTab.skin,
   });
 
-  AvatarBuilderState copyWith({AvatarConfig? config, AvatarBuilderTab? tab}) {
+  AvatarBuilderState copyWith({
+    AvatarConfig? config,
+    AvatarBuilderTab? tab,
+  }) {
     return AvatarBuilderState(
       config: config ?? this.config,
       tab: tab ?? this.tab,
@@ -27,6 +30,10 @@ class AvatarBuilderNotifier extends Notifier<AvatarBuilderState> {
 
   @override
   AvatarBuilderState build() => const AvatarBuilderState();
+
+  void setFromConfig(AvatarConfig config) {
+    state = state.copyWith(config: config);
+  }
 
   void setTab(AvatarBuilderTab tab) {
     state = state.copyWith(tab: tab);
@@ -64,10 +71,6 @@ class AvatarBuilderNotifier extends Notifier<AvatarBuilderState> {
     );
   }
 
-  void setClothing(String value) {
-    state = state.copyWith(config: state.config.copyWith(hair: value));
-  }
-
   void randomize() {
     String pick(List<String> list) => list[_rng.nextInt(list.length)];
 
@@ -87,4 +90,5 @@ class AvatarBuilderNotifier extends Notifier<AvatarBuilderState> {
 
 final avatarBuilderProvider =
 NotifierProvider<AvatarBuilderNotifier, AvatarBuilderState>(
-    AvatarBuilderNotifier.new);
+  AvatarBuilderNotifier.new,
+);

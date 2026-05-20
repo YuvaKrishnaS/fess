@@ -1,14 +1,17 @@
-import 'package:fessv2/features/home/post_detail/post_detail_screen.dart';
-import 'package:fessv2/features/persona/persona_creation_screen.dart';
+import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import '../../features/home/screens/profile_page.dart';
-import '../../features/persona/avatar_builder_screen.dart';
-import '../../features/splash/splash_screen.dart';
-import '../../features/onboarding/onboarding_screen.dart';
+
 import '../../features/auth/login_screen.dart';
 import '../../features/home/home_scaffold.dart';
+import '../../features/home/post_detail/post_detail_screen.dart';
+import '../../features/home/screens/profile_page.dart';
+import '../../features/home/screens/profile_settings_page.dart';
+import '../../features/onboarding/onboarding_screen.dart';
+import '../../features/persona/avatar_builder_screen.dart';
+import '../../features/persona/edit_persona_screen.dart';
+import '../../features/persona/persona_creation_screen.dart';
+import '../../features/splash/splash_screen.dart';
 import '../models/post_model.dart';
-import 'package:flutter/material.dart';
 
 class AppRouter {
   static final GoRouter router = GoRouter(
@@ -42,6 +45,14 @@ class AppRouter {
       GoRoute(
         path: '/avatar-builder',
         builder: (context, state) => const AvatarBuilderScreen(),
+      ),
+      GoRoute(
+        path: '/persona/edit',
+        builder: (context, state) => const EditPersonaScreen(),
+      ),
+      GoRoute(
+        path: '/settings/profile',
+        builder: (context, state) => const ProfileSettingsPage(),
       ),
       GoRoute(
         path: '/post/:postId',

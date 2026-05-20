@@ -11,7 +11,7 @@ import '../../../core/models/avatar_config.dart';
 import '../../../core/widgets/app_dialog.dart';
 import '../../home/post_detail/post_detail_screen.dart';
 import '../providers/feed_provider.dart';
-import '../providers/profile_provider.dart';
+import '../providers/profile_provider.dart' hide currentAnonIdProvider;
 import '../widgets/confession_card.dart';
 
 // ── Entry ─────────────────────────────────────────────────────────────────────
@@ -73,7 +73,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage>
   }
 }
 
-// ── Page scaffold ─────────────────────────────────────────────────────────────
+// page scaffold
 
 class _PageScaffold extends StatelessWidget {
   final Widget child;
@@ -86,7 +86,7 @@ class _PageScaffold extends StatelessWidget {
   );
 }
 
-// ── Body ──────────────────────────────────────────────────────────────────────
+// Body
 
 class _ProfilePageBody extends ConsumerWidget {
   final String anonId;
@@ -208,7 +208,7 @@ class _ProfileAppBar extends ConsumerWidget {
                   size: 20, color: AppColors.textSecondary),
               onPressed: () {
                 HapticFeedback.selectionClick();
-                _showSettingsSheet(context, ref);
+                context.push('/settings/profile');
               },
             ),
         ],
@@ -216,14 +216,14 @@ class _ProfileAppBar extends ConsumerWidget {
     );
   }
 
-  void _showSettingsSheet(BuildContext ctx, WidgetRef ref) {
-    showModalBottomSheet(
-      context: ctx,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (_) => _SettingsSheet(ref: ref),
-    );
-  }
+  // void _showSettingsSheet(BuildContext ctx, WidgetRef ref) {
+  //   showModalBottomSheet(
+  //     context: ctx,
+  //     backgroundColor: Colors.transparent,
+  //     isScrollControlled: true,
+  //     builder: (_) => _SettingsSheet(ref: ref),
+  //   );
+  // }
 }
 
 // Full Profile Header
@@ -601,318 +601,6 @@ class _EasterEggState extends State<_EasterEgg>
     );
   }
 }
-
-// Settings Bottom sheet
-
-class _SettingsSheet extends ConsumerWidget {
-  final WidgetRef ref;
-  const _SettingsSheet({required this.ref});
-
-  @override
-  Widget build(BuildContext context, WidgetRef _) {
-    final bottomPad = MediaQuery.of(context).padding.bottom;
-
-    return Container(
-      decoration: const BoxDecoration(
-        color: Color(0xFF0E0E0E),
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      padding: EdgeInsets.fromLTRB(0, 12, 0, bottomPad + 8),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // Drag handle
-          Container(
-            width: 36,
-            height: 4,
-            decoration: BoxDecoration(
-              color: const Color(0xFF2A2A2A),
-              borderRadius: BorderRadius.circular(2),
-            ),
-          ),
-          const SizedBox(height: 20),
-
-          // Section: Account
-          _SettingsSection(label: 'Account'),
-          _SettingsItem(
-            icon: LucideIcons.userCircle,
-            label: 'Edit Persona',
-            subtitle: 'Change your username or avatar',
-            onTap: () {
-              Navigator.of(context).pop();
-              context.push('/avatar-builder');
-            },
-          ),
-          _SettingsItem(
-            icon: LucideIcons.copy,
-            label: 'Copy Anon ID',
-            subtitle: 'Share your anonymous identity',
-            onTap: () async {
-              final anonId = await ref
-                  .read(currentAnonIdProvider.future);
-              if (anonId != null) {
-                Clipboard.setData(ClipboardData(text: anonId));
-                if (context.mounted) {
-                  Navigator.of(context).pop();
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Anon ID copied to clipboard'),
-                      duration: Duration(seconds: 2),
-                    ),
-                  );
-                }
-              }
-            },
-          ),
-
-          const SizedBox(height: 8),
-          _SettingsSection(label: 'Privacy & Safety'),
-          _SettingsItem(
-            icon: LucideIcons.shieldOff,
-            label: 'Blocked Users',
-            subtitle: 'Manage who can\'t see your posts',
-            badge: 'Soon',
-            onTap: () {},
-          ),
-          _SettingsItem(
-            icon: LucideIcons.lock,
-            label: 'Privacy Settings',
-            subtitle: 'Control your visibility',
-            badge: 'Soon',
-            onTap: () {},
-          ),
-
-          const SizedBox(height: 8),
-          _SettingsSection(label: 'Notifications'),
-          _SettingsItem(
-            icon: LucideIcons.bell,
-            label: 'Push Notifications',
-            subtitle: 'Likes, comments & replies',
-            badge: 'Soon',
-            onTap: () {},
-          ),
-
-          const SizedBox(height: 8),
-          _SettingsSection(label: 'Support'),
-          _SettingsItem(
-            icon: LucideIcons.mailQuestion,
-            label: 'Help & Feedback',
-            subtitle: 'Report bugs or ask questions',
-            onTap: () {},
-          ),
-          _SettingsItem(
-            icon: LucideIcons.fileText,
-            label: 'Privacy Policy',
-            onTap: () {},
-          ),
-          _SettingsItem(
-            icon: LucideIcons.scrollText,
-            label: 'Terms of Service',
-            onTap: () {},
-          ),
-
-          const SizedBox(height: 16),
-
-          // Danger zone
-          Container(
-            margin: const EdgeInsets.symmetric(horizontal: 16),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(
-                  color: AppColors.errorLight.withOpacity(0.15)),
-            ),
-            child: Column(
-              children: [
-                _SettingsItem(
-                  icon: LucideIcons.logOut,
-                  label: 'Sign Out',
-                  labelColor: AppColors.errorLight,
-                  iconColor: AppColors.errorLight,
-                  onTap: () async {
-                    Navigator.of(context).pop();
-                    final confirmed = await AppDialog.show(
-                      context,
-                      title: 'Sign out?',
-                      body:
-                      'You\'ll be signed out of your anonymous persona. Your posts and spills stay.',
-                      confirmLabel: 'Sign Out',
-                      cancelLabel: 'Stay',
-                      isDestructive: true,
-                    );
-                    if (confirmed && context.mounted) {
-                      final signOut = ref.read(signOutProvider);
-                      await signOut();
-                      if (context.mounted) context.go('/auth/login');
-                    }
-                  },
-                ),
-                Container(
-                    height: 1,
-                    color: AppColors.errorLight.withOpacity(0.1)),
-                _SettingsItem(
-                  icon: LucideIcons.trash2,
-                  label: 'Delete Account',
-                  subtitle:
-                  'Permanently erase all your data',
-                  labelColor: AppColors.errorLight,
-                  iconColor: AppColors.errorLight,
-                  onTap: () async {
-                    final confirmed = await AppDialog.show(
-                      context,
-                      title: 'Delete account?',
-                      body:
-                      'This permanently deletes your persona, all spills, and all your data. This cannot be undone.',
-                      confirmLabel: 'Delete Forever',
-                      cancelLabel: 'Keep Account',
-                      isDestructive: true,
-                    );
-                    if (confirmed) {
-                      // TODO: implement account deletion
-                    }
-                  },
-                ),
-              ],
-            ),
-          ),
-
-          const SizedBox(height: 8),
-
-          // App version
-          Text(
-            'Fess v2.0.0 • Everything stays anon.',
-            style: AppTypography.bodySmall.copyWith(
-              fontSize: 13,
-              color: const Color(0xFF2A2A2A),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _SettingsSection extends StatelessWidget {
-  final String label;
-  const _SettingsSection({required this.label});
-
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.fromLTRB(20, 4, 20, 4),
-    child: Align(
-      alignment: Alignment.centerLeft,
-      child: Text(
-        label.toUpperCase(),
-        style: AppTypography.bodySmall.copyWith(
-          fontSize: 10,
-          fontWeight: FontWeight.w700,
-          color: AppColors.textSecondary,
-          letterSpacing: 1.1
-        )
-      )
-    )
-  );
-}
-
-class _SettingsItem extends StatefulWidget {
-  final IconData icon;
-  final String label;
-  final String? subtitle;
-  final String? badge;
-  final VoidCallback onTap;
-  final Color? labelColor;
-  final Color? iconColor;
-
-  const _SettingsItem({
-    required this.icon,
-    required this.label,
-    this.subtitle,
-    this.badge,
-    required this.onTap,
-    this.labelColor,
-    this.iconColor,
-  });
-
-  @override
-  State<_SettingsItem> createState() => _SettingsItemState();
-}
-
-class _SettingsItemState extends State<_SettingsItem> {
-  bool _pressed = false;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTapDown: (_) => setState(() => _pressed = true),
-      onTapUp: (_) {
-        setState(() => _pressed = false);
-        HapticFeedback.selectionClick();
-        widget.onTap();
-      },
-      onTapCancel: () => setState(() => _pressed = false),
-      behavior: HitTestBehavior.opaque,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 80),
-        color: _pressed ? const Color(0xFF181818) : Colors.transparent,
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 13),
-        child: Row(
-          children: [
-            Icon(widget.icon,
-                size: 18,
-                color: widget.iconColor ?? AppColors.textSecondary),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    widget.label,
-                    style: AppTypography.bodyMedium.copyWith(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                      color: widget.labelColor ?? AppColors.textPrimary,
-                    ),
-                  ),
-                  if (widget.subtitle != null)
-                    Text(
-                      widget.subtitle!,
-                      style: AppTypography.bodySmall.copyWith(
-                        fontSize: 11,
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
-                ],
-              ),
-            ),
-            if (widget.badge != null)
-              Container(
-                padding:
-                const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                decoration: BoxDecoration(
-                  color: AppColors.accentPrimary.withOpacity(0.12),
-                  borderRadius: BorderRadius.circular(6),
-                  border: Border.all(
-                      color: AppColors.accentPrimary.withOpacity(0.2)),
-                ),
-                child: Text(
-                  widget.badge!,
-                  style: AppTypography.labelMedium.copyWith(
-                    fontSize: 10,
-                    color: AppColors.accentPrimary,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              )
-            else if (widget.labelColor == null)
-              Icon(LucideIcons.chevronRight,
-                  size: 14, color: AppColors.hintText),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// Helpers
 
 Widget _shimmerList() => ListView.builder(
   physics: const NeverScrollableScrollPhysics(),

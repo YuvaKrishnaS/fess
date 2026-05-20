@@ -808,15 +808,15 @@ class _ComposerAvatar extends StatelessWidget {
   const _ComposerAvatar({this.url});
 
   @override
-  Widget build(BuildContext contex) => Container(
+  Widget build(BuildContext context) => Container(
     width: 38,
     height: 38,
     decoration: BoxDecoration(
       shape: BoxShape.circle,
       border: Border.all(
         color: AppColors.accentPrimary.withOpacity(0.3),
-        width: 1.2
-      )
+        width: 1.2,
+      ),
     ),
     child: ClipOval(
       child: url != null
@@ -828,15 +828,15 @@ class _ComposerAvatar extends StatelessWidget {
         errorWidget: (_, __, ___) => Container(
           color: const Color(0xFF1A1A28),
           child: const Icon(LucideIcons.user,
-            size: 18, color: AppColors.hintText)
-        )
+              size: 18, color: AppColors.hintText),
+        ),
       )
           : Container(
         color: const Color(0xFF1A1A28),
         child: const Icon(LucideIcons.user,
-          size: 18, color: AppColors.hintText)
-      )
-    )
+            size: 18, color: AppColors.hintText),
+      ),
+    ),
   );
 }
 
