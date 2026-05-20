@@ -82,7 +82,7 @@ class _PageScaffold extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Scaffold(
     backgroundColor: AppColors.backgroundMain,
-    body: child,
+    body: child
   );
 }
 
@@ -135,7 +135,7 @@ class _ProfilePageBody extends ConsumerWidget {
             ),
           ),
 
-          // ── Sticky tab bar ───────────────────────────────────────────
+          // Sticy TaB BAR
           SliverPersistentHeader(
             pinned: true,
             delegate: _StickyTabBarDelegate(
@@ -179,7 +179,7 @@ class _ProfilePageBody extends ConsumerWidget {
   }
 }
 
-// ── App bar ───────────────────────────────────────────────────────────────────
+// App Bar
 
 class _ProfileAppBar extends ConsumerWidget {
   final String anonId;
@@ -226,7 +226,7 @@ class _ProfileAppBar extends ConsumerWidget {
   }
 }
 
-// ── Full profile header ───────────────────────────────────────────────────────
+// Full Profile Header
 
 class _FullProfileHeader extends StatelessWidget {
   final ProfileData profile;
@@ -376,7 +376,7 @@ class _AnonAvatarLg extends StatelessWidget {
   );
 }
 
-// ── Sticky tab bar delegate ───────────────────────────────────────────────────
+// Sticky tab bar delegate
 
 class _StickyTabBarDelegate extends SliverPersistentHeaderDelegate {
   final TabBar tabBar;
@@ -405,7 +405,7 @@ class _StickyTabBarDelegate extends SliverPersistentHeaderDelegate {
   bool shouldRebuild(_StickyTabBarDelegate old) => false;
 }
 
-// ── Content tabs ──────────────────────────────────────────────────────────────
+// Content tabs
 
 class _SpillsTab extends ConsumerWidget {
   final String anonId;
@@ -522,7 +522,7 @@ class _LikedTab extends ConsumerWidget {
   }
 }
 
-// ── Easter egg ────────────────────────────────────────────────────────────────
+// Easter Egg
 
 class _EasterEgg extends StatefulWidget {
   @override
@@ -602,7 +602,7 @@ class _EasterEggState extends State<_EasterEgg>
   }
 }
 
-// ── Settings bottom sheet ─────────────────────────────────────────────────────
+// Settings Bottom sheet
 
 class _SettingsSheet extends ConsumerWidget {
   final WidgetRef ref;
@@ -742,7 +742,7 @@ class _SettingsSheet extends ConsumerWidget {
                     if (confirmed && context.mounted) {
                       final signOut = ref.read(signOutProvider);
                       await signOut();
-                      if (context.mounted) context.go('/login');
+                      if (context.mounted) context.go('/auth/login');
                     }
                   },
                 ),
@@ -781,7 +781,7 @@ class _SettingsSheet extends ConsumerWidget {
           Text(
             'Fess v2.0.0 • Everything stays anon.',
             style: AppTypography.bodySmall.copyWith(
-              fontSize: 11,
+              fontSize: 13,
               color: const Color(0xFF2A2A2A),
             ),
           ),
@@ -797,7 +797,7 @@ class _SettingsSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.fromLTRB(20, 4, 20, 6),
+    padding: const EdgeInsets.fromLTRB(20, 4, 20, 4),
     child: Align(
       alignment: Alignment.centerLeft,
       child: Text(
@@ -806,10 +806,10 @@ class _SettingsSection extends StatelessWidget {
           fontSize: 10,
           fontWeight: FontWeight.w700,
           color: AppColors.textSecondary,
-          letterSpacing: 1.1,
-        ),
-      ),
-    ),
+          letterSpacing: 1.1
+        )
+      )
+    )
   );
 }
 
@@ -912,7 +912,7 @@ class _SettingsItemState extends State<_SettingsItem> {
   }
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// Helpers
 
 Widget _shimmerList() => ListView.builder(
   physics: const NeverScrollableScrollPhysics(),
@@ -958,9 +958,9 @@ class _CenteredSpinner extends StatelessWidget {
       height: 20,
       child: CircularProgressIndicator(
         strokeWidth: 1.5,
-        color: AppColors.textSecondary,
-      ),
-    ),
+        color: AppColors.textSecondary
+      )
+    )
   );
 }
 
@@ -971,9 +971,9 @@ class _PageError extends StatelessWidget {
   Widget build(BuildContext context) => Center(
     child: Text(
       msg,
-      style: AppTypography.bodySmall
-          .copyWith(color: AppColors.textSecondary),
-    ),
+      style: AppTypography.bodySmall.copyWith(color: AppColors.textSecondary),
+
+    )
   );
 }
 

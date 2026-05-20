@@ -67,12 +67,12 @@ class ProfileFeedState {
   final String? error;
 
   const ProfileFeedState({
-    this.posts = const [],
-    this.isLoading = true,
-    this.isLoadingMore = false,
-    this.hasMore = true,
-    this.lastDoc,
-    this.error,
+   this.posts = const [],
+   this.isLoading = true,
+   this.isLoadingMore = false,
+   this.hasMore = true,
+   this.lastDoc,
+   this.error
   });
 
   ProfileFeedState copyWith({
@@ -83,7 +83,7 @@ class ProfileFeedState {
     DocumentSnapshot? lastDoc,
     String? error,
     bool clearLastDoc = false,
-    bool clearError = false,
+    bool clearError = false
   }) {
     return ProfileFeedState(
       posts: posts ?? this.posts,
@@ -91,7 +91,7 @@ class ProfileFeedState {
       isLoadingMore: isLoadingMore ?? this.isLoadingMore,
       hasMore: hasMore ?? this.hasMore,
       lastDoc: clearLastDoc ? null : (lastDoc ?? this.lastDoc),
-      error: clearError ? null : (error ?? this.error),
+      error: clearError ? null : (error ?? this.error)
     );
   }
 }
@@ -164,7 +164,7 @@ AsyncNotifierProvider.family<_MySpillsNotifier, ProfileFeedState, String>(
       (anonId) => _MySpillsNotifier(anonId),
 );
 
-// ── My Tea ────────────────────────────────────────────────────────────────────
+// My Tea
 
 class _MyTeaNotifier extends AsyncNotifier<ProfileFeedState> {
   static const int _limit = 15;
