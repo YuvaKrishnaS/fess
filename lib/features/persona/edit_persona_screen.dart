@@ -14,6 +14,8 @@ import '../../core/constants/avatar_options.dart';
 import '../../core/models/avatar_config.dart';
 import '../../core/services/firebase_service.dart';
 import '../auth/providers/auth_provider.dart';
+import '../home/providers/feed_provider.dart';
+import '../home/providers/profile_feed_provider.dart';
 import '../home/providers/profile_provider.dart';
 import 'providers/avatar_builder_provider.dart';
 import '../../core/widgets/app_dialog.dart';
@@ -88,7 +90,9 @@ class _EditPersonaScreenState extends ConsumerState<EditPersonaScreen> {
 
               if (!_initialized) {
                 _initialized = true;
-                final map = profile.avatarConfig;
+                final map = Map<String, dynamic>.from(
+                  (profile['avatarConfig'] as Map?) ?? const {},
+                );
                 final config = map.isNotEmpty
                     ? AvatarConfig.fromMap(map)
                     : _randomConfig();
@@ -133,7 +137,7 @@ class _EditPersonaScreenState extends ConsumerState<EditPersonaScreen> {
                         ref.invalidate(profileDataProvider(anonId));
                         ref.invalidate(mySpillsProvider(anonId));
                         ref.invalidate(myTeaProvider(anonId));
-                        ref.invalidate(myLikedProvider(anonId));
+                        // ref.invalidate(myLikedProvider(anonId));
 
                         _dirty = false;
 
@@ -161,7 +165,9 @@ class _EditPersonaScreenState extends ConsumerState<EditPersonaScreen> {
                   ),
                   _AvatarPreview(config: state.config),
                   const SizedBox(height: 8),
-                  _EditHint(username: profile.username),
+                  _EditHint(
+                    username: (profile['username'] as String?) ?? 'anon',
+                  ),
                   const SizedBox(height: 14),
                   _BuilderTabs(
                     selected: state.tab,

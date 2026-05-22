@@ -325,15 +325,15 @@ class _DrawerContent extends ConsumerWidget {
             context.push('/profile/$anonId?tab=1');
           },
         ),
-        _DrawerNavItem(
-          icon: LucideIcons.heart,
-          label: 'Liked',
-          onTap: () {
-            HapticFeedback.selectionClick();
-            Navigator.of(context).pop();
-            context.push('/profile/$anonId?tab=2');
-          },
-        ),
+        // _DrawerNavItem(
+        //   icon: LucideIcons.heart,
+        //   label: 'Liked',
+        //   onTap: () {
+        //     HapticFeedback.selectionClick();
+        //     Navigator.of(context).pop();
+        //     context.push('/profile/$anonId?tab=2');
+        //   },
+        // ),
 
         const SizedBox(height: 16),
         Container(
@@ -477,8 +477,8 @@ class _DrawerHeader extends StatelessWidget {
           Row(
             children: [
               _MiniStat(value: profile.totalPostCount, label: 'Posts'),
-              const SizedBox(width: 20),
-              _MiniStat(value: profile.totalLikeCount, label: 'Likes'),
+              // const SizedBox(width: 20),
+              // _MiniStat(value: profile.totalLikeCount, label: 'Likes'),
               const SizedBox(width: 20),
               _MiniStat(value: profile.totalPostCount, label: 'Comments'),
             ],

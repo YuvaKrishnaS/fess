@@ -250,11 +250,12 @@ class CreateTeaNotifier extends Notifier<bool> {
         'createdAt': FieldValue.serverTimestamp(),
       });
 
-      // increment totalPostCount silently
+      // FIX: increment totalTeaCount silently
+      // CORRECT - increments the tea-specific counter
       await FirebaseFirestore.instance
           .collection('public_profiles')
           .doc(anonId)
-          .update({'totalPostCount': FieldValue.increment(1)});
+          .update({'totalTeaCount': FieldValue.increment(1)});
 
       state = false;
       return true;
