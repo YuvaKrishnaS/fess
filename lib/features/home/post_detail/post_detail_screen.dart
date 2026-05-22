@@ -17,7 +17,7 @@ import '../../../core/models/post_model.dart';
 import '../../../core/services/audio_service.dart';
 import '../../../core/widgets/fess_snackbar.dart';
 import '../providers/post_detail_provider.dart';
-import '../providers/witness_provider.dart';
+// import '../providers/witness_provider.dart';
 
 Route<void> postDetailHeroRoute(String postId, {PostModel? initialPost}) {
   return PageRouteBuilder(
@@ -261,13 +261,7 @@ class _PostBody extends ConsumerWidget {
     final avatarUrl = post.authorAvatarConfig != null
         ? AvatarConfig.fromMap(post.authorAvatarConfig!).buildUrl(size: 72)
         : null;
-    final timeStr =
-    post.createdAt != null ? timeago.format(post.createdAt!) : 'just now';
-
-    final authorId = post.authorId ?? '';
-    final isWitnessing = authorId.isNotEmpty
-        ? ref.watch(witnessStateProvider(authorId))
-        : false;
+    final timeStr = post.createdAt != null ? timeago.format(post.createdAt!) : 'just now';
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
@@ -288,27 +282,20 @@ class _PostBody extends ConsumerWidget {
                         fontFamily: 'DM Sans',
                         fontWeight: FontWeight.w700,
                         fontSize: 14,
-                        color: AppColors.textPrimary,
-                      ),
+                        color: AppColors.textPrimary
+                      )
                     ),
                     Text(
                       timeStr,
-                      style: AppTypography.bodySmall
-                          .copyWith(fontSize: 11, color: AppColors.hintText),
-                    ),
-                  ],
-                ),
-              ),
-              if (authorId.isNotEmpty)
-                _WitnessBtn(
-                  isWitnessing: isWitnessing,
-                  onTap: () => ref
-                      .read(witnessStateProvider(authorId).notifier)
-                      .toggle(),
-                ),
+                      style: AppTypography.bodySmall.copyWith(fontSize:11, color: AppColors.hintText)
+                    )
+                  ]
+                )
+              )
             ],
           ),
           const SizedBox(height: 14),
+
           Text(
             post.heading,
             style: AppTypography.bodyMedium.copyWith(
@@ -316,8 +303,8 @@ class _PostBody extends ConsumerWidget {
               fontSize: 18,
               fontWeight: FontWeight.w800,
               color: AppColors.textPrimary,
-              height: 1.4,
-            ),
+              height: 1.4
+            )
           ),
           if (post.body != null && post.body!.isNotEmpty) ...[
             const SizedBox(height: 8),
@@ -326,26 +313,26 @@ class _PostBody extends ConsumerWidget {
               style: AppTypography.bodyMedium.copyWith(
                 color: AppColors.textSecondary,
                 fontSize: 15,
-                height: 1.6,
-              ),
-            ),
+                height: 1.6
+              )
+            )
           ],
           if (post.imageUrls.isNotEmpty) ...[
             const SizedBox(height: 12),
-            _ImageGrid(urls: post.imageUrls),
+            _ImageGrid(urls: post.imageUrls)
           ],
           if (post.audioUrl != null && post.audioUrl!.isNotEmpty) ...[
             const SizedBox(height: 12),
             _VoicePlayer(
               key: ValueKey('detail_${post.postId}'),
               audioUrl: post.audioUrl!,
-              durationSecs: post.audioDuration ?? 0,
-            ),
+              durationSecs: post.audioDuration ?? 0
+            )
           ],
           const SizedBox(height: 14),
           _PostReactions(post: post, onLike: onLike),
           const SizedBox(height: 14),
-          Container(height: 0.5, color: const Color(0xFF1A1A1A)),
+          Container(height: 0.5, color: const Color(0xFF1A1A1A))
         ],
       ),
     );

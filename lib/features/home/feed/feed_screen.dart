@@ -1,13 +1,12 @@
+import 'package:fessv2/features/home/widgets/profile_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import 'package:lucide_icons/lucide_icons.dart';
+
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_typography.dart';
 import '../../../core/models/avatar_config.dart';
-import '../../../core/widgets/fess_snackbar.dart';
 import '../post_detail/post_detail_screen.dart';
 import '../providers/feed_provider.dart';
 import '../providers/scroll_visibility_provider.dart';
@@ -24,7 +23,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tab;
   final ScrollController _forYouScroll = ScrollController();
-  final ScrollController _followingScroll = ScrollController();
+  final ScrollController _trendingScroll = ScrollController();
   double _lastOffset = 0;
 
   @override
@@ -32,14 +31,14 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
     super.initState();
     _tab = TabController(length: 2, vsync: this);
     _forYouScroll.addListener(_onForYouScroll);
-    _followingScroll.addListener(_onFollowingScroll);
+    _trendingScroll.addListener(_onTrendingScroll);
   }
 
   @override
   void dispose() {
     _tab.dispose();
     _forYouScroll.dispose();
-    _followingScroll.dispose();
+    _trendingScroll.dispose();
     super.dispose();
   }
 
@@ -51,12 +50,8 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
     }
   }
 
-  void _onFollowingScroll() {
-    _handleScrollVisibility(_followingScroll);
-    if (_followingScroll.position.pixels >=
-        _followingScroll.position.maxScrollExtent * 0.8) {
-      ref.read(followingFeedProvider.notifier).loadMore();
-    }
+  void _onTrendingScroll() {
+    _handleScrollVisibility(_trendingScroll);
   }
 
   void _handleScrollVisibility(ScrollController ctrl) {
@@ -102,7 +97,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
           controller: _tab,
           children: [
             _ForYouTab(scrollController: _forYouScroll),
-            _FollowingTab(scrollController: _followingScroll),
+            _TrendingTab(scrollController: _trendingScroll),
           ],
         ),
       ),
@@ -154,8 +149,7 @@ class _AppBarAvatar extends StatelessWidget {
     return GestureDetector(
       onTap: () {
         HapticFeedback.selectionClick();
-        FessSnackbar.show(context, 'Profile — Coming soon',
-            type: SnackbarType.info);
+        showProfileDrawer(context);
       },
       child: Container(
         width: 34,
@@ -267,7 +261,8 @@ class _TabBarDelegate extends SliverPersistentHeaderDelegate {
       old.tab != tab || old.topPad != topPad;
 
   @override
-  Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
+  Widget build(
+      BuildContext context, double shrinkOffset, bool overlapsContent) {
     return Container(
       color: AppColors.backgroundMain,
       child: Column(
@@ -282,11 +277,11 @@ class _TabBarDelegate extends SliverPersistentHeaderDelegate {
               dividerColor: Colors.transparent,
               labelColor: AppColors.textPrimary,
               unselectedLabelColor: AppColors.textSecondary,
-              labelStyle: AppTypography.labelMedium.copyWith(
-                  fontSize: 14, fontWeight: FontWeight.w600),
-              unselectedLabelStyle: AppTypography.labelMedium.copyWith(
-                  fontSize: 14, fontWeight: FontWeight.w400),
-              tabs: const [Tab(text: 'For You'), Tab(text: 'Following')],
+              labelStyle: AppTypography.labelMedium
+                  .copyWith(fontSize: 14, fontWeight: FontWeight.w600),
+              unselectedLabelStyle: AppTypography.labelMedium
+                  .copyWith(fontSize: 14, fontWeight: FontWeight.w400),
+              tabs: const [Tab(text: 'For You'), Tab(text: 'Trending')],
             ),
           ),
           Container(height: 0.5, color: const Color(0xFF1A1A1A)),
@@ -303,137 +298,215 @@ class _ForYouTab extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final feedAsync = ref.watch(forYouFeedProvider);
-    final anonId = ref.watch(currentAnonIdProvider).value;
 
     return feedAsync.when(
-      loading: () => ListView.builder(
-        controller: scrollController,
-        itemCount: 5,
-        itemBuilder: (_, __) => const ConfessionShimmerCard(),
-      ),
-      error: (e, _) => Center(
-        child: Text('Something went wrong',
-            style: AppTypography.bodyMedium
-                .copyWith(color: AppColors.textSecondary)),
+      loading: () => _ShimmerList(),
+      error: (_, __) => _ErrorState(
+        onRetry: () => ref.read(forYouFeedProvider.notifier).refresh(),
       ),
       data: (feed) {
-        if (feed.posts.isEmpty) {
-          return Center(
-            child: Text('Nothing here yet.',
-                style: AppTypography.bodyMedium
-                    .copyWith(color: AppColors.textSecondary)),
+        if (feed.isLoading) return _ShimmerList();
+
+        if (feed.error != null && feed.posts.isEmpty) {
+          return _ScrollableError(
+            message: feed.error!,
+            scrollController: scrollController,
+            onRetry: () => ref.read(forYouFeedProvider.notifier).refresh(),
           );
         }
-        return ListView.builder(
-          controller: scrollController,
-          itemCount: feed.posts.length + (feed.isLoadingMore ? 1 : 0),
-          itemBuilder: (ctx, i) {
-            if (i == feed.posts.length) {
-              return const Padding(
-                padding: EdgeInsets.symmetric(vertical: 24),
-                child: Center(
-                  child: SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                        strokeWidth: 1.5,
-                        color: AppColors.textSecondary),
-                  ),
+
+        if (feed.posts.isEmpty) {
+          return _EmptyState(scrollController: scrollController);
+        }
+
+        return RefreshIndicator(
+          color: AppColors.accentPrimary,
+          backgroundColor: const Color(0xFF1A1A1A),
+          onRefresh: () => ref.read(forYouFeedProvider.notifier).refresh(),
+          child: ListView.builder(
+            controller: scrollController,
+            physics: const AlwaysScrollableScrollPhysics(),
+            itemCount: feed.posts.length + (feed.isLoadingMore ? 1 : 0),
+            itemBuilder: (ctx, i) {
+              if (i == feed.posts.length) return const _LoadMore();
+              final post = feed.posts[i];
+              return ConfessionCard(
+                key: ValueKey(post.postId),
+                post: post,
+                currentAnonId: null,
+                onTap: () => Navigator.of(ctx).push(
+                  postDetailHeroRoute(post.postId, initialPost: post),
                 ),
+                onLike: () =>
+                    ref.read(forYouFeedProvider.notifier).toggleLike(post.postId),
               );
-            }
-            final post = feed.posts[i];
-            return ConfessionCard(
-              key: ValueKey(post.postId),
-              post: post,
-              currentAnonId: anonId,
-              onLike: () => ref
-                  .read(forYouFeedProvider.notifier)
-                  .toggleLike(post.postId),
-              onTap: () => Navigator.of(context).push(
-                postDetailHeroRoute(post.postId, initialPost: post),
-              ),
-            );
-          },
+            },
+          ),
         );
       },
     );
   }
 }
 
-class _FollowingTab extends ConsumerWidget {
+class _TrendingTab extends StatelessWidget {
   final ScrollController scrollController;
-  const _FollowingTab({required this.scrollController});
+  const _TrendingTab({required this.scrollController});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final feedAsync = ref.watch(followingFeedProvider);
-    final anonId = ref.watch(currentAnonIdProvider).value;
-
-    return feedAsync.when(
-      loading: () => ListView.builder(
-        controller: scrollController,
-        itemCount: 5,
-        itemBuilder: (_, __) => const ConfessionShimmerCard(),
-      ),
-      error: (e, _) => Center(
-        child: Text('Something went wrong',
-            style: AppTypography.bodyMedium
-                .copyWith(color: AppColors.textSecondary)),
-      ),
-      data: (feed) {
-        if (feed.posts.isEmpty) {
-          return Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(LucideIcons.users,
-                    size: 32, color: AppColors.hintText),
-                const SizedBox(height: 12),
-                Text('No one witnessed yet.',
-                    style: AppTypography.bodyMedium
-                        .copyWith(color: AppColors.textSecondary)),
-                const SizedBox(height: 4),
-                Text('Witness people to see their posts here.',
-                    style: AppTypography.bodySmall
-                        .copyWith(color: AppColors.hintText, fontSize: 12)),
-              ],
-            ),
-          );
-        }
-        return ListView.builder(
-          controller: scrollController,
-          itemCount: feed.posts.length + (feed.isLoadingMore ? 1 : 0),
-          itemBuilder: (ctx, i) {
-            if (i == feed.posts.length) {
-              return const Padding(
-                padding: EdgeInsets.symmetric(vertical: 24),
-                child: Center(
-                  child: SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                        strokeWidth: 1.5,
-                        color: AppColors.textSecondary),
-                  ),
+  Widget build(BuildContext context) {
+    return ListView(
+      controller: scrollController,
+      physics: const AlwaysScrollableScrollPhysics(),
+      children: [
+        SizedBox(height: MediaQuery.of(context).size.height * 0.25),
+        Center(
+          child: Column(
+            children: [
+              const Icon(LucideIcons.trendingUp,
+                  size: 28, color: AppColors.hintText),
+              const SizedBox(height: 12),
+              Text(
+                'Trending — coming soon.',
+                style: AppTypography.bodyMedium.copyWith(
+                  fontSize: 14,
+                  color: AppColors.textSecondary,
                 ),
-              );
-            }
-            final post = feed.posts[i];
-            return ConfessionCard(
-              key: ValueKey(post.postId),
-              post: post,
-              currentAnonId: anonId,
-              onLike: () => ref
-                  .read(followingFeedProvider.notifier)
-                  .toggleLike(post.postId),
-              onTap: () => Navigator.of(context).push(
-                postDetailHeroRoute(post.postId, initialPost: post),
               ),
-            );
-          },
-        );
-      },
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ShimmerList extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return ListView.builder(
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: 5,
+      itemBuilder: (_, __) => const ConfessionShimmerCard(),
+    );
+  }
+}
+
+class _LoadMore extends StatelessWidget {
+  const _LoadMore();
+  @override
+  Widget build(BuildContext context) {
+    return const Padding(
+      padding: EdgeInsets.symmetric(vertical: 20),
+      child: Center(
+        child: SizedBox(
+          width: 18,
+          height: 18,
+          child: CircularProgressIndicator(
+            strokeWidth: 1.5,
+            color: AppColors.textSecondary,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _EmptyState extends StatelessWidget {
+  final ScrollController scrollController;
+  const _EmptyState({required this.scrollController});
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      controller: scrollController,
+      physics: const AlwaysScrollableScrollPhysics(),
+      children: [
+        SizedBox(height: MediaQuery.of(context).size.height * 0.25),
+        Center(
+          child: Column(
+            children: [
+              const Icon(LucideIcons.inbox,
+                  size: 28, color: AppColors.hintText),
+              const SizedBox(height: 12),
+              Text(
+                'Nothing here yet.',
+                style: AppTypography.bodyMedium
+                    .copyWith(color: AppColors.textSecondary, fontSize: 14),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ErrorState extends StatelessWidget {
+  final VoidCallback onRetry;
+  const _ErrorState({required this.onRetry});
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(LucideIcons.wifiOff,
+              size: 28, color: AppColors.textSecondary),
+          const SizedBox(height: 12),
+          Text('Could not load feed.',
+              style: AppTypography.bodyMedium
+                  .copyWith(color: AppColors.textSecondary)),
+          const SizedBox(height: 12),
+          GestureDetector(
+            onTap: onRetry,
+            child: Text('Retry',
+                style: AppTypography.bodyMedium.copyWith(
+                  color: AppColors.accentPrimary,
+                  fontWeight: FontWeight.w600,
+                )),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ScrollableError extends StatelessWidget {
+  final String message;
+  final ScrollController scrollController;
+  final Future<void> Function() onRetry;
+
+  const _ScrollableError({
+    required this.message,
+    required this.scrollController,
+    required this.onRetry,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return RefreshIndicator(
+      color: AppColors.accentPrimary,
+      backgroundColor: const Color(0xFF1A1A1A),
+      onRefresh: onRetry,
+      child: ListView(
+        controller: scrollController,
+        physics: const AlwaysScrollableScrollPhysics(),
+        children: [
+          SizedBox(height: MediaQuery.of(context).size.height * 0.25),
+          Center(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 40),
+              child: Text(
+                message,
+                style: AppTypography.bodySmall
+                    .copyWith(color: AppColors.textSecondary, height: 1.5),
+                textAlign: TextAlign.center,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
