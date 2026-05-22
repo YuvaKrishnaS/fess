@@ -5,11 +5,13 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons/lucide_icons.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_typography.dart';
 import '../../../core/models/avatar_config.dart';
 import '../../../core/widgets/app_dialog.dart';
+import '../../../core/widgets/fess_snackbar.dart';
 import '../providers/feed_provider.dart';
 import '../providers/profile_provider.dart' hide currentAnonIdProvider;
 
@@ -178,31 +180,36 @@ class _ProfileDrawerContent extends ConsumerWidget {
     return Container(
       width: screenW * 0.78,
       height: double.infinity,
-      decoration: const BoxDecoration(
-        color: Color(0xFF0C0C0C),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black54,
-            blurRadius: 32,
-            offset: Offset(8, 0),
+      child: Material(
+        color: const Color(0xFF0C0C0C),
+        elevation: 0,
+        child: Container(
+          decoration: const BoxDecoration(
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black54,
+                blurRadius: 32,
+                offset: Offset(8, 0),
+              ),
+            ],
           ),
-        ],
-      ),
-      child: myIdAsync.when(
-        loading: () => const _DrawerLoadingState(),
-        error: (_, __) => const _DrawerErrorState(),
-        data: (myId) {
-          final resolvedId = anonId ?? myId;
-          final isOwn = resolvedId == myId || anonId == null;
+          child: myIdAsync.when(
+            loading: () => const _DrawerLoadingState(),
+            error: (_, __) => const _DrawerErrorState(),
+            data: (myId) {
+              final resolvedId = anonId ?? myId;
+              final isOwn = resolvedId == myId || anonId == null;
 
-          if (resolvedId == null) return const _DrawerErrorState();
+              if (resolvedId == null) return const _DrawerErrorState();
 
-          return _DrawerContent(
-            anonId: resolvedId,
-            isOwn: isOwn,
-            onClose: onClose,
-          );
-        },
+              return _DrawerContent(
+                anonId: resolvedId,
+                isOwn: isOwn,
+                onClose: onClose,
+              );
+            },
+          ),
+        ),
       ),
     );
   }
@@ -381,13 +388,7 @@ class _DrawerContent extends ConsumerWidget {
         // Bottom version tag
         Padding(
           padding: EdgeInsets.fromLTRB(20, 0, 20, bottomPad + 20),
-          child: Text(
-            'Fess v2 • Everything stays anon.',
-            style: AppTypography.bodySmall.copyWith(
-              fontSize: 13,
-              color: const Color(0xFF2A2A2A),
-            ),
-          ),
+          child: _DrawerVersionTag(),
         ),
       ],
     );
@@ -451,11 +452,11 @@ class _DrawerHeader extends StatelessWidget {
           GestureDetector(
             onLongPress: () {
               Clipboard.setData(ClipboardData(text: profile.anonId));
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Anon ID copied'),
-                  duration: Duration(seconds: 1),
-                ),
+              FessSnackbar.show(
+                context,
+                'Anon ID copied',
+                type: SnackbarType.success,
+                duration: const Duration(seconds: 1),
               );
             },
             child: Text(
@@ -479,7 +480,7 @@ class _DrawerHeader extends StatelessWidget {
               const SizedBox(width: 20),
               _MiniStat(value: profile.totalLikeCount, label: 'Likes'),
               const SizedBox(width: 20),
-              _MiniStat(value: profile.totalCommentCount, label: 'Replies'),
+              _MiniStat(value: profile.totalPostCount, label: 'Comments'),
             ],
           ),
         ],
@@ -626,6 +627,38 @@ class _FessLogo extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+// DYNAMIC VERSION TAG
+
+class _DrawerVersionTag extends StatefulWidget {
+  @override
+  State<_DrawerVersionTag> createState() => _DrawerVersionTagState();
+}
+
+class _DrawerVersionTagState extends State<_DrawerVersionTag> {
+  String _version = '';
+
+  @override
+  void initState() {
+    super.initState();
+    PackageInfo.fromPlatform().then((info) {
+      if (mounted) {
+        setState(() => _version = 'Fess v${info.version} • Everything stays anon.');
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      _version,
+      style: AppTypography.bodySmall.copyWith(
+        fontSize: 13,
+        color: const Color(0xFF2A2A2A),
+      ),
     );
   }
 }

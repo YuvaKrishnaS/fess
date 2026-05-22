@@ -207,28 +207,32 @@ class ForYouFeedNotifier extends AsyncNotifier<FeedState> {
     try {
       final likeId = '${postId}_$anonId';
       final batch = FirebaseService.firestore.batch();
+      final delta = nowLiked ? 1 : -1;
       if (nowLiked) {
         batch.set(
-          FirebaseService.firestore
-              .collection('post_likes')
-              .doc(likeId),
+          FirebaseService.firestore.collection('post_likes').doc(likeId),
           {
             'postId': postId,
             'anonId': anonId,
             'likedAt': FieldValue.serverTimestamp(),
           },
         );
-        batch.update(
-          FirebaseService.firestore.collection('posts').doc(postId),
-          {'likeCount': FieldValue.increment(1)},
-        );
       } else {
-        batch.delete(FirebaseService.firestore
-            .collection('post_likes')
-            .doc(likeId));
+        batch.delete(
+            FirebaseService.firestore.collection('post_likes').doc(likeId));
+      }
+      // Update likeCount on the post itself
+      batch.update(
+        FirebaseService.firestore.collection('posts').doc(postId),
+        {'likeCount': FieldValue.increment(delta)},
+      );
+      // Update totalLikeCount on the author's public profile
+      if (post.authorId.isNotEmpty) {
         batch.update(
-          FirebaseService.firestore.collection('posts').doc(postId),
-          {'likeCount': FieldValue.increment(-1)},
+          FirebaseService.firestore
+              .collection('public_profiles')
+              .doc(post.authorId),
+          {'totalLikeCount': FieldValue.increment(delta)},
         );
       }
       await batch.commit();
@@ -346,28 +350,32 @@ class FollowingFeedNotifier extends AsyncNotifier<FeedState> {
     try {
       final likeId = '${postId}_$anonId';
       final batch = FirebaseService.firestore.batch();
+      final delta = nowLiked ? 1 : -1;
       if (nowLiked) {
         batch.set(
-          FirebaseService.firestore
-              .collection('post_likes')
-              .doc(likeId),
+          FirebaseService.firestore.collection('post_likes').doc(likeId),
           {
             'postId': postId,
             'anonId': anonId,
             'likedAt': FieldValue.serverTimestamp(),
           },
         );
-        batch.update(
-          FirebaseService.firestore.collection('posts').doc(postId),
-          {'likeCount': FieldValue.increment(1)},
-        );
       } else {
-        batch.delete(FirebaseService.firestore
-            .collection('post_likes')
-            .doc(likeId));
+        batch.delete(
+            FirebaseService.firestore.collection('post_likes').doc(likeId));
+      }
+      // Update likeCount on the post itself
+      batch.update(
+        FirebaseService.firestore.collection('posts').doc(postId),
+        {'likeCount': FieldValue.increment(delta)},
+      );
+      // Update totalLikeCount on the author's public profile
+      if (post.authorId.isNotEmpty) {
         batch.update(
-          FirebaseService.firestore.collection('posts').doc(postId),
-          {'likeCount': FieldValue.increment(-1)},
+          FirebaseService.firestore
+              .collection('public_profiles')
+              .doc(post.authorId),
+          {'totalLikeCount': FieldValue.increment(delta)},
         );
       }
       await batch.commit();

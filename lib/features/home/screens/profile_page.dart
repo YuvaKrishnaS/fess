@@ -1,3 +1,5 @@
+import 'dart:ui';
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -8,17 +10,15 @@ import 'package:lucide_icons/lucide_icons.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_typography.dart';
 import '../../../core/models/avatar_config.dart';
-import '../../../core/widgets/app_dialog.dart';
+import '../../../core/widgets/fess_snackbar.dart';
 import '../../home/post_detail/post_detail_screen.dart';
 import '../providers/feed_provider.dart';
 import '../providers/profile_provider.dart' hide currentAnonIdProvider;
 import '../widgets/confession_card.dart';
 
-// ── Entry ─────────────────────────────────────────────────────────────────────
-
 class ProfilePage extends ConsumerStatefulWidget {
   final String anonId;
-  final int initialTab; // 0=Spills 1=Tea 2=Liked 3=Settings
+  final int initialTab;
 
   const ProfilePage({
     super.key,
@@ -33,16 +33,14 @@ class ProfilePage extends ConsumerStatefulWidget {
 class _ProfilePageState extends ConsumerState<ProfilePage>
     with SingleTickerProviderStateMixin {
   late final TabController _tab;
-  late bool _isOwn;
 
   @override
   void initState() {
     super.initState();
-    // settings tab shown as tab index 3 but it's rendered outside tabview
     _tab = TabController(
       length: 3,
       vsync: this,
-      initialIndex: widget.initialTab < 3 ? widget.initialTab : 0,
+      initialIndex: widget.initialTab.clamp(0, 2),
     );
   }
 
@@ -58,47 +56,42 @@ class _ProfilePageState extends ConsumerState<ProfilePage>
 
     return myIdAsync.when(
       loading: () => const _PageScaffold(child: _CenteredSpinner()),
-      error: (_, __) => const _PageScaffold(
-          child: _PageError(msg: 'Could not determine identity.')),
+      error: (_, __) =>
+      const _PageScaffold(child: _PageError(msg: 'Could not load profile.')),
       data: (myId) {
-        _isOwn = widget.anonId == myId || myId == null;
+        final isOwn = widget.anonId == myId || myId == null;
         return _ProfilePageBody(
           anonId: widget.anonId,
-          isOwn: _isOwn,
+          isOwn: isOwn,
           tab: _tab,
-          initialTab: widget.initialTab,
         );
       },
     );
   }
 }
 
-// page scaffold
-
 class _PageScaffold extends StatelessWidget {
   final Widget child;
   const _PageScaffold({required this.child});
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    backgroundColor: AppColors.backgroundMain,
-    body: child
-  );
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppColors.backgroundMain,
+      body: child,
+    );
+  }
 }
-
-// Body
 
 class _ProfilePageBody extends ConsumerWidget {
   final String anonId;
   final bool isOwn;
   final TabController tab;
-  final int initialTab;
 
   const _ProfilePageBody({
     required this.anonId,
     required this.isOwn,
     required this.tab,
-    required this.initialTab,
   });
 
   @override
@@ -112,30 +105,22 @@ class _ProfilePageBody extends ConsumerWidget {
           SliverToBoxAdapter(
             child: Column(
               children: [
-                // ── App bar ──────────────────────────────────────────────
                 _ProfileAppBar(anonId: anonId, isOwn: isOwn),
-
-                // ── Header ───────────────────────────────────────────────
                 profileAsync.when(
                   loading: () => const _FullHeaderShimmer(),
-                  error: (_, __) => const _PageError(
-                      msg: 'Could not load profile.'),
+                  error: (_, __) =>
+                  const _PageError(msg: 'Could not load profile.'),
                   data: (profile) {
                     if (profile == null) {
-                      return const _PageError(
-                          msg: 'Profile not found.');
+                      return const _PageError(msg: 'Profile not found.');
                     }
-                    return _FullProfileHeader(
-                        profile: profile, isOwn: isOwn);
+                    return _FullProfileHeader(profile: profile);
                   },
                 ),
-
                 const SizedBox(height: 4),
               ],
             ),
           ),
-
-          // Sticy TaB BAR
           SliverPersistentHeader(
             pinned: true,
             delegate: _StickyTabBarDelegate(
@@ -174,17 +159,18 @@ class _ProfilePageBody extends ConsumerWidget {
           ],
         ),
       ),
-      // Settings shown as bottom sheet on the page itself (for own profile)
     );
   }
 }
 
-// App Bar
-
 class _ProfileAppBar extends ConsumerWidget {
   final String anonId;
   final bool isOwn;
-  const _ProfileAppBar({required this.anonId, required this.isOwn});
+
+  const _ProfileAppBar({
+    required this.anonId,
+    required this.isOwn,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -195,17 +181,22 @@ class _ProfileAppBar extends ConsumerWidget {
       padding: EdgeInsets.fromLTRB(8, topPad + 8, 8, 4),
       child: Row(
         children: [
-          // Back
           IconButton(
-            icon: const Icon(LucideIcons.arrowLeft,
-                size: 20, color: AppColors.textPrimary),
+            icon: const Icon(
+              LucideIcons.arrowLeft,
+              size: 20,
+              color: AppColors.textPrimary,
+            ),
             onPressed: () => context.pop(),
           ),
           const Spacer(),
           if (isOwn)
             IconButton(
-              icon: const Icon(LucideIcons.settings,
-                  size: 20, color: AppColors.textSecondary),
+              icon: const Icon(
+                LucideIcons.settings,
+                size: 20,
+                color: AppColors.textSecondary,
+              ),
               onPressed: () {
                 HapticFeedback.selectionClick();
                 context.push('/settings/profile');
@@ -215,24 +206,12 @@ class _ProfileAppBar extends ConsumerWidget {
       ),
     );
   }
-
-  // void _showSettingsSheet(BuildContext ctx, WidgetRef ref) {
-  //   showModalBottomSheet(
-  //     context: ctx,
-  //     backgroundColor: Colors.transparent,
-  //     isScrollControlled: true,
-  //     builder: (_) => _SettingsSheet(ref: ref),
-  //   );
-  // }
 }
-
-// Full Profile Header
 
 class _FullProfileHeader extends StatelessWidget {
   final ProfileData profile;
-  final bool isOwn;
-  const _FullProfileHeader(
-      {required this.profile, required this.isOwn});
+
+  const _FullProfileHeader({required this.profile});
 
   @override
   Widget build(BuildContext context) {
@@ -245,7 +224,6 @@ class _FullProfileHeader extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Avatar + edit button row
           Row(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
@@ -273,9 +251,7 @@ class _FullProfileHeader extends StatelessWidget {
               ),
             ],
           ),
-
           const SizedBox(height: 14),
-
           Text(
             '@${profile.username}',
             style: AppTypography.h2.copyWith(
@@ -284,17 +260,15 @@ class _FullProfileHeader extends StatelessWidget {
               color: AppColors.textPrimary,
             ),
           ),
-
           const SizedBox(height: 4),
-
           GestureDetector(
             onLongPress: () {
               Clipboard.setData(ClipboardData(text: profile.anonId));
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Anon ID copied'),
-                  duration: Duration(seconds: 1),
-                ),
+              FessSnackbar.show(
+                context,
+                'Anon ID copied',
+                type: SnackbarType.success,
+                duration: const Duration(seconds: 1),
               );
             },
             child: Text(
@@ -306,24 +280,16 @@ class _FullProfileHeader extends StatelessWidget {
               ),
             ),
           ),
-
           const SizedBox(height: 20),
-
-          // Stats
           Row(
             children: [
-              _StatBlock(
-                  label: 'Spills', value: profile.totalPostCount),
+              _StatBlock(label: 'Spills', value: profile.totalPostCount),
               const SizedBox(width: 28),
-              _StatBlock(
-                  label: 'Likes Received',
-                  value: profile.totalLikeCount),
+              _StatBlock(label: 'Likes Received', value: profile.totalLikeCount),
               const SizedBox(width: 28),
-              _StatBlock(
-                  label: 'Replies', value: profile.totalCommentCount),
+              _StatBlock(label: 'Tea Posted', value: profile.totalPostCount),
             ],
           ),
-
           const SizedBox(height: 20),
         ],
       ),
@@ -334,7 +300,11 @@ class _FullProfileHeader extends StatelessWidget {
 class _StatBlock extends StatelessWidget {
   final String label;
   final int value;
-  const _StatBlock({required this.label, required this.value});
+
+  const _StatBlock({
+    required this.label,
+    required this.value,
+  });
 
   String _fmt(int n) {
     if (n >= 1000000) return '${(n / 1000000).toStringAsFixed(1)}M';
@@ -343,40 +313,46 @@ class _StatBlock extends StatelessWidget {
   }
 
   @override
-  Widget build(BuildContext context) => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      Text(
-        _fmt(value),
-        style: AppTypography.bodyMedium.copyWith(
-          fontSize: 20,
-          fontWeight: FontWeight.w900,
-          color: AppColors.textPrimary,
-          fontFeatures: [const FontFeature.tabularFigures()],
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          _fmt(value),
+          style: AppTypography.bodyMedium.copyWith(
+            fontSize: 20,
+            fontWeight: FontWeight.w900,
+            color: AppColors.textPrimary,
+            fontFeatures: const [FontFeature.tabularFigures()],
+          ),
         ),
-      ),
-      Text(
-        label,
-        style: AppTypography.bodySmall.copyWith(
-          fontSize: 11,
-          color: AppColors.textSecondary,
+        Text(
+          label,
+          style: AppTypography.bodySmall.copyWith(
+            fontSize: 11,
+            color: AppColors.textSecondary,
+          ),
         ),
-      ),
-    ],
-  );
+      ],
+    );
+  }
 }
 
 class _AnonAvatarLg extends StatelessWidget {
   const _AnonAvatarLg();
-  @override
-  Widget build(BuildContext context) => Container(
-    color: const Color(0xFF1A1A1A),
-    child: const Icon(LucideIcons.user,
-        size: 36, color: AppColors.hintText),
-  );
-}
 
-// Sticky tab bar delegate
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: const Color(0xFF1A1A1A),
+      child: const Icon(
+        LucideIcons.user,
+        size: 36,
+        color: AppColors.hintText,
+      ),
+    );
+  }
+}
 
 class _StickyTabBarDelegate extends SliverPersistentHeaderDelegate {
   final TabBar tabBar;
@@ -384,12 +360,12 @@ class _StickyTabBarDelegate extends SliverPersistentHeaderDelegate {
 
   @override
   double get minExtent => tabBar.preferredSize.height + 1;
+
   @override
   double get maxExtent => tabBar.preferredSize.height + 1;
 
   @override
-  Widget build(
-      BuildContext context, double shrinkOffset, bool overlapsContent) {
+  Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
     return Container(
       color: AppColors.backgroundMain,
       child: Column(
@@ -402,10 +378,8 @@ class _StickyTabBarDelegate extends SliverPersistentHeaderDelegate {
   }
 
   @override
-  bool shouldRebuild(_StickyTabBarDelegate old) => false;
+  bool shouldRebuild(_StickyTabBarDelegate oldDelegate) => false;
 }
-
-// Content tabs
 
 class _SpillsTab extends ConsumerWidget {
   final String anonId;
@@ -414,33 +388,28 @@ class _SpillsTab extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final async = ref.watch(mySpillsProvider(anonId));
+
     return async.when(
       loading: _shimmerList,
       error: (_, __) => _emptyState('Could not load spills.', isError: true),
       data: (feed) {
-        if (feed.isLoading) return _shimmerList();
         if (feed.posts.isEmpty) {
-          return _emptyState(
-              'No spills yet.\nWhen you spill, they show up here.');
+          return _emptyState('No spills yet.\nWhen you spill, they show up here.');
         }
+
         return ListView.builder(
-          itemCount: feed.posts.length +
-              (feed.hasMore ? 1 : 1), // +1 for easter egg
+          itemCount: feed.posts.length + 1,
           itemBuilder: (ctx, i) {
-            if (i == feed.posts.length) {
-              return feed.isLoadingMore
-                  ? _loadMoreSpinner()
-                  : _EasterEgg();
-            }
+            if (i == feed.posts.length) return _EasterEgg();
             final post = feed.posts[i];
             return ConfessionCard(
               key: ValueKey(post.postId),
               post: post,
               currentAnonId: anonId,
               onTap: () => Navigator.of(ctx).push(
-                  postDetailHeroRoute(post.postId, initialPost: post)),
-              onLike: () =>
-                  ref.read(mySpillsProvider(anonId).notifier).loadMore(),
+                postDetailHeroRoute(post.postId, initialPost: post),
+              ),
+              onLike: () {},
             );
           },
         );
@@ -456,14 +425,15 @@ class _TeaTab extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final async = ref.watch(myTeaProvider(anonId));
+
     return async.when(
       loading: _shimmerList,
       error: (_, __) => _emptyState('Could not load tea.', isError: true),
       data: (feed) {
-        if (feed.isLoading) return _shimmerList();
         if (feed.posts.isEmpty) {
           return _emptyState('No tea yet.\nSpill the tea to see it here.');
         }
+
         return ListView.builder(
           itemCount: feed.posts.length + 1,
           itemBuilder: (ctx, i) {
@@ -474,9 +444,9 @@ class _TeaTab extends ConsumerWidget {
               post: post,
               currentAnonId: anonId,
               onTap: () => Navigator.of(ctx).push(
-                  postDetailHeroRoute(post.postId, initialPost: post)),
-              onLike: () =>
-                  ref.read(myTeaProvider(anonId).notifier).loadMore(),
+                postDetailHeroRoute(post.postId, initialPost: post),
+              ),
+              onLike: () {},
             );
           },
         );
@@ -492,16 +462,15 @@ class _LikedTab extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final async = ref.watch(myLikedProvider(anonId));
+
     return async.when(
       loading: _shimmerList,
-      error: (_, __) =>
-          _emptyState('Could not load liked posts.', isError: true),
+      error: (_, __) => _emptyState('Could not load liked posts.', isError: true),
       data: (feed) {
-        if (feed.isLoading) return _shimmerList();
         if (feed.posts.isEmpty) {
-          return _emptyState(
-              'Nothing liked yet.\nHeart posts that hit different.');
+          return _emptyState('Nothing liked yet.\nHeart posts that hit different.');
         }
+
         return ListView.builder(
           itemCount: feed.posts.length + 1,
           itemBuilder: (ctx, i) {
@@ -512,7 +481,8 @@ class _LikedTab extends ConsumerWidget {
               post: post,
               currentAnonId: anonId,
               onTap: () => Navigator.of(ctx).push(
-                  postDetailHeroRoute(post.postId, initialPost: post)),
+                postDetailHeroRoute(post.postId, initialPost: post),
+              ),
               onLike: () {},
             );
           },
@@ -522,81 +492,43 @@ class _LikedTab extends ConsumerWidget {
   }
 }
 
-// Easter Egg
-
-class _EasterEgg extends StatefulWidget {
-  @override
-  State<_EasterEgg> createState() => _EasterEggState();
-}
-
-class _EasterEggState extends State<_EasterEgg>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _ctrl;
-  late final Animation<double> _fade;
-  late final Animation<double> _scale;
-
-  @override
-  void initState() {
-    super.initState();
-    _ctrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 700),
-    )..forward();
-    _fade = CurvedAnimation(parent: _ctrl, curve: Curves.easeOut);
-    _scale = Tween<double>(begin: 0.7, end: 1.0).animate(
-      CurvedAnimation(parent: _ctrl, curve: Curves.easeOutBack),
-    );
-  }
-
-  @override
-  void dispose() {
-    _ctrl.dispose();
-    super.dispose();
-  }
-
+class _EasterEgg extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    return FadeTransition(
-      opacity: _fade,
-      child: ScaleTransition(
-        scale: _scale,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 48, horizontal: 24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Logo
-              Opacity(
-                opacity: 0.25,
-                child: Image.asset(
-                  'assets/images/logo.png',
-                  width: 48,
-                  height: 48,
-                ),
-              ),
-              const SizedBox(height: 16),
-              Text(
-                "There's nothing here to discover more, bruhh !!",
-                textAlign: TextAlign.center,
-                style: AppTypography.bodyMedium.copyWith(
-                  fontSize: 13,
-                  color: const Color(0xFF3A3A3A),
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                'Fess',
-                style: AppTypography.h3.copyWith(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w900,
-                  color: const Color(0xFF252525),
-                  letterSpacing: -0.5,
-                ),
-              ),
-            ],
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 48, horizontal: 24),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Opacity(
+            opacity: 0.25,
+            child: Image.asset(
+              'assets/images/logo.png',
+              width: 48,
+              height: 48,
+            ),
           ),
-        ),
+          const SizedBox(height: 16),
+          Text(
+            "There's nothing here to discover more, bruhh !!",
+            textAlign: TextAlign.center,
+            style: AppTypography.bodyMedium.copyWith(
+              fontSize: 13,
+              color: const Color(0xFF3A3A3A),
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Fess',
+            style: AppTypography.h3.copyWith(
+              fontSize: 22,
+              fontWeight: FontWeight.w900,
+              color: const Color(0xFF252525),
+              letterSpacing: -0.5,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -618,20 +550,7 @@ Widget _emptyState(String msg, {bool isError = false}) => Center(
         fontSize: 14,
         color: isError ? AppColors.errorLight : AppColors.textSecondary,
         height: 1.6,
-      ),
-    ),
-  ),
-);
-
-Widget _loadMoreSpinner() => const Padding(
-  padding: EdgeInsets.symmetric(vertical: 20),
-  child: Center(
-    child: SizedBox(
-      width: 18,
-      height: 18,
-      child: CircularProgressIndicator(
-        strokeWidth: 1.5,
-        color: AppColors.textSecondary,
+        decoration: TextDecoration.none,
       ),
     ),
   ),
@@ -639,116 +558,91 @@ Widget _loadMoreSpinner() => const Padding(
 
 class _CenteredSpinner extends StatelessWidget {
   const _CenteredSpinner();
-  @override
-  Widget build(BuildContext context) => const Center(
-    child: SizedBox(
-      width: 20,
-      height: 20,
-      child: CircularProgressIndicator(
-        strokeWidth: 1.5,
-        color: AppColors.textSecondary
-      )
-    )
-  );
-}
-
-class _PageError extends StatelessWidget {
-  final String msg;
-  const _PageError({required this.msg});
-  @override
-  Widget build(BuildContext context) => Center(
-    child: Text(
-      msg,
-      style: AppTypography.bodySmall.copyWith(color: AppColors.textSecondary),
-
-    )
-  );
-}
-
-class _FullHeaderShimmer extends StatefulWidget {
-  const _FullHeaderShimmer();
-  @override
-  State<_FullHeaderShimmer> createState() => _FullHeaderShimmerState();
-}
-
-class _FullHeaderShimmerState extends State<_FullHeaderShimmer>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _ctrl;
-  late final Animation<double> _anim;
-
-  @override
-  void initState() {
-    super.initState();
-    _ctrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 1500))
-      ..repeat();
-    _anim = CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut);
-  }
-
-  @override
-  void dispose() {
-    _ctrl.dispose();
-    super.dispose();
-  }
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _anim,
-      builder: (_, __) => Padding(
-        padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _Bone(w: 80, h: 80, radius: 40, anim: _anim),
-            const SizedBox(height: 14),
-            _Bone(w: 160, h: 20, radius: 5, anim: _anim),
-            const SizedBox(height: 6),
-            _Bone(w: 110, h: 11, radius: 5, anim: _anim),
-            const SizedBox(height: 20),
-            Row(
-              children: [
-                _Bone(w: 50, h: 36, radius: 5, anim: _anim),
-                const SizedBox(width: 28),
-                _Bone(w: 50, h: 36, radius: 5, anim: _anim),
-                const SizedBox(width: 28),
-                _Bone(w: 50, h: 36, radius: 5, anim: _anim),
-              ],
-            ),
-          ],
+    return const Center(
+      child: SizedBox(
+        width: 20,
+        height: 20,
+        child: CircularProgressIndicator(
+          strokeWidth: 1.5,
+          color: AppColors.textSecondary,
         ),
       ),
     );
   }
 }
 
-class _Bone extends StatelessWidget {
-  final double w, h, radius;
-  final Animation<double> anim;
-  const _Bone(
-      {required this.w,
-        required this.h,
-        required this.radius,
-        required this.anim});
+class _PageError extends StatelessWidget {
+  final String msg;
+  const _PageError({required this.msg});
 
   @override
-  Widget build(BuildContext context) => Container(
-    width: w,
-    height: h,
-    decoration: BoxDecoration(
-      borderRadius: BorderRadius.circular(radius),
-      gradient: LinearGradient(
-        colors: const [
-          Color(0xFF1A1A1A),
-          Color(0xFF252525),
-          Color(0xFF1A1A1A),
-        ],
-        stops: [
-          (anim.value - 0.5).clamp(0.0, 1.0),
-          anim.value.clamp(0.0, 1.0),
-          (anim.value + 0.5).clamp(0.0, 1.0),
+  Widget build(BuildContext context) {
+    return Center(
+      child: Text(
+        msg,
+        style: AppTypography.bodySmall.copyWith(
+          color: AppColors.textSecondary,
+          decoration: TextDecoration.none,
+        ),
+      ),
+    );
+  }
+}
+
+class _FullHeaderShimmer extends StatelessWidget {
+  const _FullHeaderShimmer();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Padding(
+      padding: EdgeInsets.fromLTRB(20, 0, 20, 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _ShimmerBox(width: 80, height: 80, radius: 40),
+          SizedBox(height: 14),
+          _ShimmerBox(width: 160, height: 20, radius: 5),
+          SizedBox(height: 6),
+          _ShimmerBox(width: 110, height: 11, radius: 5),
+          SizedBox(height: 20),
+          Row(
+            children: [
+              _ShimmerBox(width: 56, height: 36, radius: 6),
+              SizedBox(width: 28),
+              _ShimmerBox(width: 56, height: 36, radius: 6),
+              SizedBox(width: 28),
+              _ShimmerBox(width: 56, height: 36, radius: 6),
+            ],
+          ),
         ],
       ),
-    ),
-  );
+    );
+  }
+}
+
+class _ShimmerBox extends StatelessWidget {
+  final double width;
+  final double height;
+  final double radius;
+
+  const _ShimmerBox({
+    required this.width,
+    required this.height,
+    required this.radius,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: width,
+      height: height,
+      decoration: BoxDecoration(
+        color: const Color(0xFF1A1A1A),
+        borderRadius: BorderRadius.circular(radius),
+      ),
+    );
+  }
 }
