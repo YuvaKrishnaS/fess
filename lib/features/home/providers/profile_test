@@ -8,13 +8,15 @@ import '../../../core/services/local_storage_service.dart';
 import '../../auth/providers/auth_provider.dart';
 import 'feed_provider.dart';
 
+// ─── ProfileData ──────────────────────────────────────────────────────────────
+
 class ProfileData {
   final String anonId;
   final String username;
   final Map<String, dynamic> avatarConfig;
   final int totalPostCount;
   final int totalLikeCount;
-  final int totalCommentCount;
+  final int totalTeaCount;
 
   const ProfileData({
     required this.anonId,
@@ -22,7 +24,7 @@ class ProfileData {
     required this.avatarConfig,
     required this.totalPostCount,
     required this.totalLikeCount,
-    required this.totalCommentCount,
+    required this.totalTeaCount,
   });
 
   factory ProfileData.fromMap(String anonId, Map<String, dynamic> data) {
@@ -34,39 +36,10 @@ class ProfileData {
       ),
       totalPostCount: (data['totalPostCount'] as num?)?.toInt() ?? 0,
       totalLikeCount: (data['totalLikeCount'] as num?)?.toInt() ?? 0,
-      totalCommentCount: (data['totalCommentCount'] as num?)?.toInt() ?? 0,
+      totalTeaCount: (data['totalTeaCount'] as num?)?.toInt() ?? 0,
     );
   }
 }
-
-final currentAnonIdProvider = FutureProvider<String?>((ref) async {
-  return ref.read(authServiceProvider).getAnonId();
-});
-
-final currentProfileProvider = FutureProvider<ProfileData?>((ref) async {
-  final anonId = await ref.watch(currentAnonIdProvider.future);
-  if (anonId == null || anonId.isEmpty) return null;
-  return ref.watch(profileDataProvider(anonId).future);
-});
-
-final profileDataProvider =
-    FutureProvider.family<ProfileData?, String>((ref, anonId) async {
-  if (anonId.isEmpty) return null;
-
-  try {
-    final doc = await FirebaseService.firestore
-        .collection('public_profiles')
-        .doc(anonId)
-        .get();
-
-    if (!doc.exists || doc.data() == null) return null;
-
-    return ProfileData.fromMap(anonId, doc.data()!);
-  } catch (e) {
-    debugPrint('profileDataProvider error: $e');
-    return null;
-  }
-});
 
 // ─── ProfileFeedState ─────────────────────────────────────────────────────────
 
@@ -75,14 +48,14 @@ class ProfileFeedState {
   final bool isLoading;
   final bool isLoadingMore;
   final bool hasMore;
-  final DocumentSnapshot? lastDoc;
+  final DocumentSnapshot<Map<String, dynamic>>? lastDoc;
   final String? error;
 
   const ProfileFeedState({
     this.posts = const [],
-    this.isLoading = true,
+    this.isLoading = false,
     this.isLoadingMore = false,
-    this.hasMore = true,
+    this.hasMore = false,
     this.lastDoc,
     this.error,
   });
@@ -92,318 +65,263 @@ class ProfileFeedState {
     bool? isLoading,
     bool? isLoadingMore,
     bool? hasMore,
-    DocumentSnapshot? lastDoc,
+    DocumentSnapshot<Map<String, dynamic>>? lastDoc,
     String? error,
-    bool clearLastDoc = false,
-    bool clearError = false,
   }) {
     return ProfileFeedState(
       posts: posts ?? this.posts,
       isLoading: isLoading ?? this.isLoading,
       isLoadingMore: isLoadingMore ?? this.isLoadingMore,
       hasMore: hasMore ?? this.hasMore,
-      lastDoc: clearLastDoc ? null : (lastDoc ?? this.lastDoc),
-      error: clearError ? null : (error ?? this.error),
+      lastDoc: lastDoc ?? this.lastDoc,
+      error: error ?? this.error,
     );
   }
 }
 
-// ─── My Spills ────────────────────────────────────────────────────────────────
+// ─── currentAnonIdProvider (single source of truth) ──────────────────────────
 
-// FIX: FamilyAsyncNotifier<State, Arg> is the correct base class.
-//      build() receives the family arg as a parameter and `this.arg`
-//      is available as a field in all other methods (e.g. loadMore).
-class _MySpillsNotifier
-    extends FamilyAsyncNotifier<ProfileFeedState, String> {
-  static const int _limit = 15;
+// NOTE: Do NOT redeclare currentAnonIdProvider here if feed_provider.dart
+// already exports it. This file imports it from there via 'feed_provider.dart'.
+// If your project had a duplicate here, REMOVE this and only use the one from
+// feed_provider.dart. Keeping one here only if feed_provider doesn't have it.
 
-  @override
-  Future<ProfileFeedState> build(String arg) => _fetch(anonId: arg);
+// ─── currentProfileProvider ───────────────────────────────────────────────────
 
-  Future<ProfileFeedState> _fetch({
-    required String anonId,
-    DocumentSnapshot? after,
-  }) async {
-    try {
-      Query<Map<String, dynamic>> q = FirebaseService.firestore
-          .collection('posts')
-          .where('authorId', isEqualTo: anonId)
-          .where('type', isEqualTo: 'confession')
-          .orderBy('createdAt', descending: true)
-          .limit(_limit);
+final currentProfileProvider =
+FutureProvider<ProfileData?>((ref) async {
+  final anonId = await ref.watch(currentAnonIdProvider.future);
+  if (anonId == null || anonId.isEmpty) return null;
+  return ref.watch(profileDataProvider(anonId).future);
+});
 
-      if (after != null) q = q.startAfterDocument(after);
+// ─── profileDataProvider ──────────────────────────────────────────────────────
 
-      final snap = await q.get();
-      final posts = await _enrichPosts(snap.docs);
+final profileDataProvider =
+FutureProvider.family<ProfileData?, String>((ref, anonId) async {
+  if (anonId.isEmpty) return null;
 
-      return ProfileFeedState(
-        posts: posts,
-        isLoading: false,
-        hasMore: snap.docs.length == _limit,
-        lastDoc: snap.docs.isNotEmpty ? snap.docs.last : null,
-      );
-    } catch (e) {
-      debugPrint('_MySpillsNotifier error: $e');
-      return const ProfileFeedState(
-        isLoading: false,
-        hasMore: false,
-        error: 'Could not load spills.',
-      );
-    }
+  try {
+    final doc = await FirebaseService.firestore
+        .collection('public_profiles')
+        .doc(anonId)
+        .get();
+
+    final data = doc.data();
+    if (!doc.exists || data == null) return null;
+
+    return ProfileData.fromMap(anonId, Map<String, dynamic>.from(data));
+  } catch (e, st) {
+    debugPrint('[profileDataProvider] error: $e');
+    debugPrint('$st');
+    return null;
   }
+});
 
-  Future<void> loadMore() async {
-    final cur = state.value;
-    if (cur == null || cur.isLoadingMore || !cur.hasMore || cur.lastDoc == null) {
-      return;
-    }
+// ─── mySpillsProvider ─────────────────────────────────────────────────────────
+// Uses ONLY where(authorId) + orderBy(createdAt), then filters type in Dart.
+// This matches the existing Firestore index and mirrors forYouFeedProvider.
 
-    state = AsyncValue.data(cur.copyWith(isLoadingMore: true));
-
-    try {
-      final snap = await FirebaseService.firestore
-          .collection('posts')
-          .where('authorId', isEqualTo: arg) // `arg` field from FamilyAsyncNotifier
-          .where('type', isEqualTo: 'confession')
-          .orderBy('createdAt', descending: true)
-          .startAfterDocument(cur.lastDoc!)
-          .limit(_limit)
-          .get();
-
-      final more = await _enrichPosts(snap.docs);
-
-      state = AsyncValue.data(
-        cur.copyWith(
-          posts: [...cur.posts, ...more],
-          isLoadingMore: false,
-          hasMore: snap.docs.length == _limit,
-          lastDoc: snap.docs.isNotEmpty ? snap.docs.last : cur.lastDoc,
-        ),
-      );
-    } catch (e) {
-      debugPrint('_MySpillsNotifier loadMore error: $e');
-      state = AsyncValue.data(cur.copyWith(isLoadingMore: false));
-    }
-  }
-}
-
-// FIX: AsyncNotifierProvider.family — NOT AsyncNotifierProviderFamily(...)
 final mySpillsProvider =
-    AsyncNotifierProvider.family<_MySpillsNotifier, ProfileFeedState, String>(
-  _MySpillsNotifier.new,
-);
-
-// ─── My Tea ───────────────────────────────────────────────────────────────────
-
-class _MyTeaNotifier
-    extends FamilyAsyncNotifier<ProfileFeedState, String> {
-  static const int _limit = 15;
-
-  @override
-  Future<ProfileFeedState> build(String arg) => _fetch(anonId: arg);
-
-  Future<ProfileFeedState> _fetch({
-    required String anonId,
-    DocumentSnapshot? after,
-  }) async {
-    try {
-      Query<Map<String, dynamic>> q = FirebaseService.firestore
-          .collection('posts')
-          .where('authorId', isEqualTo: anonId)
-          .where('type', isEqualTo: 'tea')
-          .orderBy('createdAt', descending: true)
-          .limit(_limit);
-
-      if (after != null) q = q.startAfterDocument(after);
-
-      final snap = await q.get();
-      final posts = await _enrichPosts(snap.docs);
-
-      return ProfileFeedState(
-        posts: posts,
-        isLoading: false,
-        hasMore: snap.docs.length == _limit,
-        lastDoc: snap.docs.isNotEmpty ? snap.docs.last : null,
-      );
-    } catch (e) {
-      debugPrint('_MyTeaNotifier error: $e');
-      return const ProfileFeedState(
-        isLoading: false,
-        hasMore: false,
-        error: 'Could not load tea.',
-      );
-    }
+FutureProvider.family<ProfileFeedState, String>((ref, anonId) async {
+  if (anonId.isEmpty) {
+    return const ProfileFeedState(isLoading: false, hasMore: false, posts: []);
   }
 
-  Future<void> loadMore() async {
-    final cur = state.value;
-    if (cur == null || cur.isLoadingMore || !cur.hasMore || cur.lastDoc == null) {
-      return;
-    }
+  try {
+    debugPrint('[mySpillsProvider] querying for anonId=$anonId');
 
-    state = AsyncValue.data(cur.copyWith(isLoadingMore: true));
+    final snap = await FirebaseService.firestore
+        .collection('posts')
+        .where('authorId', isEqualTo: anonId)
+        .orderBy('createdAt', descending: true)
+        .get();
 
-    try {
-      final snap = await FirebaseService.firestore
-          .collection('posts')
-          .where('authorId', isEqualTo: arg)
-          .where('type', isEqualTo: 'tea')
-          .orderBy('createdAt', descending: true)
-          .startAfterDocument(cur.lastDoc!)
-          .limit(_limit)
-          .get();
+    debugPrint('[mySpillsProvider] raw docs returned: ${snap.docs.length}');
 
-      final more = await _enrichPosts(snap.docs);
+    // Filter confession type in Dart — avoids needing compound index
+    final confessionDocs =
+    snap.docs.where((d) => d.data()['type'] == 'confession').toList();
 
-      state = AsyncValue.data(
-        cur.copyWith(
-          posts: [...cur.posts, ...more],
-          isLoadingMore: false,
-          hasMore: snap.docs.length == _limit,
-          lastDoc: snap.docs.isNotEmpty ? snap.docs.last : cur.lastDoc,
-        ),
-      );
-    } catch (e) {
-      debugPrint('_MyTeaNotifier loadMore error: $e');
-      state = AsyncValue.data(cur.copyWith(isLoadingMore: false));
-    }
+    debugPrint(
+        '[mySpillsProvider] confession docs after filter: ${confessionDocs.length}');
+
+    final posts = await _enrichPosts(confessionDocs);
+
+    return ProfileFeedState(
+      posts: posts,
+      isLoading: false,
+      hasMore: false,
+      lastDoc: confessionDocs.isNotEmpty ? confessionDocs.last : null,
+    );
+  } catch (e, st) {
+    debugPrint('[mySpillsProvider] ERROR: $e');
+    debugPrint('$st');
+    return ProfileFeedState(
+      isLoading: false,
+      hasMore: false,
+      error: 'Could not load spills: ${e.toString()}',
+    );
   }
-}
+});
+
+// ─── myTeaProvider ────────────────────────────────────────────────────────────
+// Same safe pattern — where(authorId).orderBy(createdAt), filter type in Dart.
 
 final myTeaProvider =
-    AsyncNotifierProvider.family<_MyTeaNotifier, ProfileFeedState, String>(
-  _MyTeaNotifier.new,
-);
-
-// ─── My Liked ─────────────────────────────────────────────────────────────────
-
-class _MyLikedNotifier
-    extends FamilyAsyncNotifier<ProfileFeedState, String> {
-  static const int _limit = 15;
-
-  @override
-  Future<ProfileFeedState> build(String arg) => _fetch(anonId: arg);
-
-  Future<ProfileFeedState> _fetch({required String anonId}) async {
-    try {
-      final likeSnap = await FirebaseService.firestore
-          .collection('post_likes')
-          .where('anonId', isEqualTo: anonId)
-          .orderBy('likedAt', descending: true)
-          .limit(_limit)
-          .get();
-
-      if (likeSnap.docs.isEmpty) {
-        return const ProfileFeedState(isLoading: false, hasMore: false);
-      }
-
-      final postIds = likeSnap.docs
-          .map((d) => d.data()['postId'] as String?)
-          .whereType<String>()
-          .toList();
-
-      if (postIds.isEmpty) {
-        return const ProfileFeedState(isLoading: false, hasMore: false);
-      }
-
-      final chunks = <List<String>>[];
-      for (var i = 0; i < postIds.length; i += 10) {
-        chunks.add(postIds.sublist(
-          i,
-          (i + 10 > postIds.length) ? postIds.length : i + 10,
-        ));
-      }
-
-      final List<QueryDocumentSnapshot<Map<String, dynamic>>> docs = [];
-      for (final chunk in chunks) {
-        final snap = await FirebaseService.firestore
-            .collection('posts')
-            .where(FieldPath.documentId, whereIn: chunk)
-            .get();
-        docs.addAll(snap.docs);
-      }
-
-      final enriched = await _enrichPosts(docs);
-      final postMap = {for (final p in enriched) p.postId: p};
-      final ordered =
-          postIds.where(postMap.containsKey).map((id) => postMap[id]!).toList();
-
-      return ProfileFeedState(
-        posts: ordered,
-        isLoading: false,
-        hasMore: likeSnap.docs.length == _limit,
-        lastDoc: likeSnap.docs.isNotEmpty ? likeSnap.docs.last : null,
-      );
-    } catch (e) {
-      debugPrint('_MyLikedNotifier error: $e');
-      return const ProfileFeedState(
-        isLoading: false,
-        hasMore: false,
-        error: 'Could not load liked posts.',
-      );
-    }
+FutureProvider.family<ProfileFeedState, String>((ref, anonId) async {
+  if (anonId.isEmpty) {
+    return const ProfileFeedState(isLoading: false, hasMore: false, posts: []);
   }
-}
+
+  try {
+    debugPrint('[myTeaProvider] querying for anonId=$anonId');
+
+    final snap = await FirebaseService.firestore
+        .collection('posts')
+        .where('authorId', isEqualTo: anonId)
+        .orderBy('createdAt', descending: true)
+        .get();
+
+    debugPrint('[myTeaProvider] raw docs returned: ${snap.docs.length}');
+
+    // Filter tea type in Dart
+    final teaDocs =
+    snap.docs.where((d) => d.data()['type'] == 'tea').toList();
+
+    debugPrint('[myTeaProvider] tea docs after filter: ${teaDocs.length}');
+
+    final posts = await _enrichPosts(teaDocs);
+
+    return ProfileFeedState(
+      posts: posts,
+      isLoading: false,
+      hasMore: false,
+      lastDoc: teaDocs.isNotEmpty ? teaDocs.last : null,
+    );
+  } catch (e, st) {
+    debugPrint('[myTeaProvider] ERROR: $e');
+    debugPrint('$st');
+    return ProfileFeedState(
+      isLoading: false,
+      hasMore: false,
+      error: 'Could not load tea: ${e.toString()}',
+    );
+  }
+});
+
+// ─── myLikedProvider (kept for backward compat, not used in new tabs) ─────────
 
 final myLikedProvider =
-    AsyncNotifierProvider.family<_MyLikedNotifier, ProfileFeedState, String>(
-  _MyLikedNotifier.new,
-);
+FutureProvider.family<ProfileFeedState, String>((ref, anonId) async {
+  if (anonId.isEmpty) {
+    return const ProfileFeedState(isLoading: false, hasMore: false, posts: []);
+  }
 
-// ─── Enrich helper ────────────────────────────────────────────────────────────
+  try {
+    final likeSnap = await FirebaseService.firestore
+        .collection('post_likes')
+        .where('anonId', isEqualTo: anonId)
+        .orderBy('likedAt', descending: true)
+        .get();
+
+    if (likeSnap.docs.isEmpty) {
+      return const ProfileFeedState(
+          isLoading: false, hasMore: false, posts: []);
+    }
+
+    final postIds = likeSnap.docs
+        .map((d) => d.data()['postId'] as String?)
+        .whereType<String>()
+        .toList();
+
+    if (postIds.isEmpty) {
+      return const ProfileFeedState(
+          isLoading: false, hasMore: false, posts: []);
+    }
+
+    final List<QueryDocumentSnapshot<Map<String, dynamic>>> docs = [];
+    for (var i = 0; i < postIds.length; i += 10) {
+      final chunk =
+      postIds.sublist(i, (i + 10).clamp(0, postIds.length));
+      final snap = await FirebaseService.firestore
+          .collection('posts')
+          .where(FieldPath.documentId, whereIn: chunk)
+          .get();
+      docs.addAll(snap.docs);
+    }
+
+    final enriched = await _enrichPosts(docs);
+    final postMap = {for (final p in enriched) p.postId: p};
+    final ordered =
+    postIds.where(postMap.containsKey).map((id) => postMap[id]!).toList();
+
+    return ProfileFeedState(
+      posts: ordered,
+      isLoading: false,
+      hasMore: false,
+      lastDoc:
+      likeSnap.docs.isNotEmpty ? likeSnap.docs.last : null,
+    );
+  } catch (e, st) {
+    debugPrint('[myLikedProvider] ERROR: $e');
+    debugPrint('$st');
+    return ProfileFeedState(
+      isLoading: false,
+      hasMore: false,
+      error: 'Could not load liked posts: ${e.toString()}',
+    );
+  }
+});
+
+// ─── _enrichPosts helper ──────────────────────────────────────────────────────
 
 Future<List<PostModel>> _enrichPosts(
-  List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
-) async {
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
+    ) async {
   if (docs.isEmpty) return [];
 
   final posts = docs.map((d) => PostModel.fromFirestore(d)).toList();
 
   final authorIds = posts
       .map((p) => p.authorId)
-      .whereType<String>()
       .where((id) => id.isNotEmpty)
       .toSet()
       .toList();
 
-  final profileMap = <String, Map<String, dynamic>>{};
+  final Map<String, Map<String, dynamic>> profileMap = {};
+
   if (authorIds.isNotEmpty) {
     try {
-      for (var i = 0; i < authorIds.length; i += 30) {
-        final chunk = authorIds.sublist(
-          i,
-          (i + 30 > authorIds.length) ? authorIds.length : i + 30,
-        );
-
+      for (var i = 0; i < authorIds.length; i += 10) {
+        final chunk =
+        authorIds.sublist(i, (i + 10).clamp(0, authorIds.length));
         final snap = await FirebaseService.firestore
             .collection('public_profiles')
             .where(FieldPath.documentId, whereIn: chunk)
             .get();
-
         for (final d in snap.docs) {
           profileMap[d.id] = d.data();
         }
       }
     } catch (e) {
-      debugPrint('_enrichPosts profile fetch error: $e');
+      debugPrint('[_enrichPosts] profiles error: $e');
     }
   }
 
   final anonId = LocalStorageService.getCachedAnonId();
-  final likedIds = <String>{};
+  final Set<String> likedIds = {};
 
   if (anonId != null && anonId.isNotEmpty) {
     try {
       final checks = await Future.wait(
         posts.map(
-          (p) => FirebaseService.firestore
+              (p) => FirebaseService.firestore
               .collection('post_likes')
               .doc('${p.postId}_$anonId')
               .get(),
         ),
       );
-
       for (final d in checks) {
         if (d.exists) {
           final id = d.data()?['postId'] as String?;
@@ -411,7 +329,7 @@ Future<List<PostModel>> _enrichPosts(
         }
       }
     } catch (e) {
-      debugPrint('_enrichPosts likes fetch error: $e');
+      debugPrint('[_enrichPosts] likes error: $e');
     }
   }
 
@@ -419,23 +337,21 @@ Future<List<PostModel>> _enrichPosts(
     final prof = profileMap[p.authorId];
     return p.copyWith(
       authorUsername: prof?['username'] as String?,
-      authorAvatarConfig: prof?['avatarConfig'] as Map<String, dynamic>?,
+      authorAvatarConfig:
+      prof?['avatarConfig'] as Map<String, dynamic>?,  // ← was commented out!
       isLiked: likedIds.contains(p.postId),
     );
   }).toList();
 }
 
-// ─── Sign out ─────────────────────────────────────────────────────────────────
+// ─── signOutProvider ──────────────────────────────────────────────────────────
 
 final signOutProvider = Provider<Future<void> Function()>((ref) {
   return () async {
     await ref.read(authServiceProvider).signOut();
     ref.invalidate(currentAnonIdProvider);
     ref.invalidate(currentProfileProvider);
-    ref.invalidate(profileDataProvider);
-    ref.invalidate(mySpillsProvider);
-    ref.invalidate(myTeaProvider);
-    ref.invalidate(myLikedProvider);
     ref.invalidate(forYouFeedProvider);
+    ref.invalidate(followingFeedProvider);
   };
 });
