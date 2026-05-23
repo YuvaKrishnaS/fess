@@ -13,12 +13,15 @@ import '../../core/constants/app_typography.dart';
 import '../../core/constants/avatar_options.dart';
 import '../../core/models/avatar_config.dart';
 import '../../core/services/firebase_service.dart';
-import '../auth/providers/auth_provider.dart';
-import '../home/providers/feed_provider.dart';
-import '../home/providers/profile_feed_provider.dart';
-import '../home/providers/profile_provider.dart';
-import 'providers/avatar_builder_provider.dart';
 import '../../core/widgets/app_dialog.dart';
+import '../home/providers/feed_provider.dart' show currentAnonIdProvider;
+import '../home/providers/profile_provider.dart'
+    show
+    currentProfileProvider,
+    profileDataProvider,
+    mySpillsProvider,
+    myTeaProvider;
+import 'providers/avatar_builder_provider.dart';
 
 final editPersonaSavingProvider = StateProvider<bool>((ref) => false);
 
@@ -91,11 +94,11 @@ class _EditPersonaScreenState extends ConsumerState<EditPersonaScreen> {
               if (!_initialized) {
                 _initialized = true;
                 final map = Map<String, dynamic>.from(
-                  (profile['avatarConfig'] as Map?) ?? const {},
+                  (profile.avatarConfig) as Map? ?? const {},
                 );
-                final config = map.isNotEmpty
-                    ? AvatarConfig.fromMap(map)
-                    : _randomConfig();
+                final config =
+                map.isNotEmpty ? AvatarConfig.fromMap(map) : _randomConfig();
+
                 WidgetsBinding.instance.addPostFrameCallback((_) {
                   notifier.setFromConfig(config);
                 });
@@ -117,10 +120,12 @@ class _EditPersonaScreenState extends ConsumerState<EditPersonaScreen> {
                     onSave: saving
                         ? null
                         : () async {
-                      ref.read(editPersonaSavingProvider.notifier).state = true;
+                      ref.read(editPersonaSavingProvider.notifier).state =
+                      true;
                       try {
                         final anonId =
                         await ref.read(currentAnonIdProvider.future);
+
                         if (anonId == null || anonId.isEmpty) {
                           throw Exception('Anon ID missing');
                         }
@@ -137,7 +142,6 @@ class _EditPersonaScreenState extends ConsumerState<EditPersonaScreen> {
                         ref.invalidate(profileDataProvider(anonId));
                         ref.invalidate(mySpillsProvider(anonId));
                         ref.invalidate(myTeaProvider(anonId));
-                        // ref.invalidate(myLikedProvider(anonId));
 
                         _dirty = false;
 
@@ -150,24 +154,27 @@ class _EditPersonaScreenState extends ConsumerState<EditPersonaScreen> {
                           );
                           context.pop();
                         }
-                      } catch (_) {
+                      } catch (e, st) {
+                        debugPrint('[EditPersonaScreen] save error: $e');
+                        debugPrint('$st');
+
                         if (mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Failed to save persona'),
+                            SnackBar(
+                              content:
+                              Text('Failed to save persona: $e'),
                             ),
                           );
                         }
                       } finally {
-                        ref.read(editPersonaSavingProvider.notifier).state = false;
+                        ref.read(editPersonaSavingProvider.notifier).state =
+                        false;
                       }
                     },
                   ),
                   _AvatarPreview(config: state.config),
                   const SizedBox(height: 8),
-                  _EditHint(
-                    username: (profile['username'] as String?) ?? 'anon',
-                  ),
+                  _EditHint(username: profile.username),
                   const SizedBox(height: 14),
                   _BuilderTabs(
                     selected: state.tab,
@@ -178,7 +185,7 @@ class _EditPersonaScreenState extends ConsumerState<EditPersonaScreen> {
                   ),
                   const SizedBox(height: 6),
                   Expanded(
-                    child: NotificationListener<ScrollNotification>(
+                    child: NotificationListener<Notification>(
                       onNotification: (_) {
                         if (!_dirty) setState(() => _dirty = true);
                         return false;
@@ -196,7 +203,9 @@ class _EditPersonaScreenState extends ConsumerState<EditPersonaScreen> {
   }
 
   AvatarConfig _randomConfig() {
-    String pick(List<String> list) => list[(DateTime.now().microsecondsSinceEpoch + list.length) % list.length];
+    String pick(List<String> list) =>
+        list[(DateTime.now().microsecondsSinceEpoch + list.length) % list.length];
+
     return AvatarConfig(
       skinColor: pick(AvatarOptions.skinColors),
       hair: pick(AvatarOptions.hairStyles),
@@ -283,7 +292,8 @@ class _EditTopBar extends StatelessWidget {
             child: Opacity(
               opacity: onSave == null ? 0.6 : 1,
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
+                padding:
+                const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(22),
                   color: AppColors.accentPrimary,
@@ -452,9 +462,8 @@ class _BuilderTabs extends StatelessWidget {
                 label,
                 style: AppTypography.labelSmall.copyWith(
                   fontSize: 12,
-                  color: active
-                      ? AppColors.accentPrimary
-                      : AppColors.textSecondary,
+                  color:
+                  active ? AppColors.accentPrimary : AppColors.textSecondary,
                   fontWeight: active ? FontWeight.w700 : FontWeight.w500,
                 ),
               ),
@@ -560,9 +569,8 @@ class _SkinTab extends StatelessWidget {
                     shape: BoxShape.circle,
                     color: _hexToColor(hex),
                     border: Border.all(
-                      color: active
-                          ? AppColors.accentPrimary
-                          : Colors.transparent,
+                      color:
+                      active ? AppColors.accentPrimary : Colors.transparent,
                       width: 2.5,
                     ),
                   ),
@@ -596,9 +604,8 @@ class _SkinTab extends StatelessWidget {
                     shape: BoxShape.circle,
                     color: _hexToColor(hex),
                     border: Border.all(
-                      color: active
-                          ? AppColors.accentPrimary
-                          : Colors.transparent,
+                      color:
+                      active ? AppColors.accentPrimary : Colors.transparent,
                       width: 2.5,
                     ),
                   ),
@@ -660,9 +667,8 @@ class _PickerTab extends StatelessWidget {
                 _format(item),
                 style: AppTypography.bodySmall.copyWith(
                   fontSize: 12,
-                  color: active
-                      ? AppColors.accentPrimary
-                      : AppColors.textSecondary,
+                  color:
+                  active ? AppColors.accentPrimary : AppColors.textSecondary,
                   fontWeight: active ? FontWeight.w700 : FontWeight.w500,
                 ),
               ),
@@ -674,7 +680,8 @@ class _PickerTab extends StatelessWidget {
   }
 
   static String _format(String raw) {
-    final spaced = raw.replaceAllMapped(RegExp(r'([A-Z])'), (m) => ' ${m.group(0)}');
+    final spaced =
+    raw.replaceAllMapped(RegExp(r'([A-Z])'), (m) => ' ${m.group(0)}');
     final words = spaced.trim().split(' ');
     return words
         .map((w) => w.isEmpty ? '' : '${w[0].toUpperCase()}${w.substring(1)}')
@@ -727,9 +734,8 @@ class _ExtrasTab extends StatelessWidget {
                 label,
                 style: AppTypography.bodySmall.copyWith(
                   fontSize: 12,
-                  color: active
-                      ? AppColors.accentPrimary
-                      : AppColors.textSecondary,
+                  color:
+                  active ? AppColors.accentPrimary : AppColors.textSecondary,
                   fontWeight: active ? FontWeight.w700 : FontWeight.w500,
                 ),
               ),
@@ -741,7 +747,8 @@ class _ExtrasTab extends StatelessWidget {
   }
 
   static String _format(String raw) {
-    final spaced = raw.replaceAllMapped(RegExp(r'([A-Z0-9])'), (m) => ' ${m.group(0)}');
+    final spaced =
+    raw.replaceAllMapped(RegExp(r'([A-Z0-9])'), (m) => ' ${m.group(0)}');
     final words = spaced.trim().split(' ');
     return words
         .map((w) => w.isEmpty ? '' : '${w[0].toUpperCase()}${w.substring(1)}')

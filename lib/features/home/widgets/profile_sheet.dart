@@ -1,7 +1,6 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons/lucide_icons.dart';
@@ -476,11 +475,11 @@ class _DrawerHeader extends StatelessWidget {
           // Stats row
           Row(
             children: [
-              _MiniStat(value: profile.totalPostCount, label: 'Posts'),
+              _MiniStat(value: profile.totalPostCount, label: 'Spills'),
               // const SizedBox(width: 20),
               // _MiniStat(value: profile.totalLikeCount, label: 'Likes'),
               const SizedBox(width: 20),
-              _MiniStat(value: profile.totalPostCount, label: 'Comments'),
+              _MiniStat(value: profile.totalTeaCount, label: 'Tea'),
             ],
           ),
         ],

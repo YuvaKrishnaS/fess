@@ -13,7 +13,6 @@ import '../../../core/models/avatar_config.dart';
 import '../../../core/widgets/fess_snackbar.dart';
 import '../../home/post_detail/post_detail_screen.dart';
 import '../providers/feed_provider.dart';
-import '../providers/profile_feed_provider.dart';
 import '../providers/profile_provider.dart';
 import '../widgets/confession_card.dart';
 
@@ -38,6 +37,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage>
   @override
   void initState() {
     super.initState();
+    // 2 tabs only — Spills + Tea
     _tab = TabController(
       length: 2,
       vsync: this,
@@ -60,7 +60,10 @@ class _ProfilePageState extends ConsumerState<ProfilePage>
       error: (_, __) =>
       const _PageScaffold(child: _PageError(msg: 'Could not load profile.')),
       data: (myId) {
-        final isOwn = widget.anonId == myId || myId == null;
+        // Confirm anonId matches — log it so you can verify
+        debugPrint(
+            '[ProfilePage] myId=$myId | viewing anonId=${widget.anonId} | isOwn=${widget.anonId == myId}');
+        final isOwn = widget.anonId == myId;
         return _ProfilePageBody(
           anonId: widget.anonId,
           isOwn: isOwn,
@@ -273,12 +276,18 @@ class _FullProfileHeader extends StatelessWidget {
 
           const SizedBox(height: 20),
 
-          // ── Stats: Spills Posted + Tea Posted ──
+          // ── Stats ──
           Row(
             children: [
-              _StatBlock(label: 'Spills Posted', value: profile.totalPostCount),
+              _StatBlock(
+                label: 'Spills',
+                value: profile.totalPostCount,
+              ),
               const SizedBox(width: 28),
-              _StatBlock(label: 'Tea Posted', value: profile.totalTeaCount),
+              _StatBlock(
+                label: 'Tea',
+                value: profile.totalTeaCount,  // correct field now
+              ),
             ],
           ),
 
@@ -335,45 +344,41 @@ class _SpillsTab extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final async = ref.watch(mySpillsProvider(anonId));
+    final feedAsync = ref.watch(mySpillsProvider(anonId));
 
-    return async.when(
+    return feedAsync.when(
       loading: _shimmerList,
-      error: (_, __) => _emptyState('Could not load spills.', isError: true),
+      error: (e, __) {
+        debugPrint('[_SpillsTab] provider error: $e');
+        return _emptyState('Could not load spills.\n$e', isError: true);
+      },
       data: (feed) {
-        if (feed.isLoading) return _shimmerList();
-        if (feed.posts.isEmpty) {
-          return _emptyState('No spills yet.\nWhen you spill, they show up here.');
+        // Surface Firestore errors that were caught inside the provider
+        if (feed.error != null) {
+          debugPrint('[_SpillsTab] feed error: ${feed.error}');
+          return _emptyState(feed.error!, isError: true);
         }
 
-        return NotificationListener<ScrollNotification>(
-          onNotification: (n) {
-            if (n is ScrollEndNotification &&
-                n.metrics.pixels >= n.metrics.maxScrollExtent - 300) {
-              ref.read(mySpillsProvider(anonId).notifier).loadMore();
-            }
-            return false;
+        if (feed.posts.isEmpty) {
+          return _emptyState(
+              'No spills yet.\nWhen you spill, they show up here.');
+        }
+
+        return ListView.builder(
+          itemCount: feed.posts.length + 1,
+          itemBuilder: (ctx, i) {
+            if (i == feed.posts.length) return _EasterEgg();
+            final post = feed.posts[i];
+            return ConfessionCard(
+              key: ValueKey(post.postId),
+              post: post,
+              currentAnonId: anonId,
+              onTap: () => Navigator.of(ctx).push(
+                postDetailHeroRoute(post.postId, initialPost: post),
+              ),
+              onLike: () {},
+            );
           },
-          child: ListView.builder(
-            itemCount: feed.posts.length + 1,
-            itemBuilder: (ctx, i) {
-              if (i == feed.posts.length) {
-                return feed.isLoadingMore
-                    ? _loadMoreSpinner()
-                    : _EasterEgg();
-              }
-              final post = feed.posts[i];
-              return ConfessionCard(
-                key: ValueKey(post.postId),
-                post: post,
-                currentAnonId: anonId,
-                onTap: () => Navigator.of(ctx).push(
-                  postDetailHeroRoute(post.postId, initialPost: post),
-                ),
-                onLike: () {},
-              );
-            },
-          ),
         );
       },
     );
@@ -386,45 +391,40 @@ class _TeaTab extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final async = ref.watch(myTeaProvider(anonId));
+    final feedAsync = ref.watch(myTeaProvider(anonId));
 
-    return async.when(
+    return feedAsync.when(
       loading: _shimmerList,
-      error: (_, __) => _emptyState('Could not load tea.', isError: true),
+      error: (e, __) {
+        debugPrint('[_TeaTab] provider error: $e');
+        return _emptyState('Could not load tea.\n$e', isError: true);
+      },
       data: (feed) {
-        if (feed.isLoading) return _shimmerList();
-        if (feed.posts.isEmpty) {
-          return _emptyState('No tea yet.\nSpill the tea to see it here.');
+        if (feed.error != null) {
+          debugPrint('[_TeaTab] feed error: ${feed.error}');
+          return _emptyState(feed.error!, isError: true);
         }
 
-        return NotificationListener<ScrollNotification>(
-          onNotification: (n) {
-            if (n is ScrollEndNotification &&
-                n.metrics.pixels >= n.metrics.maxScrollExtent - 300) {
-              ref.read(myTeaProvider(anonId).notifier).loadMore();
-            }
-            return false;
+        if (feed.posts.isEmpty) {
+          return _emptyState(
+              'No tea yet.\nSpill the tea to see it here.');
+        }
+
+        return ListView.builder(
+          itemCount: feed.posts.length + 1,
+          itemBuilder: (ctx, i) {
+            if (i == feed.posts.length) return _EasterEgg();
+            final post = feed.posts[i];
+            return ConfessionCard(
+              key: ValueKey(post.postId),
+              post: post,
+              currentAnonId: anonId,
+              onTap: () => Navigator.of(ctx).push(
+                postDetailHeroRoute(post.postId, initialPost: post),
+              ),
+              onLike: () {},
+            );
           },
-          child: ListView.builder(
-            itemCount: feed.posts.length + 1,
-            itemBuilder: (ctx, i) {
-              if (i == feed.posts.length) {
-                return feed.isLoadingMore
-                    ? _loadMoreSpinner()
-                    : _EasterEgg();
-              }
-              final post = feed.posts[i];
-              return ConfessionCard(
-                key: ValueKey(post.postId),
-                post: post,
-                currentAnonId: anonId,
-                onTap: () => Navigator.of(ctx).push(
-                  postDetailHeroRoute(post.postId, initialPost: post),
-                ),
-                onLike: () {},
-              );
-            },
-          ),
         );
       },
     );
@@ -444,7 +444,8 @@ class _StickyTabBarDelegate extends SliverPersistentHeaderDelegate {
   double get maxExtent => tabBar.preferredSize.height + 1;
 
   @override
-  Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
+  Widget build(
+      BuildContext context, double shrinkOffset, bool overlapsContent) {
     return Container(
       color: AppColors.backgroundMain,
       child: Column(
@@ -467,7 +468,8 @@ class _AnonAvatarLg extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       color: const Color(0xFF1A1A1A),
-      child: const Icon(LucideIcons.user, size: 36, color: AppColors.hintText),
+      child:
+      const Icon(LucideIcons.user, size: 36, color: AppColors.hintText),
     );
   }
 }
@@ -482,7 +484,8 @@ class _EasterEgg extends StatelessWidget {
         children: [
           Opacity(
             opacity: 0.25,
-            child: Image.asset('assets/images/logo.png', width: 48, height: 48),
+            child: Image.asset('assets/images/logo.png',
+                width: 48, height: 48),
           ),
           const SizedBox(height: 16),
           Text(
@@ -527,20 +530,6 @@ Widget _emptyState(String msg, {bool isError = false}) => Center(
         color: isError ? AppColors.errorLight : AppColors.textSecondary,
         height: 1.6,
         decoration: TextDecoration.none,
-      ),
-    ),
-  ),
-);
-
-Widget _loadMoreSpinner() => const Padding(
-  padding: EdgeInsets.symmetric(vertical: 20),
-  child: Center(
-    child: SizedBox(
-      width: 18,
-      height: 18,
-      child: CircularProgressIndicator(
-        strokeWidth: 1.5,
-        color: AppColors.textSecondary,
       ),
     ),
   ),
@@ -615,18 +604,19 @@ class _ShimmerBox extends StatelessWidget {
   const _ShimmerBox({
     required this.width,
     required this.height,
-    required this.radius,
+    required this.radius
   });
 
   @override
+
   Widget build(BuildContext context) {
     return Container(
       width: width,
       height: height,
       decoration: BoxDecoration(
         color: const Color(0xFF1A1A1A),
-        borderRadius: BorderRadius.circular(radius),
-      ),
+        borderRadius: BorderRadius.circular(radius)
+      )
     );
   }
 }
