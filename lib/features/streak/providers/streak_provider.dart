@@ -141,6 +141,6 @@ StateNotifierProvider<StreakNotifier, StreakState>((ref) {
 // Use this in widgets that only need a bool (e.g. nav badge dot).
 
 final isStreakAliveProvider = Provider<bool>((ref) {
-  final streak = ref.watch(myStreakProvider).valueOrNull;
+  final streak = ref.watch(myStreakProvider).asData?.value;
   return streak?.isAlive ?? false;
 });

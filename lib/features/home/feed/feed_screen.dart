@@ -1,4 +1,5 @@
 import 'package:fessv2/features/home/widgets/profile_sheet.dart';
+import 'package:fessv2/features/streak/widgets/streak_cup.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -11,6 +12,8 @@ import '../post_detail/post_detail_screen.dart';
 import '../providers/feed_provider.dart';
 import '../providers/scroll_visibility_provider.dart';
 import '../widgets/confession_card.dart';
+import '../../streak/widgets/streak_cup.dart';
+import '../../streak/providers/streak_provider.dart';
 
 class FeedScreen extends ConsumerStatefulWidget {
   const FeedScreen({super.key});
@@ -127,7 +130,7 @@ class _AppBarContent extends ConsumerWidget {
             ),
           ),
           const Spacer(),
-          _StreakCup(),
+          const StreakCupButton()
         ],
       ),
     );
@@ -185,66 +188,66 @@ class _AppBarAvatar extends StatelessWidget {
   );
 }
 
-class _StreakCup extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) => GestureDetector(
-    onTap: () {
-      HapticFeedback.selectionClick();
-      _showStreakSheet(context);
-    },
-    child: const SizedBox(
-      width: 44,
-      height: 44,
-      child: Center(
-        child: Icon(LucideIcons.coffee,
-            size: 22, color: AppColors.textSecondary),
-      ),
-    ),
-  );
-
-  void _showStreakSheet(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (_) => Container(
-        decoration: const BoxDecoration(
-          color: Color(0xFF0F0F0F),
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
-        child: SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 36,
-                height: 4,
-                decoration: BoxDecoration(
-                    color: const Color(0xFF3A3A3A),
-                    borderRadius: BorderRadius.circular(2)),
-              ),
-              const SizedBox(height: 28),
-              const Icon(LucideIcons.coffee,
-                  size: 36, color: AppColors.textSecondary),
-              const SizedBox(height: 16),
-              Text('Your streak is at risk.',
-                  style: AppTypography.h4.copyWith(fontSize: 16),
-                  textAlign: TextAlign.center),
-              const SizedBox(height: 8),
-              Text(
-                'Post a spill or tea every day to keep it alive.',
-                style: AppTypography.bodyMedium
-                    .copyWith(color: AppColors.textSecondary),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 24),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
+// class _StreakCup extends StatelessWidget {
+//   @override
+//   Widget build(BuildContext context) => GestureDetector(
+//     onTap: () {
+//       HapticFeedback.selectionClick();
+//       _showStreakSheet(context);
+//     },
+//     child: const SizedBox(
+//       width: 44,
+//       height: 44,
+//       child: Center(
+//         child: Icon(LucideIcons.coffee,
+//             size: 22, color: AppColors.textSecondary),
+//       ),
+//     ),
+//   );
+//
+//   void _showStreakSheet(BuildContext context) {
+//     showModalBottomSheet(
+//       context: context,
+//       backgroundColor: Colors.transparent,
+//       builder: (_) => Container(
+//         decoration: const BoxDecoration(
+//           color: Color(0xFF0F0F0F),
+//           borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+//         ),
+//         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+//         child: SafeArea(
+//           child: Column(
+//             mainAxisSize: MainAxisSize.min,
+//             children: [
+//               Container(
+//                 width: 36,
+//                 height: 4,
+//                 decoration: BoxDecoration(
+//                     color: const Color(0xFF3A3A3A),
+//                     borderRadius: BorderRadius.circular(2)),
+//               ),
+//               const SizedBox(height: 28),
+//               const Icon(LucideIcons.coffee,
+//                   size: 36, color: AppColors.textSecondary),
+//               const SizedBox(height: 16),
+//               Text('Your streak is at risk.',
+//                   style: AppTypography.h4.copyWith(fontSize: 16),
+//                   textAlign: TextAlign.center),
+//               const SizedBox(height: 8),
+//               Text(
+//                 'Post a spill or tea every day to keep it alive.',
+//                 style: AppTypography.bodyMedium
+//                     .copyWith(color: AppColors.textSecondary),
+//                 textAlign: TextAlign.center,
+//               ),
+//               const SizedBox(height: 24),
+//             ],
+//           ),
+//         ),
+//       ),
+//     );
+//   }
+// }
 
 class _TabBarDelegate extends SliverPersistentHeaderDelegate {
   final TabController tab;
