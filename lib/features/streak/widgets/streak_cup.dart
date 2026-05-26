@@ -6,7 +6,7 @@ import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_typography.dart';
 import '../providers/streak_provider.dart';
 
-// ─── Public widget — drop-in replacement for _StreakCup in feed_screen ────────
+//  Public widget - drop-in replacement for _StreakCup in feed_screen
 
 class StreakCupButton extends ConsumerWidget {
   const StreakCupButton({super.key});

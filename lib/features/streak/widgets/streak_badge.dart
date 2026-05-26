@@ -30,7 +30,7 @@ class StreakBadge extends ConsumerWidget {
   }
 }
 
-// ── Small badge — for app bars ────────────────────────────────────────────────
+// Small badge - for app bars
 
 class _SmallBadge extends StatelessWidget {
   final int count;
@@ -88,16 +88,16 @@ class _LargeBadge extends StatelessWidget {
             ),
             const SizedBox(width: 4),
             const Text('🔥', style: TextStyle(fontSize: 16)),
-          ],
+          ]
         ),
         Text(
-          'Day Streak',
+          'DayStreak',
           style: AppTypography.bodySmall.copyWith(
             fontSize: 11,
             color: AppColors.textSecondary,
-          ),
-        ),
-      ],
+          )
+        )
+      ]
     );
   }
 }
