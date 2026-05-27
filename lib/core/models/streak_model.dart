@@ -167,8 +167,21 @@ class StreakModel {
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-          other is StreakModel && other.anonId == anonId;
+      other is StreakModel &&
+        other.currentStreak == currentStreak &&
+        other.longestStreak == longestStreak &&
+        other.totalActiveDays == totalActiveDays &&
+        other.lastActiveDate?.day == lastActiveDate?.day &&
+        other.lastActiveDate?.month == lastActiveDate?.month &&
+        other.lastActiveDate?.year == lastActiveDate?.year &&
+        other.graceUsed == graceUsed;
 
   @override
-  int get hashCode => anonId.hashCode;
+  int get hashCode => Object.hash(
+    currentStreak,
+    longestStreak,
+    totalActiveDays,
+    lastActiveDate?.day,
+    graceUsed
+  );
 }

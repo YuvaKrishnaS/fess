@@ -1,169 +1,458 @@
-import 'dart:math' as math;
-import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'dart:async';
 
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_animate/flutter_animate.dart';
+import 'package:just_audio/just_audio.dart';
+import 'package:lucide_icons/lucide_icons.dart';
+import 'package:timeago/timeago.dart' as timeago;
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_typography.dart';
-import '../providers/streak_provider.dart';
+import '../../../core/models/avatar_config.dart';
+import '../../../core/models/tea_post_model.dart';
+import '../../../core/services/audio_service.dart';
 
-// ─── Public widget — drop-in replacement for _StreakCup in feed_screen ────────
+class TeaCard extends StatefulWidget {
+  final TeaPost post;
+  final String? currentAnonId;
+  final VoidCallback onTap;
+  final VoidCallback onLike;
 
-class StreakCupButton extends ConsumerWidget {
-  const StreakCupButton({super.key});
+  const TeaCard({
+    super.key,
+    required this.post,
+    required this.currentAnonId,
+    required this.onTap,
+    required this.onLike,
+  });
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final streakAsync = ref.watch(myStreakProvider);
-
-    return streakAsync.when(
-      loading: () => _CupTapTarget(state: CupState.cold, streak: 0, onTap: () {}),
-      error: (_, __) => _CupTapTarget(state: CupState.cold, streak: 0, onTap: () {}),
-      data: (streak) {
-        final state = _resolveCupState(streak);
-        final count = streak?.currentStreak ?? 0;
-        return _CupTapTarget(
-          state: state,
-          streak: count,
-          onTap: () => _showStreakSheet(context, state, count),
-        );
-      },
-    );
-  }
-
-  CupState _resolveCupState(streak) {
-    if (streak == null || streak.currentStreak == 0) return CupState.broken;
-
-    final today = DateTime.now();
-    final last = streak.lastActiveDate;
-    if (last == null) return CupState.broken;
-
-    final daysSince = DateTime(today.year, today.month, today.day)
-        .difference(DateTime(last.year, last.month, last.day))
-        .inDays;
-
-    if (daysSince > 2) return CupState.cracked;
-    if (daysSince == 2 && streak.graceUsed) return CupState.cracked;
-    if (daysSince == 2 && !streak.graceUsed) return CupState.cold; // grace still available
-    if (daysSince == 1) return CupState.cold;
-    // daysSince == 0 → active today
-    if (streak.currentStreak >= 3) return CupState.hot;
-    return CupState.warm;
-  }
-
-  void _showStreakSheet(BuildContext context, CupState state, int count) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (_) => _StreakSheet(state: state, streak: count),
-    );
-  }
+  State<TeaCard> createState() => _TeaCardState();
 }
 
-// ─── Cup States ───────────────────────────────────────────────────────────────
-
-enum CupState { hot, warm, cold, cracked, broken }
-
-extension CupStateX on CupState {
-  String get label {
-    switch (this) {
-      case CupState.hot: return 'On fire! 🔥';
-      case CupState.warm: return 'Going strong ☕';
-      case CupState.cold: return 'Getting cold...';
-      case CupState.cracked: return 'Almost broken 💔';
-      case CupState.broken: return 'Start your streak';
-    }
-  }
-
-  String get message {
-    switch (this) {
-      case CupState.hot: return 'Your cup is piping hot. Keep posting every day to keep the steam going!';
-      case CupState.warm: return 'Your streak is alive. Post today to keep it warm!';
-      case CupState.cold: return 'You missed yesterday. One more miss and your cup cracks. Post now!';
-      case CupState.cracked: return 'Your cup is cracking. Post right now before it shatters completely.';
-      case CupState.broken: return 'Your cup shattered. Post a spill or tea to start a new streak from scratch.';
-    }
-  }
-
-  Color get primaryColor {
-    switch (this) {
-      case CupState.hot: return const Color(0xFFFF6B35);
-      case CupState.warm: return const Color(0xFFE8C547);
-      case CupState.cold: return const Color(0xFF8BA3B8);
-      case CupState.cracked: return const Color(0xFFB85450);
-      case CupState.broken: return const Color(0xFF444444);
-    }
-  }
-}
-
-// ─── Tap target wrapper ───────────────────────────────────────────────────────
-
-class _CupTapTarget extends StatelessWidget {
-  final CupState state;
-  final int streak;
-  final VoidCallback onTap;
-
-  const _CupTapTarget({
-    required this.state,
-    required this.streak,
-    required this.onTap,
-  });
+class _TeaCardState extends State<TeaCard> {
+  bool _pressed = false;
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: onTap,
-      child: SizedBox(
-        width: 44,
-        height: 44,
-        child: Center(
-          child: StreakCupSvg(state: state, size: 26),
+      onTap: () {
+        HapticFeedback.selectionClick();
+        widget.onTap();
+      },
+      onTapDown: (_) => setState(() => _pressed = true),
+      onTapUp: (_) => setState(() => _pressed = false),
+      onTapCancel: () => setState(() => _pressed = false),
+      behavior: HitTestBehavior.opaque,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 80),
+        color: _pressed ? const Color(0xFF111111) : Colors.transparent,
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _CardHeader(post: widget.post),
+            const SizedBox(height: 10),
+            Text(
+              widget.post.heading,
+              style: AppTypography.h4.copyWith(
+                fontFamily: 'DM Sans',
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                color: AppColors.textPrimary,
+                height: 1.4,
+              ),
+            ),
+            const SizedBox(height: 10),
+            _TeaVoicePlayer(
+              key: ValueKey('tea_voice_${widget.post.postId}'),
+              audioUrl: widget.post.audioUrl,
+              durationSecs: widget.post.audioDurationSeconds,
+            ),
+            const SizedBox(height: 12),
+            _ReactionRow(
+              post: widget.post,
+              onLike: widget.onLike,
+              onComment: widget.onTap,
+            ),
+            const SizedBox(height: 14),
+            const Divider(height: 0.5, thickness: 0.5, color: Color(0xFF1A1A1A)),
+          ],
         ),
+      ),
+    )
+        .animate()
+        .fadeIn(duration: 280.ms)
+        .slideY(begin: 0.04, end: 0, duration: 280.ms, curve: Curves.easeOut);
+  }
+}
+
+class _CardHeader extends StatelessWidget {
+  final TeaPost post;
+
+  const _CardHeader({required this.post});
+
+  @override
+  Widget build(BuildContext context) {
+    final avatarUrl = post.authorAvatarConfig.isNotEmpty
+        ? AvatarConfig.fromMap(post.authorAvatarConfig).buildUrl(size: 72)
+        : null;
+
+    final timeStr = timeago.format(post.createdAt, locale: 'en_short');
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        _Avatar(url: avatarUrl),
+        const SizedBox(width: 9),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                '@${post.authorUsername}',
+                style: AppTypography.bodyMedium.copyWith(
+                  fontFamily: 'DM Sans',
+                  fontWeight: FontWeight.w700,
+                  fontSize: 14,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+              Text(
+                timeStr,
+                style: AppTypography.bodySmall.copyWith(
+                  fontSize: 11,
+                  color: AppColors.hintText,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _Avatar extends StatelessWidget {
+  final String? url;
+  const _Avatar({this.url});
+
+  @override
+  Widget build(BuildContext context) => Container(
+    width: 36,
+    height: 36,
+    decoration: BoxDecoration(
+      shape: BoxShape.circle,
+      border: Border.all(
+        color: AppColors.accentPrimary.withOpacity(0.35),
+        width: 1.2,
+      ),
+    ),
+    child: ClipOval(
+      child: url != null
+          ? CachedNetworkImage(
+        imageUrl: url!,
+        fit: BoxFit.cover,
+        placeholder: (_, __) =>
+            Container(color: const Color(0xFF1A1A1A)),
+        errorWidget: (_, __, ___) => const _AnonAvatar(),
+      )
+          : const _AnonAvatar(),
+    ),
+  );
+}
+
+class _AnonAvatar extends StatelessWidget {
+  const _AnonAvatar();
+  @override
+  Widget build(BuildContext context) => Container(
+    color: const Color(0xFF1A1A1A),
+    child: const Icon(LucideIcons.user, size: 18, color: AppColors.hintText),
+  );
+}
+
+class _TeaVoicePlayer extends StatefulWidget {
+  final String audioUrl;
+  final int durationSecs;
+
+  const _TeaVoicePlayer({
+    super.key,
+    required this.audioUrl,
+    required this.durationSecs,
+  });
+
+  @override
+  State<_TeaVoicePlayer> createState() => _TeaVoicePlayerState();
+}
+
+class _TeaVoicePlayerState extends State<_TeaVoicePlayer> {
+  bool _isPlaying = false;
+  Duration _position = Duration.zero;
+  Duration _duration = Duration.zero;
+
+  StreamSubscription? _stateSub;
+  StreamSubscription? _posSub;
+  StreamSubscription? _durSub;
+
+  String _fmt(int s) =>
+      '${(s ~/ 60).toString().padLeft(2, '0')}:${(s % 60).toString().padLeft(2, '0')}';
+
+  @override
+  void initState() {
+    super.initState();
+    _duration = Duration(seconds: widget.durationSecs);
+
+    _stateSub = AudioService.instance.playerStateStream.listen((s) {
+      if (!mounted) return;
+      final currentUrl = AudioService.instance.currentUrl;
+      final playing = s.playing &&
+          s.processingState != ProcessingState.completed &&
+          currentUrl == widget.audioUrl;
+
+      if (s.processingState == ProcessingState.completed &&
+          currentUrl == widget.audioUrl) {
+        setState(() {
+          _isPlaying = false;
+          _position = Duration.zero;
+        });
+        return;
+      }
+      setState(() => _isPlaying = playing);
+      if (!playing && currentUrl != widget.audioUrl) {
+        setState(() => _position = Duration.zero);
+      }
+    });
+
+    _posSub = AudioService.instance.positionStream.listen((p) {
+      if (!mounted) return;
+      if (AudioService.instance.currentUrl == widget.audioUrl) {
+        setState(() => _position = p);
+      }
+    });
+
+    _durSub = AudioService.instance.durationStream.listen((d) {
+      if (!mounted) return;
+      if (d != null && AudioService.instance.currentUrl == widget.audioUrl) {
+        setState(() => _duration = d);
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _stateSub?.cancel();
+    _posSub?.cancel();
+    _durSub?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _toggle() async {
+    HapticFeedback.selectionClick();
+    if (_isPlaying) {
+      await AudioService.instance.pause();
+    } else {
+      await AudioService.instance.playUrl(widget.audioUrl);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final total = _duration.inMilliseconds > 0
+        ? _duration.inMilliseconds
+        : (widget.durationSecs * 1000);
+    final pct =
+    total > 0 ? (_position.inMilliseconds / total).clamp(0.0, 1.0) : 0.0;
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFF0D0D15),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: AppColors.accentPrimary.withOpacity(0.15),
+          width: 0.8,
+        ),
+      ),
+      child: Row(
+        children: [
+          GestureDetector(
+            onTap: _toggle,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 150),
+              width: 32,
+              height: 32,
+              decoration: BoxDecoration(
+                color: _isPlaying
+                    ? AppColors.accentPrimary
+                    : AppColors.accentPrimary.withOpacity(0.12),
+                shape: BoxShape.circle,
+              ),
+              child: Center(
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 150),
+                  child: Icon(
+                    _isPlaying ? LucideIcons.pause : LucideIcons.play,
+                    key: ValueKey(_isPlaying),
+                    size: 13,
+                    color: _isPlaying ? Colors.black : AppColors.accentPrimary,
+                  ),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: SliderTheme(
+              data: SliderTheme.of(context).copyWith(
+                trackHeight: 2,
+                thumbShape:
+                const RoundSliderThumbShape(enabledThumbRadius: 4),
+                overlayShape:
+                const RoundSliderOverlayShape(overlayRadius: 10),
+                activeTrackColor: AppColors.accentPrimary,
+                inactiveTrackColor: const Color(0xFF2A2A38),
+                thumbColor: AppColors.accentPrimary,
+                overlayColor: AppColors.accentPrimary.withOpacity(0.12),
+              ),
+              child: Slider(
+                value: pct.toDouble(),
+                min: 0,
+                max: 1,
+                onChanged: (v) {
+                  if (total == 0 ||
+                      AudioService.instance.currentUrl != widget.audioUrl) {
+                    return;
+                  }
+                  AudioService.instance
+                      .seekTo(Duration(milliseconds: (v * total).round()));
+                },
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            _isPlaying && _position.inSeconds > 0
+                ? _fmt(_position.inSeconds)
+                : _fmt(widget.durationSecs),
+            style: AppTypography.bodySmall.copyWith(
+              fontSize: 11,
+              color: AppColors.textSecondary,
+              fontFeatures: [const FontFeature.tabularFigures()],
+            ),
+          ),
+        ],
       ),
     );
   }
 }
 
-// ─── The actual SVG cup drawn with CustomPainter ─────────────────────────────
+class _ReactionRow extends StatelessWidget {
+  final TeaPost post;
+  final VoidCallback onLike;
+  final VoidCallback onComment;
 
-class StreakCupSvg extends StatefulWidget {
-  final CupState state;
-  final double size;
-
-  const StreakCupSvg({super.key, required this.state, required this.size});
+  const _ReactionRow({
+    required this.post,
+    required this.onLike,
+    required this.onComment,
+  });
 
   @override
-  State<StreakCupSvg> createState() => _StreakCupSvgState();
+  Widget build(BuildContext context) => Row(
+    children: [
+      _ReactionBtn(
+        icon: LucideIcons.messageCircle,
+        count: post.commentCount,
+        onTap: onComment,
+        active: false,
+        activeColor: AppColors.accentPrimary,
+      ),
+      const SizedBox(width: 20),
+      _LikeBtn(post: post, onLike: onLike),
+      const Spacer(),
+      _ReactionBtn(
+        icon: LucideIcons.share2,
+        count: null,
+        onTap: () {},
+        active: false,
+        activeColor: AppColors.textSecondary,
+      ),
+    ],
+  );
 }
 
-class _StreakCupSvgState extends State<StreakCupSvg>
+class _ReactionBtn extends StatelessWidget {
+  final IconData icon;
+  final int? count;
+  final VoidCallback onTap;
+  final bool active;
+  final Color activeColor;
+
+  const _ReactionBtn({
+    required this.icon,
+    required this.count,
+    required this.onTap,
+    required this.active,
+    required this.activeColor,
+  });
+
+  @override
+  Widget build(BuildContext context) => GestureDetector(
+    onTap: () {
+      HapticFeedback.selectionClick();
+      onTap();
+    },
+    behavior: HitTestBehavior.opaque,
+    child: Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon,
+              size: 17,
+              color: active ? activeColor : AppColors.textSecondary),
+          if (count != null) ...[
+            const SizedBox(width: 5),
+            Text(
+              '$count',
+              style: AppTypography.bodySmall.copyWith(
+                fontSize: 13,
+                color: active ? activeColor : AppColors.textSecondary,
+                fontFeatures: [const FontFeature.tabularFigures()],
+              ),
+            ),
+          ],
+        ],
+      ),
+    ),
+  );
+}
+
+class _LikeBtn extends StatefulWidget {
+  final TeaPost post;
+  final VoidCallback onLike;
+  const _LikeBtn({required this.post, required this.onLike});
+
+  @override
+  State<_LikeBtn> createState() => _LikeBtnState();
+}
+
+class _LikeBtnState extends State<_LikeBtn>
     with SingleTickerProviderStateMixin {
-  late AnimationController _ctrl;
-  late Animation<double> _steam;
+  late final AnimationController _ctrl;
+  late final Animation<double> _scale;
 
   @override
   void initState() {
     super.initState();
     _ctrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 2000),
-    );
-    _steam = Tween<double>(begin: 0, end: 1).animate(
-      CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut),
-    );
-    if (widget.state == CupState.hot || widget.state == CupState.warm) {
-      _ctrl.repeat();
-    }
-  }
-
-  @override
-  void didUpdateWidget(StreakCupSvg old) {
-    super.didUpdateWidget(old);
-    if (widget.state == CupState.hot || widget.state == CupState.warm) {
-      if (!_ctrl.isAnimating) _ctrl.repeat();
-    } else {
-      _ctrl.stop();
-    }
+        vsync: this, duration: const Duration(milliseconds: 200));
+    _scale = TweenSequence([
+      TweenSequenceItem(tween: Tween(begin: 1.0, end: 1.25), weight: 50),
+      TweenSequenceItem(tween: Tween(begin: 1.25, end: 1.0), weight: 50),
+    ]).animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut));
   }
 
   @override
@@ -173,360 +462,145 @@ class _StreakCupSvgState extends State<StreakCupSvg>
   }
 
   @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _steam,
-      builder: (context, _) {
-        return CustomPaint(
-          size: Size(widget.size, widget.size),
-          painter: _CupPainter(
-            state: widget.state,
-            steamProgress: _steam.value,
+  Widget build(BuildContext context) => GestureDetector(
+    onTap: () {
+      HapticFeedback.mediumImpact();
+      _ctrl.forward(from: 0);
+      widget.onLike();
+    },
+    behavior: HitTestBehavior.opaque,
+    child: Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ScaleTransition(
+            scale: _scale,
+            child: Icon(
+              widget.post.isLikedByMe
+                  ? Icons.favorite_rounded
+                  : Icons.favorite_border_rounded,
+              size: 17,
+              color: widget.post.isLikedByMe
+                  ? AppColors.errorLight
+                  : AppColors.textSecondary,
+            ),
           ),
-        );
-      },
-    );
-  }
-}
-
-// ─── CustomPainter — draws the cup in all 5 states ───────────────────────────
-
-class _CupPainter extends CustomPainter {
-  final CupState state;
-  final double steamProgress; // 0..1, only used for hot/warm
-
-  const _CupPainter({required this.state, required this.steamProgress});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final w = size.width;
-    final h = size.height;
-
-    switch (state) {
-      case CupState.hot:
-        _drawCupBody(canvas, w, h, const Color(0xFFFF6B35), full: true);
-        _drawHandle(canvas, w, h, const Color(0xFFFF6B35));
-        _drawSteam(canvas, w, h, const Color(0xFFFF9A6C), count: 3);
-        break;
-
-      case CupState.warm:
-        _drawCupBody(canvas, w, h, const Color(0xFFE8C547), full: true);
-        _drawHandle(canvas, w, h, const Color(0xFFE8C547));
-        _drawSteam(canvas, w, h, const Color(0xFFEDD87A), count: 1);
-        break;
-
-      case CupState.cold:
-        _drawCupBody(canvas, w, h, const Color(0xFF8BA3B8), full: true);
-        _drawHandle(canvas, w, h, const Color(0xFF8BA3B8));
-        // no steam
-        break;
-
-      case CupState.cracked:
-        _drawCupBody(canvas, w, h, const Color(0xFF8B4A48), full: true);
-        _drawHandle(canvas, w, h, const Color(0xFF8B4A48));
-        _drawCracks(canvas, w, h);
-        break;
-
-      case CupState.broken:
-        _drawBrokenCup(canvas, w, h);
-        break;
-    }
-  }
-
-  // ── Cup body (trapezoid mug shape) ──────────────────────────────────────────
-
-  void _drawCupBody(Canvas canvas, double w, double h, Color color,
-      {required bool full}) {
-    final paint = Paint()
-      ..color = color
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = w * 0.08
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round;
-
-    // Reserve top 30% of height for steam
-    final topY = h * 0.32;
-    final botY = h * 0.88;
-    final leftTop = w * 0.18;
-    final rightTop = w * 0.82;
-    final leftBot = w * 0.22;
-    final rightBot = w * 0.78;
-
-    final path = Path()
-      ..moveTo(leftTop, topY)
-      ..lineTo(leftBot, botY)
-      ..lineTo(rightBot, botY)
-      ..lineTo(rightTop, topY);
-
-    // Bottom arc
-    final bottomArc = Path()
-      ..moveTo(leftBot, botY)
-      ..quadraticBezierTo(w * 0.5, botY + h * 0.06, rightBot, botY);
-
-    // Top rim line
-    final rimPath = Path()
-      ..moveTo(leftTop - w * 0.02, topY)
-      ..lineTo(rightTop + w * 0.02, topY);
-
-    canvas.drawPath(path, paint);
-    canvas.drawPath(bottomArc, paint);
-    canvas.drawPath(rimPath, paint);
-  }
-
-  // ── Handle ──────────────────────────────────────────────────────────────────
-
-  void _drawHandle(Canvas canvas, double w, double h, Color color) {
-    final paint = Paint()
-      ..color = color
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = w * 0.07
-      ..strokeCap = StrokeCap.round;
-
-    final path = Path();
-    final startX = w * 0.78;
-    final startY = h * 0.44;
-    final endY = h * 0.68;
-
-    path.moveTo(startX, startY);
-    path.cubicTo(
-      w * 1.1, startY,
-      w * 1.1, endY,
-      startX, endY,
-    );
-
-    canvas.drawPath(path, paint);
-  }
-
-  // ── Steam wisps ─────────────────────────────────────────────────────────────
-
-  void _drawSteam(Canvas canvas, double w, double h, Color color,
-      {required int count}) {
-    final paint = Paint()
-      ..color = color.withOpacity(0.5 + 0.4 * steamProgress)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = w * 0.055
-      ..strokeCap = StrokeCap.round;
-
-    final positions = count == 1
-        ? [w * 0.5]
-        : count == 2
-        ? [w * 0.37, w * 0.63]
-        : [w * 0.3, w * 0.5, w * 0.7];
-
-    for (int i = 0; i < positions.length; i++) {
-      final x = positions[i];
-      final phase = (steamProgress + i / positions.length) % 1.0;
-      final yOffset = h * 0.28 * phase;
-      final topY = h * 0.28 - yOffset;
-
-      final path = Path()
-        ..moveTo(x, h * 0.28)
-        ..cubicTo(
-          x - w * 0.06, h * 0.28 - h * 0.08,
-          x + w * 0.06, h * 0.28 - h * 0.16,
-          x, topY,
-        );
-
-      canvas.drawPath(path, paint..color = color.withOpacity((1 - phase) * 0.7));
-    }
-  }
-
-  // ── Crack lines ─────────────────────────────────────────────────────────────
-
-  void _drawCracks(Canvas canvas, double w, double h) {
-    final paint = Paint()
-      ..color = const Color(0xFFFF6B6B).withOpacity(0.8)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = w * 0.045
-      ..strokeCap = StrokeCap.round;
-
-    // Main crack — front of cup
-    final crack1 = Path()
-      ..moveTo(w * 0.42, h * 0.38)
-      ..lineTo(w * 0.48, h * 0.52)
-      ..lineTo(w * 0.44, h * 0.63)
-      ..lineTo(w * 0.50, h * 0.78);
-
-    // Small branch crack
-    final crack2 = Path()
-      ..moveTo(w * 0.48, h * 0.52)
-      ..lineTo(w * 0.56, h * 0.60);
-
-    canvas.drawPath(crack1, paint);
-    canvas.drawPath(crack2, paint..strokeWidth = w * 0.03);
-  }
-
-  // ── Broken cup (scattered pieces) ───────────────────────────────────────────
-
-  void _drawBrokenCup(Canvas canvas, double w, double h) {
-    final paint = Paint()
-      ..color = const Color(0xFF555555)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = w * 0.07
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round;
-
-    // Bottom fragment — still looks like the base
-    final bottom = Path()
-      ..moveTo(w * 0.28, h * 0.72)
-      ..lineTo(w * 0.35, h * 0.88)
-      ..lineTo(w * 0.65, h * 0.88)
-      ..lineTo(w * 0.72, h * 0.72);
-    canvas.drawPath(bottom, paint);
-
-    // Left wall fragment — tilted left
-    canvas.save();
-    canvas.translate(w * 0.18, h * 0.5);
-    canvas.rotate(-0.35);
-    final leftFrag = Path()
-      ..moveTo(0, -h * 0.15)
-      ..lineTo(-w * 0.02, h * 0.15);
-    canvas.drawPath(leftFrag, paint);
-    canvas.restore();
-
-    // Right wall fragment — tilted right
-    canvas.save();
-    canvas.translate(w * 0.78, h * 0.5);
-    canvas.rotate(0.35);
-    final rightFrag = Path()
-      ..moveTo(0, -h * 0.15)
-      ..lineTo(w * 0.02, h * 0.15);
-    canvas.drawPath(rightFrag, paint);
-    canvas.restore();
-
-    // Top rim fragment — floating above, rotated
-    canvas.save();
-    canvas.translate(w * 0.5, h * 0.2);
-    canvas.rotate(0.15);
-    final rimFrag = Path()
-      ..moveTo(-w * 0.18, 0)
-      ..lineTo(w * 0.12, 0);
-    canvas.drawPath(rimFrag, paint);
-    canvas.restore();
-
-    // Small debris dot
-    canvas.drawCircle(Offset(w * 0.62, h * 0.62), w * 0.03, paint..style = PaintingStyle.fill);
-    canvas.drawCircle(Offset(w * 0.3, h * 0.65), w * 0.025, paint);
-  }
-
-  @override
-  bool shouldRepaint(_CupPainter old) =>
-      old.state != state || old.steamProgress != steamProgress;
-}
-
-// ─── Bottom sheet ─────────────────────────────────────────────────────────────
-
-class _StreakSheet extends StatelessWidget {
-  final CupState state;
-  final int streak;
-
-  const _StreakSheet({required this.state, required this.streak});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: const BoxDecoration(
-        color: Color(0xFF0F0F0F),
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          const SizedBox(width: 5),
+          Text(
+            '${widget.post.likeCount}',
+            style: AppTypography.bodySmall.copyWith(
+              fontSize: 13,
+              color: widget.post.isLikedByMe
+                  ? AppColors.errorLight
+                  : AppColors.textSecondary,
+              fontFeatures: [const FontFeature.tabularFigures()],
+            ),
+          ),
+        ],
       ),
-      padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
-      child: SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Drag handle
-            Container(
-              width: 36, height: 4,
-              decoration: BoxDecoration(
-                color: const Color(0xFF3A3A3A),
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            const SizedBox(height: 32),
+    ),
+  );
+}
 
-            // Animated cup — larger version
-            StreakCupSvg(state: state, size: 72),
-            const SizedBox(height: 20),
+class TeaShimmerCard extends StatefulWidget {
+  const TeaShimmerCard({super.key});
 
-            // Streak count
-            if (streak > 0) ...[
-              Text(
-                '$streak',
-                style: AppTypography.h2.copyWith(
-                  fontSize: 42,
-                  fontWeight: FontWeight.w900,
-                  color: state.primaryColor,
-                ),
-              ),
-              Text(
-                streak == 1 ? 'day streak' : 'day streak',
-                style: AppTypography.bodySmall.copyWith(
-                  color: AppColors.textSecondary,
-                  fontSize: 13,
-                ),
-              ),
-              const SizedBox(height: 16),
-            ],
+  @override
+  State<TeaShimmerCard> createState() => _TeaShimmerCardState();
+}
 
-            // State label
-            Text(
-              state.label,
-              style: AppTypography.h4.copyWith(
-                fontSize: 17,
-                fontWeight: FontWeight.w700,
-                color: AppColors.textPrimary,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 8),
+class _TeaShimmerCardState extends State<TeaShimmerCard>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl;
+  late final Animation<double> _anim;
 
-            // Message
-            Text(
-              state.message,
-              style: AppTypography.bodyMedium.copyWith(
-                color: AppColors.textSecondary,
-                height: 1.5,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 28),
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 1500))
+      ..repeat();
+    _anim = CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut);
+  }
 
-            // Streak legend row
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AnimatedBuilder(
+    animation: _anim,
+    builder: (_, __) => Container(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            _Bone(w: 36, h: 36, radius: 18, anim: _anim),
+            const SizedBox(width: 9),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _LegendItem(state: CupState.hot, label: '3+ days'),
-                _LegendItem(state: CupState.warm, label: 'Active'),
-                _LegendItem(state: CupState.cold, label: 'At risk'),
-                _LegendItem(state: CupState.cracked, label: 'Cracking'),
-                _LegendItem(state: CupState.broken, label: 'Broken'),
+                _Bone(w: 100, h: 12, radius: 4, anim: _anim),
+                const SizedBox(height: 4),
+                _Bone(w: 50, h: 10, radius: 4, anim: _anim),
               ],
             ),
-            const SizedBox(height: 8),
-          ],
-        ),
+          ]),
+          const SizedBox(height: 12),
+          _Bone(w: double.infinity, h: 14, radius: 4, anim: _anim),
+          const SizedBox(height: 6),
+          _Bone(w: 220, h: 12, radius: 4, anim: _anim),
+          const SizedBox(height: 12),
+          _Bone(w: double.infinity, h: 52, radius: 10, anim: _anim),
+          const SizedBox(height: 12),
+          Row(children: [
+            _Bone(w: 40, h: 12, radius: 4, anim: _anim),
+            const SizedBox(width: 20),
+            _Bone(w: 40, h: 12, radius: 4, anim: _anim),
+          ]),
+          const SizedBox(height: 14),
+          const Divider(height: 0.5, thickness: 0.5, color: Color(0xFF1A1A1A)),
+        ],
       ),
-    );
-  }
+    ),
+  );
 }
 
-class _LegendItem extends StatelessWidget {
-  final CupState state;
-  final String label;
-  const _LegendItem({required this.state, required this.label});
+class _Bone extends StatelessWidget {
+  final double w;
+  final double h;
+  final double radius;
+  final Animation<double> anim;
+  const _Bone(
+      {required this.w,
+        required this.h,
+        required this.radius,
+        required this.anim});
 
   @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        StreakCupSvg(state: state, size: 22),
-        const SizedBox(height: 4),
-        Text(label,
-            style: AppTypography.bodySmall.copyWith(
-              fontSize: 9,
-              color: AppColors.textSecondary,
-            )),
-      ],
-    );
-  }
+  Widget build(BuildContext context) => Container(
+    width: w,
+    height: h,
+    decoration: BoxDecoration(
+      borderRadius: BorderRadius.circular(radius),
+      gradient: LinearGradient(
+        begin: Alignment.centerLeft,
+        end: Alignment.centerRight,
+        colors: const [
+          Color(0xFF1A1A28),
+          Color(0xFF252535),
+          Color(0xFF1A1A28),
+        ],
+        stops: [
+          (anim.value - 0.5).clamp(0.0, 1.0),
+          anim.value.clamp(0.0, 1.0),
+          (anim.value + 0.5).clamp(0.0, 1.0),
+        ],
+      ),
+    ),
+  );
 }
