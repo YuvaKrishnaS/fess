@@ -11,6 +11,7 @@ import '../../../core/constants/app_typography.dart';
 import '../../../core/models/avatar_config.dart';
 import '../../../core/services/audio_service.dart';
 import '../../../core/widgets/fess_snackbar.dart';
+import '../../streak/providers/streak_provider.dart';
 import '../providers/feed_provider.dart';
 import '../providers/tea_feed_provider.dart';
 
@@ -314,6 +315,9 @@ class _CreateConfessionSheetState
       );
       if (!mounted) return;
       if (ok) {
+        ref.read(streakNotifierProvider.notifier).recordActivity().catchError((e) {
+          debugPrint('[CreateSheet] streak update failed silently: $e');
+        });
         Navigator.of(context).pop();
         FessSnackbar.show(context, 'Posted.', type: SnackbarType.success);
       } else {
@@ -328,6 +332,9 @@ class _CreateConfessionSheetState
       );
       if (!mounted) return;
       if (ok) {
+        ref.read(streakNotifierProvider.notifier).recordActivity().catchError((e) {
+          debugPrint('[CreateSheet] streak update failed silently: $e');
+        });
         Navigator.of(context).pop();
         FessSnackbar.show(context, 'Tea dropped.', type: SnackbarType.success);
       } else {
