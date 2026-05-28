@@ -489,7 +489,7 @@ class _EasterEgg extends StatelessWidget {
           ),
           const SizedBox(height: 16),
           Text(
-            "There's nothing here to discover more, bruhh !!",
+            "You reached the end of the posts! go touch some grass ;P",
             textAlign: TextAlign.center,
             style: AppTypography.bodyMedium.copyWith(
               fontSize: 13,
