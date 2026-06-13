@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons/lucide_icons.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_typography.dart';
@@ -35,7 +36,7 @@ const List<_MoodCard> _cards = [
     id: 'happy',
     label: 'Happy',
     sublabel: 'You will meet someone who needs a lift.',
-    illustrationAsset: 'assets/illustrations/mood_happy.png',
+    illustrationAsset: 'assets/illustrations/mood_happy.svg',
     cardColor: Color(0xFFF5F5F0),
     textColor: Color(0xFF0A0A0A),
   ),
@@ -43,7 +44,7 @@ const List<_MoodCard> _cards = [
     id: 'sad',
     label: 'Sad',
     sublabel: 'You will meet someone with warmth to share.',
-    illustrationAsset: 'assets/illustrations/mood_sad.png',
+    illustrationAsset: 'assets/illustrations/mood_sad.svg',
     cardColor: Color(0xFFF0F0F5),
     textColor: Color(0xFF0A0A0A),
   ),
@@ -51,7 +52,7 @@ const List<_MoodCard> _cards = [
     id: 'angry',
     label: 'Angry',
     sublabel: 'You will meet someone calm enough to listen.',
-    illustrationAsset: 'assets/illustrations/mood_angry.png',
+    illustrationAsset: 'assets/illustrations/mood_angry.svg',
     cardColor: Color(0xFFF5F0F0),
     textColor: Color(0xFF0A0A0A),
   ),
@@ -59,7 +60,7 @@ const List<_MoodCard> _cards = [
     id: 'calm',
     label: 'Calm',
     sublabel: 'You will meet someone who needs your steadiness.',
-    illustrationAsset: 'assets/illustrations/mood_calm.png',
+    illustrationAsset: 'assets/illustrations/mood_calm.svg',
     cardColor: Color(0xFFF0F5F2),
     textColor: Color(0xFF0A0A0A),
   ),
@@ -67,7 +68,7 @@ const List<_MoodCard> _cards = [
     id: 'excited',
     label: 'Excited',
     sublabel: 'You will meet someone to ground your energy.',
-    illustrationAsset: 'assets/illustrations/mood_excited.png',
+    illustrationAsset: 'assets/illustrations/mood_excited.svg',
     cardColor: Color(0xFFF5F2EE),
     textColor: Color(0xFF0A0A0A),
   ),
@@ -75,7 +76,7 @@ const List<_MoodCard> _cards = [
     id: 'neutral',
     label: 'Neutral',
     sublabel: 'You could meet anyone. Wide open.',
-    illustrationAsset: 'assets/illustrations/mood_neutral.png',
+    illustrationAsset: 'assets/illustrations/mood_neutral.svg',
     cardColor: Color(0xFFEEEEEE),
     textColor: Color(0xFF0A0A0A),
   ),
@@ -473,11 +474,11 @@ class _CardBody extends StatelessWidget {
             child: SizedBox(
               width: width * 0.68,
               height: width * 0.68,
-              child: Image.asset(
+              child: SvgPicture.asset(
                 card.illustrationAsset,
                 fit: BoxFit.contain,
-                // graceful fallback if asset not yet added
-                errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                // gracefull feedback if asset not added yet
+                placeholderBuilder: (_) => const SizedBox.shrink(),
               ),
             ),
           ),
