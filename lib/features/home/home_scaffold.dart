@@ -3,11 +3,12 @@ import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons/lucide_icons.dart';
+
 import '../../core/constants/app_colors.dart';
 import '../../core/widgets/fess_snackbar.dart';
 import 'feed/feed_screen.dart';
 import 'tea/tea_screen.dart';
-import 'world/world_placeholder_screen.dart';
+import 'world/world_screen.dart';            // ← CHANGED (was world_placeholder_screen.dart)
 import 'chat/chat_placeholder_screen.dart';
 import 'widgets/create_confession_sheet.dart';
 import 'providers/scroll_visibility_provider.dart';
@@ -25,7 +26,7 @@ class _HomeScaffoldState extends ConsumerState<HomeScaffold> {
   final List<Widget> _screens = const [
     FeedScreen(),
     TeaScreen(),
-    WorldPlaceholderScreen(),
+    WorldScreen(),              // ← CHANGED (was WorldPlaceholderScreen())
     ChatPlaceholderScreen(),
   ];
 
@@ -39,16 +40,21 @@ class _HomeScaffoldState extends ConsumerState<HomeScaffold> {
   void _onTab(int i) {
     if (i == _currentIndex) return;
     HapticFeedback.selectionClick();
-    // Reset visibility when switching tabs
     scrollVisibilityNotifier.value = true;
     setState(() => _currentIndex = i);
   }
 
   void _openCreate() {
-    if (_currentIndex > 1) {
+    // ← CHANGED: was `if (_currentIndex > 1) show "Coming soon"`.
+    // Now World (index 2) is live, only Chat (index 3) is still coming soon.
+    if (_currentIndex == 3) {
       FessSnackbar.show(context, 'Coming soon', type: SnackbarType.info);
       return;
     }
+    // World tab (index 2) has no FAB — so we just hide the FAB for it entirely
+    // via the `floatingActionButton` condition below. This guard is a safety net.
+    if (_currentIndex == 2) return;
+
     HapticFeedback.mediumImpact();
     showModalBottomSheet(
       context: context,
@@ -63,7 +69,7 @@ class _HomeScaffoldState extends ConsumerState<HomeScaffold> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.backgroundMain,
-      extendBody: true, // content goes under nav bar
+      extendBody: true,
       body: AnimatedSwitcher(
         duration: const Duration(milliseconds: 180),
         switchInCurve: Curves.easeIn,
@@ -75,6 +81,7 @@ class _HomeScaffoldState extends ConsumerState<HomeScaffold> {
           child: _screens[_currentIndex],
         ),
       ),
+      // FAB only on Home (0) and Tea/Spill (1) — not on World or Chat
       floatingActionButton: _currentIndex <= 1
           ? ValueListenableBuilder<bool>(
         valueListenable: scrollVisibilityNotifier,
