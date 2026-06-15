@@ -77,4 +77,8 @@ flutter:
           weight: 600
         - asset: assets/fonts/OpenSans-Bold.ttf
           weight: 700
+    - family: DM Serif Display
+      fonts:
+        - asset: assets/fonts/DMSerifDisplay-Italic.ttf
+          style: italic
 
