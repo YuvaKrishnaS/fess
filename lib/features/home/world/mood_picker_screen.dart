@@ -2,87 +2,81 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:lucide_icons/lucide_icons.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_typography.dart';
 import 'providers/world_provider.dart';
 
-// card data
+// ---------------------------------------------------------------------------
+// data
+// ---------------------------------------------------------------------------
 
-class _MoodCard {
+class _MoodData {
   final String id;
   final String label;
   final String sublabel;
-  final String illustrationAsset;
-  final Color cardColor;
-  final Color textColor;
+  final String asset;
+  final Color bg;
 
-  const _MoodCard({
+  const _MoodData({
     required this.id,
     required this.label,
     required this.sublabel,
-    required this.illustrationAsset,
-    required this.cardColor,
-    required this.textColor,
+    required this.asset,
+    required this.bg,
   });
 }
 
-const List<_MoodCard> _cards = [
-  _MoodCard(
+const List<_MoodData> _moods = [
+  _MoodData(
     id: 'happy',
     label: 'Happy',
-    sublabel: 'You will meet someone who needs a lift.',
-    illustrationAsset: 'assets/illustrations/mood_happy.svg',
-    cardColor: Color(0xFFF5F5F0),
-    textColor: Color(0xFF0A0A0A),
+    sublabel: 'Meet someone\nwho needs a lift.',
+    asset: 'assets/illustrations/mood_happy.svg',
+    bg: Color(0xFFF5F4EF),
   ),
-  _MoodCard(
+  _MoodData(
     id: 'sad',
     label: 'Sad',
-    sublabel: 'You will meet someone with warmth to share.',
-    illustrationAsset: 'assets/illustrations/mood_sad.svg',
-    cardColor: Color(0xFFF0F0F5),
-    textColor: Color(0xFF0A0A0A),
+    sublabel: 'Meet someone\nwith warmth to share.',
+    asset: 'assets/illustrations/mood_sad.svg',
+    bg: Color(0xFFEFF2F7),
   ),
-  _MoodCard(
+  _MoodData(
     id: 'angry',
     label: 'Angry',
-    sublabel: 'You will meet someone calm enough to listen.',
-    illustrationAsset: 'assets/illustrations/mood_angry.svg',
-    cardColor: Color(0xFFF5F0F0),
-    textColor: Color(0xFF0A0A0A),
+    sublabel: 'Meet someone\ncalm enough to listen.',
+    asset: 'assets/illustrations/mood_angry.svg',
+    bg: Color(0xFFF7EFEF),
   ),
-  _MoodCard(
+  _MoodData(
     id: 'calm',
     label: 'Calm',
-    sublabel: 'You will meet someone who needs your steadiness.',
-    illustrationAsset: 'assets/illustrations/mood_calm.svg',
-    cardColor: Color(0xFFF0F5F2),
-    textColor: Color(0xFF0A0A0A),
+    sublabel: 'Meet someone\nwho needs your stillness.',
+    asset: 'assets/illustrations/mood_calm.svg',
+    bg: Color(0xFFEFF7F2),
   ),
-  _MoodCard(
+  _MoodData(
     id: 'excited',
     label: 'Excited',
-    sublabel: 'You will meet someone to ground your energy.',
-    illustrationAsset: 'assets/illustrations/mood_excited.svg',
-    cardColor: Color(0xFFF5F2EE),
-    textColor: Color(0xFF0A0A0A),
+    sublabel: 'Meet someone\nto ground your energy.',
+    asset: 'assets/illustrations/mood_excited.svg',
+    bg: Color(0xFFF7F2EF),
   ),
-  _MoodCard(
+  _MoodData(
     id: 'neutral',
     label: 'Neutral',
-    sublabel: 'You could meet anyone. Wide open.',
-    illustrationAsset: 'assets/illustrations/mood_neutral.svg',
-    cardColor: Color(0xFFEEEEEE),
-    textColor: Color(0xFF0A0A0A),
+    sublabel: 'Wide open.\nCould be anyone.',
+    asset: 'assets/illustrations/mood_neutral.svg',
+    bg: Color(0xFFEEEEEE),
   ),
 ];
 
-// SCREEN
+// ---------------------------------------------------------------------------
+// screen
+// ---------------------------------------------------------------------------
 
 class MoodPickerScreen extends ConsumerStatefulWidget {
   const MoodPickerScreen({super.key});
@@ -92,367 +86,398 @@ class MoodPickerScreen extends ConsumerStatefulWidget {
 }
 
 class _MoodPickerScreenState extends ConsumerState<MoodPickerScreen>
-    with TickerProviderStateMixin {
+    with SingleTickerProviderStateMixin {
   int _topIndex = 0;
 
-  // swipe drag state
+  // drag state for top card
   double _dragX = 0;
+  double _dragY = 0;
   bool _isDragging = false;
+  bool _isFlying = false;
+  Offset _flyTarget = Offset.zero;
 
-  late AnimationController _swipeCtrl;
-  late Animation<Offset> _swipeAnim;
-
-  late AnimationController _entryCtrl;
-  late Animation<double> _entryFade;
-  late Animation<Offset> _entrySlide;
+  late AnimationController _flyCtrl;
+  late Animation<Offset> _flyAnim;
+  late Animation<double> _flyRotAnim;
+  late Animation<double> _flyFadeAnim;
+  // scale of the card behind top — grows from 0.92 to 1.0 as top flies out
+  late Animation<double> _behindScaleAnim;
 
   @override
   void initState() {
     super.initState();
-
-    _entryCtrl = AnimationController(
+    _flyCtrl = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 520),
+      duration: const Duration(milliseconds: 380),
     );
-    _entryFade = CurvedAnimation(parent: _entryCtrl, curve: Curves.easeOut);
-    _entrySlide = Tween<Offset>(
-      begin: const Offset(0, 0.07),
-      end: Offset.zero,
-    ).animate(CurvedAnimation(parent: _entryCtrl, curve: Curves.easeOutCubic));
+    _resetFlyAnim();
+  }
 
-    _swipeCtrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 320),
-    );
-    _swipeAnim = Tween<Offset>(
+  void _resetFlyAnim() {
+    _flyAnim = Tween<Offset>(
       begin: Offset.zero,
       end: Offset.zero,
-    ).animate(_swipeCtrl);
-
-    _entryCtrl.forward();
+    ).animate(_flyCtrl);
+    _flyRotAnim = Tween<double>(
+      begin: 0,
+      end: 0,
+    ).animate(_flyCtrl);
+    _flyFadeAnim = Tween<double>(
+      begin: 1,
+      end: 0,
+    ).animate(CurvedAnimation(parent: _flyCtrl, curve: const Interval(0.5, 1.0)));
+    _behindScaleAnim = Tween<double>(
+      begin: 0.93,
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: _flyCtrl, curve: Curves.easeOutCubic));
   }
 
   @override
   void dispose() {
-    _entryCtrl.dispose();
-    _swipeCtrl.dispose();
+    _flyCtrl.dispose();
     super.dispose();
   }
 
+  void _onDragStart(DragStartDetails _) {
+    if (_isFlying) return;
+    setState(() => _isDragging = true);
+  }
+
   void _onDragUpdate(DragUpdateDetails d) {
+    if (_isFlying) return;
     setState(() {
       _dragX += d.delta.dx;
-      _isDragging = true;
+      _dragY += d.delta.dy * 0.4;
     });
   }
 
   void _onDragEnd(DragEndDetails d) {
-    final velocity = d.velocity.pixelsPerSecond.dx;
-    final threshold = 80.0;
+    if (_isFlying) return;
+    final vx = d.velocity.pixelsPerSecond.dx;
+    final threshold = 90.0;
 
-    if (_dragX < -threshold || velocity < -400) {
-      _animateSwipe(left: true);
-    } else if (_dragX > threshold || velocity > 400) {
-      _animateSwipe(left: false);
+    if (_dragX.abs() > threshold || vx.abs() > 500) {
+      _flyCard(toRight: _dragX > 0 || vx > 0);
     } else {
-      // snap back
+      // snap back with spring
       setState(() {
         _dragX = 0;
+        _dragY = 0;
         _isDragging = false;
       });
     }
   }
 
-  void _animateSwipe({required bool left}) {
-    HapticFeedback.selectionClick();
-    final endX = left ? -1.5 : 1.5;
+  void _flyCard({required bool toRight}) {
+    HapticFeedback.lightImpact();
+    final screenW = MediaQuery.of(context).size.width;
+    final endX = toRight ? screenW * 1.6 : -screenW * 1.6;
+    final endRot = toRight ? 0.45 : -0.45;
 
-    _swipeAnim = Tween<Offset>(
-      begin: Offset(_dragX / 400, 0),
-      end: Offset(endX, 0),
-    ).animate(CurvedAnimation(parent: _swipeCtrl, curve: Curves.easeInCubic));
+    _flyAnim = Tween<Offset>(
+      begin: Offset(_dragX, _dragY),
+      end: Offset(endX, _dragY + 40),
+    ).animate(CurvedAnimation(parent: _flyCtrl, curve: Curves.easeInCubic));
 
-    _swipeCtrl.forward(from: 0).then((_) {
+    _flyRotAnim = Tween<double>(
+      begin: (_dragX / 300).clamp(-0.25, 0.25),
+      end: endRot,
+    ).animate(CurvedAnimation(parent: _flyCtrl, curve: Curves.easeInCubic));
+
+    _flyFadeAnim = Tween<double>(
+      begin: 1.0,
+      end: 0.0,
+    ).animate(CurvedAnimation(parent: _flyCtrl, curve: const Interval(0.6, 1.0)));
+
+    _behindScaleAnim = Tween<double>(
+      begin: 0.93,
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: _flyCtrl, curve: Curves.easeOutCubic));
+
+    setState(() => _isFlying = true);
+
+    _flyCtrl.forward(from: 0).then((_) {
       if (!mounted) return;
       setState(() {
-        _topIndex =
-            (_topIndex + (left ? 1 : -1) + _cards.length) % _cards.length;
+        _topIndex = (_topIndex + 1) % _moods.length;
         _dragX = 0;
+        _dragY = 0;
         _isDragging = false;
+        _isFlying = false;
       });
-      _swipeCtrl.reset();
+      _flyCtrl.reset();
+      _resetFlyAnim();
     });
   }
 
-  void _goNext() => _animateSwipe(left: true);
-  void _goPrev() => _animateSwipe(left: false);
+  double get _tiltRad {
+    if (_isFlying) return 0;
+    return (_dragX / 320.0).clamp(-0.22, 0.22);
+  }
 
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.of(context).size;
-    final cardW = size.width - 48.0;
-    final cardH = cardW * 1.28;
-    final current = _cards[_topIndex];
+    final cardW = size.width * 0.78;
+    final cardH = cardW * 1.25;
+    final current = _moods[_topIndex];
+    final next = _moods[(_topIndex + 1) % _moods.length];
 
     return Scaffold(
       backgroundColor: Colors.black,
-      body: FadeTransition(
-        opacity: _entryFade,
-        child: SlideTransition(
-          position: _entrySlide,
-          child: SafeArea(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // TOP LABEL
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(28, 28, 28, 0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'WORLD',
-                        style: const TextStyle(
-                          fontFamily: 'DM Sans',
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          color: Color(0xFF555566),
-                          letterSpacing: 2.5,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'How are you\nfeeling today?',
-                        style: const TextStyle(
-                          fontFamily: 'DM Sans',
-                          fontSize: 28,
-                          fontWeight: FontWeight.w900,
-                          color: Colors.white,
-                          height: 1.15,
-                          letterSpacing: -0.8,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+      body: SafeArea(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
 
-                const SizedBox(height: 32),
-
-                // DECK
-                Expanded(
-                  child: Center(
-                    child: SizedBox(
-                      width: cardW,
-                      height: cardH + 40,
-                      child: GestureDetector(
-                        onHorizontalDragUpdate: _onDragUpdate,
-                        onHorizontalDragEnd: _onDragEnd,
-                        child: Stack(
-                          alignment: Alignment.topCenter,
-                          clipBehavior: Clip.none,
-                          children: [
-                            // back cards (static, fanned)
-                            ..._buildBackCards(cardW, cardH),
-                            // top card (draggable)
-                            _buildTopCard(cardW, cardH, current),
-                          ],
-                        ),
-                      ),
+            // ----------------------------------------------------------------
+            // headline
+            // ----------------------------------------------------------------
+            Padding(
+              padding: const EdgeInsets.fromLTRB(28, 32, 28, 0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'How are you',
+                    style: const TextStyle(
+                      fontFamily: 'DM Sans',
+                      fontSize: 32,
+                      fontWeight: FontWeight.w900,
+                      color: Colors.white,
+                      height: 1.1,
+                      letterSpacing: -1.0,
                     ),
                   ),
-                ),
-
-                const SizedBox(height: 20),
-
-                // PAGINATION DOTS
-                Center(
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: List.generate(_cards.length, (i) {
-                      final active = i == _topIndex;
-                      return AnimatedContainer(
-                        duration: const Duration(milliseconds: 240),
-                        curve: Curves.easeOut,
-                        margin: const EdgeInsets.symmetric(horizontal: 3),
-                        width: active ? 20 : 6,
-                        height: 6,
-                        decoration: BoxDecoration(
-                          color: active
-                              ? Colors.white
-                              : const Color(0xFF333340),
-                          borderRadius: BorderRadius.circular(3),
-                        ),
-                      );
-                    }),
+                  Text(
+                    'feeling today?',
+                    style: const TextStyle(
+                      fontFamily: 'DM Sans',
+                      fontSize: 32,
+                      fontWeight: FontWeight.w900,
+                      color: Color(0xFF444455),
+                      height: 1.1,
+                      letterSpacing: -1.0,
+                    ),
                   ),
-                ),
+                ],
+              ),
+            ),
 
-                const SizedBox(height: 28),
-
-                // NAV ARROWS + CONNECT
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 24),
-                  child: Row(
+            // ----------------------------------------------------------------
+            // deck
+            // ----------------------------------------------------------------
+            Expanded(
+              child: Center(
+                child: SizedBox(
+                  width: cardW,
+                  height: cardH + 24,
+                  child: Stack(
+                    alignment: Alignment.center,
+                    clipBehavior: Clip.none,
                     children: [
-                      //prev arrow
-                      _ArrowBtn(icon: LucideIcons.arrowLeft, onTap: _goPrev),
-                      const SizedBox(width: 12),
-                      // connect button
-                      Expanded(
-                        child: GestureDetector(
-                          onTap: () {
-                            HapticFeedback.mediumImpact();
-                            ref
-                                .read(worldProvider.notifier)
-                                .selectMood(current.id);
-                          },
-                          child: AnimatedContainer(
-                            duration: const Duration(milliseconds: 280),
-                            height: 52,
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(12),
+                      // card 3 (furthest back) - static
+                      _buildStaticBack(
+                        mood: _moods[(_topIndex + 2) % _moods.length],
+                        w: cardW,
+                        h: cardH,
+                        angle: 0.09,
+                        offsetY: -10,
+                        scale: 0.88,
+                      ),
+
+                      // card 2 (behind top) - scales up as top flies away
+                      AnimatedBuilder(
+                        animation: _flyCtrl,
+                        builder: (ctx, _) {
+                          final s = _isFlying
+                              ? _behindScaleAnim.value
+                              : 0.93;
+                          return Transform.scale(
+                            scale: s,
+                            child: Transform.translate(
+                              offset: const Offset(0, -5),
+                              child: _CardFace(
+                                mood: next,
+                                width: cardW,
+                                height: cardH,
+                              ),
                             ),
-                            child: Center(
-                              child: AnimatedSwitcher(
-                                duration: const Duration(milliseconds: 200),
-                                child: Text(
-                                  'Connected as ${current.label}',
-                                  key: ValueKey(current.id),
-                                  style: const TextStyle(
-                                    fontFamily: 'DM Sans',
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.w800,
-                                    color: Colors.black,
-                                    letterSpacing: -0.3,
+                          );
+                        },
+                      ),
+
+                      // top card (draggable)
+                      GestureDetector(
+                        onHorizontalDragStart: _onDragStart,
+                        onHorizontalDragUpdate: _onDragUpdate,
+                        onHorizontalDragEnd: _onDragEnd,
+                        child: AnimatedBuilder(
+                          animation: _flyCtrl,
+                          builder: (ctx, _) {
+                            Offset offset;
+                            double rot;
+                            double opacity;
+
+                            if (_isFlying) {
+                              offset = _flyAnim.value;
+                              rot = _flyRotAnim.value;
+                              opacity = _flyFadeAnim.value;
+                            } else {
+                              offset = Offset(
+                                _dragX,
+                                _dragY + math.sin(_dragX.abs() / 80) * -6,
+                              );
+                              rot = _tiltRad;
+                              opacity = 1.0;
+                            }
+
+                            return Opacity(
+                              opacity: opacity.clamp(0.0, 1.0),
+                              child: Transform.translate(
+                                offset: offset,
+                                child: Transform.rotate(
+                                  angle: rot,
+                                  child: _CardFace(
+                                    mood: current,
+                                    width: cardW,
+                                    height: cardH,
                                   ),
                                 ),
                               ),
-                            ),
-                          ),
+                            );
+                          },
                         ),
                       ),
                     ],
                   ),
                 ),
+              ),
+            ),
 
-                const SizedBox(height: 12),
+            // ----------------------------------------------------------------
+            // dots
+            // ----------------------------------------------------------------
+            Center(
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: List.generate(_moods.length, (i) {
+                  final active = i == _topIndex;
+                  return AnimatedContainer(
+                    duration: const Duration(milliseconds: 260),
+                    curve: Curves.easeOut,
+                    margin: const EdgeInsets.symmetric(horizontal: 3),
+                    width: active ? 18 : 5,
+                    height: 5,
+                    decoration: BoxDecoration(
+                      color: active
+                          ? Colors.white
+                          : const Color(0xFF2A2A38),
+                      borderRadius: BorderRadius.circular(3),
+                    ),
+                  );
+                }),
+              ),
+            ),
 
-                // FOOTER NOTE
-                Center(
-                  child: Text(
-                    'Your mood resets at midnight.',
-                    style: const TextStyle(
-                      fontFamily: 'DM Sans',
-                      fontSize: 12,
-                      color: Color(0xFF444455),
+            const SizedBox(height: 20),
+
+            // ----------------------------------------------------------------
+            // connect button
+            // ----------------------------------------------------------------
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: GestureDetector(
+                onTap: () {
+                  HapticFeedback.mediumImpact();
+                  ref.read(worldProvider.notifier).selectMood(current.id);
+                },
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 260),
+                  width: double.infinity,
+                  height: 54,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Center(
+                    child: AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 200),
+                      child: Text(
+                        'Connect as ${current.label}',
+                        key: ValueKey(current.id),
+                        style: const TextStyle(
+                          fontFamily: 'DM Sans',
+                          fontSize: 15,
+                          fontWeight: FontWeight.w800,
+                          color: Colors.black,
+                          letterSpacing: -0.2,
+                        ),
+                      ),
                     ),
                   ),
                 ),
-
-                const SizedBox(height: 24),
-              ],
+              ),
             ),
-          ),
+
+            const SizedBox(height: 10),
+
+            Center(
+              child: Text(
+                'Swipe the card to explore moods',
+                style: const TextStyle(
+                  fontFamily: 'DM Sans',
+                  fontSize: 12,
+                  color: Color(0xFF333344),
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 20),
+          ],
         ),
       ),
     );
   }
 
-  // BACK CARDS: FAN BEHIND TOP CARD
-  List<Widget> _buildBackCards(double w, double h) {
-    // show up to 3 cards behind
-    final result = <Widget>[];
-    for (int offset = 3; offset >= 1; offset--) {
-      final idx = (_topIndex + offset) % _cards.length;
-      final card = _cards[idx];
-
-      //fan angle: alternates left/right based on position
-      final angle = (offset % 2 == 0 ? 1 : -1) * offset * 0.055;
-      final scaleDown = 1.0 - offset * 0.04;
-      final verticalOffset = offset * 6.0;
-
-      result.add(
-        Positioned(
-          top: verticalOffset,
-          child: Transform.rotate(
-            angle: angle,
-            child: Transform.scale(
-              scale: scaleDown,
-              child: _CardBody(
-                card: card,
-                width: w,
-                height: h,
-                dragX: 0,
-                isTop: false,
-              ),
-            ),
-          ),
-        ),
-      );
-    }
-    return result;
-  }
-
-  // ---- top card: draggable with tilt ---------------------------------------
-  Widget _buildTopCard(double w, double h, _MoodCard card) {
-    // calc tilt from drag
-    final tiltAngle = (_dragX / 320.0).clamp(-0.18, 0.18);
-
-    // swipe-out transform
-    if (_swipeCtrl.isAnimating || _swipeCtrl.isCompleted) {
-      return AnimatedBuilder(
-        animation: _swipeCtrl,
-        builder: (ctx, _) {
-          final offset = _swipeAnim.value;
-          return Transform.translate(
-            offset: Offset(offset.dx * 400, offset.dy * 400),
-            child: Transform.rotate(
-              angle: offset.dx * 0.3,
-              child: _CardBody(
-                card: card,
-                width: w,
-                height: h,
-                dragX: _dragX,
-                isTop: true,
-              ),
-            ),
-          );
-        },
-      );
-    }
-
-    return Transform.rotate(
-      angle: tiltAngle,
+  Widget _buildStaticBack({
+    required _MoodData mood,
+    required double w,
+    required double h,
+    required double angle,
+    required double offsetY,
+    required double scale,
+  }) {
+    return Transform.scale(
+      scale: scale,
       child: Transform.translate(
-        offset: Offset(_dragX, math.sin(_dragX / 100).abs() * -8),
-        child: _CardBody(
-          card: card,
-          width: w,
-          height: h,
-          dragX: _dragX,
-          isTop: true,
+        offset: Offset(0, offsetY),
+        child: Transform.rotate(
+          angle: angle,
+          child: _CardFace(
+            mood: mood,
+            width: w,
+            height: h,
+          ),
         ),
       ),
     );
   }
 }
 
-// ---- card body ---------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// card face
+// ---------------------------------------------------------------------------
 
-class _CardBody extends StatelessWidget {
-  final _MoodCard card;
+class _CardFace extends StatelessWidget {
+  final _MoodData mood;
   final double width;
   final double height;
-  final double dragX;
-  final bool isTop;
 
-  const _CardBody({
-    required this.card,
+  const _CardFace({
+    required this.mood,
     required this.width,
     required this.height,
-    required this.dragX,
-    required this.isTop,
   });
 
   @override
@@ -461,153 +486,65 @@ class _CardBody extends StatelessWidget {
       width: width,
       height: height,
       decoration: BoxDecoration(
-        color: card.cardColor,
-        borderRadius: BorderRadius.circular(20),
+        color: mood.bg,
+        borderRadius: BorderRadius.circular(22),
       ),
       clipBehavior: Clip.hardEdge,
       child: Stack(
         children: [
-          // ---- illustration bottom-right, cropped --------------------------
+          // illustration — bottom right, clipped, contained in bottom 50%
           Positioned(
-            right: -20,
-            bottom: -10,
+            right: 0,
+            bottom: 0,
             child: SizedBox(
-              width: width * 0.68,
-              height: width * 0.68,
+              width: width * 0.52,
+              height: height * 0.50,
               child: SvgPicture.asset(
-                card.illustrationAsset,
+                mood.asset,
                 fit: BoxFit.contain,
-                // gracefull feedback if asset not added yet
                 placeholderBuilder: (_) => const SizedBox.shrink(),
               ),
             ),
           ),
 
-          // ---- text content ------------------------------------------------
+          // text — top left, never competes with illustration
           Padding(
-            padding: const EdgeInsets.fromLTRB(24, 22, 24, 24),
+            padding: const EdgeInsets.fromLTRB(24, 24, 16, 24),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // category chip
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.07),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Text(
-                    'mood',
-                    style: TextStyle(
-                      fontFamily: 'DM Sans',
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      color: card.textColor.withOpacity(0.5),
-                      letterSpacing: 0.5,
-                    ),
-                  ),
-                ),
-
-                const Spacer(),
-
                 // big mood word
                 Text(
-                  card.label,
+                  mood.label,
                   style: TextStyle(
                     fontFamily: 'DM Sans',
-                    fontSize: 58,
+                    fontSize: 52,
                     fontWeight: FontWeight.w900,
-                    color: card.textColor,
-                    height: 0.95,
+                    color: const Color(0xFF0A0A0A),
+                    height: 1.0,
                     letterSpacing: -2.0,
                   ),
                 ),
-
                 const SizedBox(height: 10),
-
-                // sublabel
+                // sublabel - constrained width so it never touches illustration
                 SizedBox(
-                  width: width * 0.58,
+                  width: width * 0.55,
                   child: Text(
-                    card.sublabel,
-                    style: TextStyle(
+                    mood.sublabel,
+                    style: const TextStyle(
                       fontFamily: 'DM Sans',
                       fontSize: 13,
                       fontWeight: FontWeight.w400,
-                      color: card.textColor.withOpacity(0.45),
-                      height: 1.5,
+                      color: Color(0xFF666666),
+                      height: 1.55,
                     ),
                   ),
                 ),
+                const Spacer(),
               ],
             ),
           ),
-
-          // ---- swipe hint arrows on top card only --------------------------
-          if (isTop)
-            Positioned(
-              top: 22,
-              right: 18,
-              child: Row(
-                children: [
-                  Icon(
-                    Icons.chevron_left_rounded,
-                    size: 16,
-                    color: card.textColor.withOpacity(0.18),
-                  ),
-                  Icon(
-                    Icons.chevron_right_rounded,
-                    size: 16,
-                    color: card.textColor.withOpacity(0.18),
-                  ),
-                ],
-              ),
-            ),
         ],
-      ),
-    );
-  }
-}
-
-// ---- arrow button -----------------------------------------------------------
-
-class _ArrowBtn extends StatefulWidget {
-  final IconData icon;
-  final VoidCallback onTap;
-  const _ArrowBtn({required this.icon, required this.onTap});
-
-  @override
-  State<_ArrowBtn> createState() => _ArrowBtnState();
-}
-
-class _ArrowBtnState extends State<_ArrowBtn> {
-  bool _pressed = false;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTapDown: (_) => setState(() => _pressed = true),
-      onTapUp: (_) {
-        setState(() => _pressed = false);
-        widget.onTap();
-      },
-      onTapCancel: () => setState(() => _pressed = false),
-      child: AnimatedScale(
-        scale: _pressed ? 0.88 : 1.0,
-        duration: const Duration(milliseconds: 100),
-        child: Container(
-          width: 52,
-          height: 52,
-          decoration: BoxDecoration(
-            color: const Color(0xFF111118),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: const Color(0xFF222230), width: 1.0),
-          ),
-          child: Icon(widget.icon, color: Colors.white, size: 20),
-        ),
       ),
     );
   }
