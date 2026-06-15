@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -15,146 +16,338 @@ class MatchmakingScreen extends ConsumerStatefulWidget {
 }
 
 class _MatchmakingScreenState extends ConsumerState<MatchmakingScreen>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _pulse;
+    with TickerProviderStateMixin {
+  late AnimationController _pulseCtrl;
+  late AnimationController _entryCtrl;
+  late Animation<double> _pulseAnim;
+  late Animation<double> _entryFade;
+  late Animation<Offset> _entrySlide;
 
   @override
   void initState() {
     super.initState();
-    _pulse = AnimationController(
+
+    _entryCtrl = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1400),
+      duration: const Duration(milliseconds: 500),
+    );
+    _entryFade = CurvedAnimation(parent: _entryCtrl, curve: Curves.easeOut);
+    _entrySlide = Tween<Offset>(
+      begin: const Offset(0, 0.05),
+      end: Offset.zero,
+    ).animate(CurvedAnimation(parent: _entryCtrl, curve: Curves.easeOutCubic));
+
+    _pulseCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1800),
     )..repeat(reverse: true);
+    _pulseAnim = CurvedAnimation(parent: _pulseCtrl, curve: Curves.easeInOut);
+
+    _entryCtrl.forward();
   }
 
   @override
   void dispose() {
-    _pulse.dispose();
+    _pulseCtrl.dispose();
+    _entryCtrl.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final worldState = ref.watch(worldProvider);
-    final moodId = worldState.selectedMood ?? 'neutral';
-    final mood = kMoodOptions.firstWhere((m) => m.id == moodId,
-        orElse: () => kMoodOptions.last);
+    final state = ref.watch(worldProvider);
+    final mood = state.selectedMood ?? 'neutral';
+    final moodLabel = kMoodOptions
+        .firstWhere((m) => m.id == mood, orElse: () => kMoodOptions.last)
+        .label
+        .toLowerCase();
+
+    final hasError = state.error != null;
 
     return Scaffold(
       backgroundColor: AppColors.backgroundMain,
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 32),
-          child: Column(
-            children: [
-              const SizedBox(height: 60),
+        child: FadeTransition(
+          opacity: _entryFade,
+          child: SlideTransition(
+            position: _entrySlide,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(28, 0, 28, 32),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const SizedBox(height: 48),
 
-              // Pulsing emoji orb
-              AnimatedBuilder(
-                animation: _pulse,
-                builder: (ctx, _) {
-                  final scale = 1.0 + _pulse.value * 0.08;
-                  final glow = _pulse.value * 0.35;
-                  return Transform.scale(
-                    scale: scale,
-                    child: Container(
-                      width: 100,
-                      height: 100,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: AppColors.accentPrimary.withOpacity(0.08 + glow),
-                        border: Border.all(
-                          color: AppColors.accentPrimary.withOpacity(0.3 + glow),
-                          width: 1.5,
-                        ),
-                      ),
-                      child: Center(
-                        child: Text(mood.emoji,
-                            style: const TextStyle(fontSize: 44)),
-                      ),
-                    ),
-                  );
-                },
-              ),
-
-              const SizedBox(height: 32),
-
-              Text(
-                'Finding someone\nfor you...',
-                style: AppTypography.h3.copyWith(
-                  fontSize: 24,
-                  fontWeight: FontWeight.w800,
-                  height: 1.25,
-                ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 12),
-              Text(
-                'Looking for someone who vibes with\nyour ${mood.label.toLowerCase()} mood ${mood.emoji}',
-                style: AppTypography.bodyMedium.copyWith(
-                  color: AppColors.textSecondary,
-                  height: 1.5,
-                ),
-                textAlign: TextAlign.center,
-              ),
-
-              // Error state
-              if (worldState.error != null) ...[
-                const SizedBox(height: 32),
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF1A1A26),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                        color: const Color(0xFF2A2A3A), width: 0.8),
+                  // headline
+                  AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 400),
+                    child: hasError
+                        ? _buildErrorHeadline()
+                        : _buildSearchingHeadline(moodLabel),
                   ),
-                  child: Text(
-                    worldState.error!,
-                    style: AppTypography.bodySmall.copyWith(
-                      color: AppColors.textSecondary,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                ),
-                const SizedBox(height: 20),
-                GestureDetector(
-                  onTap: () {
-                    HapticFeedback.selectionClick();
-                    ref.read(worldProvider.notifier).findNext();
-                  },
-                  child: Text(
-                    'Try again',
-                    style: AppTypography.bodyMedium.copyWith(
-                      color: AppColors.accentPrimary,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ],
 
-              const Spacer(),
+                  const Spacer(),
 
-              // Change mood
-              GestureDetector(
-                onTap: () {
-                  HapticFeedback.selectionClick();
-                  ref.read(worldProvider.notifier).changeMood();
-                },
-                child: Text(
-                  'Change mood',
-                  style: AppTypography.bodySmall.copyWith(
-                    color: AppColors.textSecondary,
-                    decoration: TextDecoration.underline,
-                    decorationColor: AppColors.textSecondary,
+                  // visual anchor
+                  Center(
+                    child: hasError
+                        ? _buildErrorVisual()
+                        : _buildPulseRing(),
                   ),
-                ),
+
+                  const Spacer(),
+
+                  // bottom actions
+                  AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 360),
+                    child: hasError
+                        ? _buildErrorActions()
+                        : _buildSearchingBottom(),
+                  ),
+                ],
               ),
-              const SizedBox(height: 32),
-            ],
+            ),
           ),
         ),
       ),
     );
   }
+
+  Widget _buildSearchingHeadline(String moodLabel) {
+    return Column(
+      key: const ValueKey('searching'),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Looking for\nsomeone',
+          style: const TextStyle(
+            fontFamily: 'DM Sans',
+            fontSize: 40,
+            fontWeight: FontWeight.w900,
+            color: AppColors.textPrimary,
+            height: 1.05,
+            letterSpacing: -1.5,
+          ),
+        ),
+        const SizedBox(height: 10),
+        Text(
+          'who feels $moodLabel today',
+          style: const TextStyle(
+            fontFamily: 'DM Serif Display',
+            fontStyle: FontStyle.italic,
+            fontSize: 20,
+            fontWeight: FontWeight.w400,
+            color: AppColors.textSecondary,
+            height: 1.3,
+            letterSpacing: -0.2,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildErrorHeadline() {
+    return Column(
+      key: const ValueKey('error'),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Too quiet\nright now.',
+          style: const TextStyle(
+            fontFamily: 'DM Sans',
+            fontSize: 40,
+            fontWeight: FontWeight.w900,
+            color: AppColors.textPrimary,
+            height: 1.05,
+            letterSpacing: -1.5,
+          ),
+        ),
+        const SizedBox(height: 10),
+        Text(
+          'come back when the world wakes up',
+          style: const TextStyle(
+            fontFamily: 'DM Serif Display',
+            fontStyle: FontStyle.italic,
+            fontSize: 18,
+            fontWeight: FontWeight.w400,
+            color: AppColors.textSecondary,
+            height: 1.3,
+          ),
+        ),
+        const SizedBox(height: 20),
+        Text(
+          'Nobody matched your mood right now. The app is still early, more people are joining every day.',
+          style: AppTypography.bodyMedium.copyWith(
+            color: AppColors.hintText,
+            height: 1.6,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPulseRing() {
+    return AnimatedBuilder(
+      animation: _pulseAnim,
+      builder: (ctx, _) {
+        return SizedBox(
+          width: 160,
+          height: 160,
+          child: CustomPaint(
+            painter: _PulseRingPainter(progress: _pulseAnim.value),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildErrorVisual() {
+    return SizedBox(
+      width: 80,
+      height: 80,
+      child: CustomPaint(
+        painter: _StaticRingPainter(),
+      ),
+    );
+  }
+
+  Widget _buildSearchingBottom() {
+    return Column(
+      key: const ValueKey('searching_bottom'),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Anonymous. Mood-matched. 5 minutes.',
+          style: AppTypography.bodySmall.copyWith(
+            color: AppColors.hintText,
+          ),
+        ),
+        const SizedBox(height: 16),
+        GestureDetector(
+          onTap: () {
+            HapticFeedback.lightImpact();
+            ref.read(worldProvider.notifier).changeMood();
+          },
+          child: Text(
+            'Change mood',
+            style: AppTypography.bodyMedium.copyWith(
+              color: AppColors.textSecondary,
+              decoration: TextDecoration.underline,
+              decorationColor: AppColors.textSecondary,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildErrorActions() {
+    return Column(
+      key: const ValueKey('error_bottom'),
+      children: [
+        SizedBox(
+          width: double.infinity,
+          height: 52,
+          child: GestureDetector(
+            onTap: () {
+              HapticFeedback.mediumImpact();
+              ref.read(worldProvider.notifier).findNext();
+            },
+            child: Container(
+              decoration: BoxDecoration(
+                color: AppColors.textPrimary,
+                borderRadius: BorderRadius.circular(24),
+              ),
+              child: Center(
+                child: Text(
+                  'Try again',
+                  style: const TextStyle(
+                    fontFamily: 'DM Sans',
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.backgroundMain,
+                    letterSpacing: -0.2,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        GestureDetector(
+          onTap: () {
+            HapticFeedback.lightImpact();
+            ref.read(worldProvider.notifier).changeMood();
+          },
+          child: SizedBox(
+            width: double.infinity,
+            height: 52,
+            child: Center(
+              child: Text(
+                'Back to selection',
+                style: AppTypography.bodyMedium.copyWith(
+                  color: AppColors.textSecondary,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ---- painters ---------------------------------------------------------------
+
+class _PulseRingPainter extends CustomPainter {
+  final double progress;
+  _PulseRingPainter({required this.progress});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+
+    // 3 rings at different phases
+    for (int i = 0; i < 3; i++) {
+      final phase = (progress + i * 0.33) % 1.0;
+      final radius = (size.width * 0.18) + (size.width * 0.32 * phase);
+      final opacity = (1.0 - phase) * 0.35;
+
+      final paint = Paint()
+        ..color = const Color(0xFF1DE9B6).withOpacity(opacity)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.5;
+
+      canvas.drawCircle(center, radius, paint);
+    }
+
+    // center dot
+    final dotPaint = Paint()
+      ..color = const Color(0xFF1DE9B6)
+      ..style = PaintingStyle.fill;
+    canvas.drawCircle(center, 5, dotPaint);
+  }
+
+  @override
+  bool shouldRepaint(_PulseRingPainter old) => old.progress != progress;
+}
+
+class _StaticRingPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    final paint = Paint()
+      ..color = const Color(0xFF2A2A3E)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.5;
+    canvas.drawCircle(center, size.width * 0.42, paint);
+
+    final dotPaint = Paint()
+      ..color = const Color(0xFF2A2A3E)
+      ..style = PaintingStyle.fill;
+    canvas.drawCircle(center, 4, dotPaint);
+  }
+
+  @override
+  bool shouldRepaint(_StaticRingPainter old) => false;
 }

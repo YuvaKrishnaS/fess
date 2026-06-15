@@ -12,157 +12,155 @@ class WorldEndScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final worldState = ref.watch(worldProvider);
-    final session = worldState.session;
+    final state = ref.watch(worldProvider);
+    final session = state.session;
     final myAnonId = LocalStorageService.getCachedAnonId() ?? '';
 
-    final wasSkipped = session?.status == 'skipped';
-    final iSkipped = wasSkipped && session?.endedBy == myAnonId;
-
-    final partnerAnonId = session?.participantIds
-        .firstWhere((id) => id != myAnonId, orElse: () => '');
+    final partnerId = session?.participantIds
+        .firstWhere((id) => id != myAnonId, orElse: () => '') ??
+        '';
     final partnerProfile =
-    session?.participantProfiles[partnerAnonId] as Map<String, dynamic>?;
+        session?.participantProfiles[partnerId] as Map<String, dynamic>? ?? {};
     final partnerUsername =
-        partnerProfile?['username'] as String? ?? 'someone';
+        partnerProfile['username'] as String? ?? 'them';
+
+    final wasSkipped = session?.status == 'skipped';
+    final iSkipped = session?.endedBy == myAnonId;
 
     return Scaffold(
       backgroundColor: AppColors.backgroundMain,
       body: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 32),
+          padding: const EdgeInsets.fromLTRB(28, 0, 28, 32),
           child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const SizedBox(height: 72),
+              const Spacer(flex: 2),
 
-              // Big emoji
+              // headline
               Text(
-                iSkipped ? '⏭️' : '⏰',
-                style: const TextStyle(fontSize: 56),
-              ),
-              const SizedBox(height: 24),
-
-              Text(
-                iSkipped ? 'You skipped.' : 'Time\'s up!',
-                style: AppTypography.h2.copyWith(
-                  fontSize: 26,
-                  fontWeight: FontWeight.w800,
+                iSkipped ? 'You left.' : "Time's up.",
+                style: const TextStyle(
+                  fontFamily: 'DM Sans',
+                  fontSize: 48,
+                  fontWeight: FontWeight.w900,
+                  color: AppColors.textPrimary,
+                  height: 1.0,
+                  letterSpacing: -2.0,
                 ),
-                textAlign: TextAlign.center,
               ),
               const SizedBox(height: 10),
-
               Text(
                 iSkipped
-                    ? 'The conversation ended.\nHope you find your vibe next time.'
-                    : 'Your 5 minutes with @$partnerUsername just ended.\nDid you vibe?',
-                style: AppTypography.bodyMedium.copyWith(
+                    ? 'maybe next time'
+                    : 'hope it was worth it',
+                style: const TextStyle(
+                  fontFamily: 'DM Serif Display',
+                  fontStyle: FontStyle.italic,
+                  fontSize: 20,
+                  fontWeight: FontWeight.w400,
                   color: AppColors.textSecondary,
-                  height: 1.55,
+                  height: 1.3,
                 ),
-                textAlign: TextAlign.center,
               ),
 
-              const SizedBox(height: 48),
+              const Spacer(flex: 3),
 
-              // DM button (placeholder — wires to DM feature later)
-              if (!iSkipped && partnerAnonId != null && partnerAnonId.isNotEmpty)
-                _ActionBtn(
-                  label: 'Send @$partnerUsername a DM',
-                  icon: Icons.mail_outline_rounded,
-                  primary: true,
-                  onTap: () {
-                    HapticFeedback.mediumImpact();
-                    // TODO: wire to DM feature
-                    // Navigator.push(context, dmRoute(partnerAnonId));
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('DMs coming soon!')),
-                    );
-                  },
+              // partner line
+              if (partnerId.isNotEmpty && !iSkipped) ...[
+                Text(
+                  'You talked to @$partnerUsername',
+                  style: AppTypography.bodyMedium.copyWith(
+                    color: AppColors.hintText,
+                  ),
                 ),
+                const SizedBox(height: 28),
+              ],
 
-              if (!iSkipped) const SizedBox(height: 12),
+              // DM button - only if session was not skipped by current user
+              if (partnerId.isNotEmpty && !iSkipped) ...[
+                SizedBox(
+                  width: double.infinity,
+                  height: 52,
+                  child: GestureDetector(
+                    onTap: () {
+                      HapticFeedback.mediumImpact();
+                      // TODO: navigate to DM thread (M11)
+                    },
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: AppColors.textPrimary,
+                        borderRadius: BorderRadius.circular(24),
+                      ),
+                      child: Center(
+                        child: Text(
+                          'Send @$partnerUsername a message',
+                          style: const TextStyle(
+                            fontFamily: 'DM Sans',
+                            fontSize: 15,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.backgroundMain,
+                            letterSpacing: -0.2,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+              ],
 
-              // Find next
-              _ActionBtn(
-                label: 'Find next person',
-                icon: Icons.shuffle_rounded,
-                primary: false,
-                onTap: () {
-                  HapticFeedback.selectionClick();
-                  ref.read(worldProvider.notifier).findNext();
-                },
+              // find next
+              SizedBox(
+                width: double.infinity,
+                height: 52,
+                child: GestureDetector(
+                  onTap: () {
+                    HapticFeedback.lightImpact();
+                    ref.read(worldProvider.notifier).findNext();
+                  },
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: AppColors.surfaceSubtle,
+                      borderRadius: BorderRadius.circular(24),
+                      border: Border.all(
+                        color: AppColors.borderSubtle,
+                        width: 0.8,
+                      ),
+                    ),
+                    child: Center(
+                      child: Text(
+                        'Find someone new',
+                        style: AppTypography.labelMedium.copyWith(
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
               ),
 
               const SizedBox(height: 12),
 
-              // Change mood
-              GestureDetector(
-                onTap: () {
-                  HapticFeedback.selectionClick();
-                  ref.read(worldProvider.notifier).changeMood();
-                },
-                child: Text(
-                  'Change my mood',
-                  style: AppTypography.bodySmall.copyWith(
-                    color: AppColors.textSecondary,
-                    decoration: TextDecoration.underline,
-                    decorationColor: AppColors.textSecondary,
+              // change mood
+              Center(
+                child: GestureDetector(
+                  onTap: () {
+                    HapticFeedback.lightImpact();
+                    ref.read(worldProvider.notifier).changeMood();
+                  },
+                  child: Text(
+                    'Change my mood',
+                    style: AppTypography.bodySmall.copyWith(
+                      color: AppColors.hintText,
+                      decoration: TextDecoration.underline,
+                      decorationColor: AppColors.hintText,
+                    ),
                   ),
                 ),
               ),
             ],
           ),
-        ),
-      ),
-    );
-  }
-}
-
-class _ActionBtn extends StatelessWidget {
-  final String label;
-  final IconData icon;
-  final bool primary;
-  final VoidCallback onTap;
-
-  const _ActionBtn({
-    required this.label,
-    required this.icon,
-    required this.primary,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: double.infinity,
-        height: 52,
-        decoration: BoxDecoration(
-          color: primary
-              ? AppColors.accentPrimary
-              : const Color(0xFF111118),
-          borderRadius: BorderRadius.circular(14),
-          border: primary
-              ? null
-              : Border.all(color: const Color(0xFF2A2A3A), width: 0.8),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon,
-                size: 18, color: primary ? Colors.black : AppColors.textPrimary),
-            const SizedBox(width: 8),
-            Text(
-              label,
-              style: AppTypography.labelMedium.copyWith(
-                fontSize: 15,
-                fontWeight: FontWeight.w700,
-                color: primary ? Colors.black : AppColors.textPrimary,
-              ),
-            ),
-          ],
         ),
       ),
     );
