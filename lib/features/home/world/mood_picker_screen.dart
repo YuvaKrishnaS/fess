@@ -398,7 +398,7 @@ class _MoodPickerScreenState extends ConsumerState<MoodPickerScreen>
                   height: 54,
                   decoration: BoxDecoration(
                     color: Colors.white,
-                    borderRadius: BorderRadius.circular(24),
+                    borderRadius: BorderRadius.circular(14),
                   ),
                   child: Center(
                     child: AnimatedSwitcher(

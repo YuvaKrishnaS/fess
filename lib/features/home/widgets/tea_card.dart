@@ -269,7 +269,7 @@ class _TeaVoicePlayerState extends State<_TeaVoicePlayer> {
       padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
       decoration: BoxDecoration(
         color: const Color(0xFF0D0D15),
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(10),
         border: Border.all(
           color: AppColors.accentPrimary.withOpacity(0.15),
           width: 0.8,

@@ -90,7 +90,7 @@ class WorldEndScreen extends ConsumerWidget {
                     child: Container(
                       decoration: BoxDecoration(
                         color: AppColors.textPrimary,
-                        borderRadius: BorderRadius.circular(24),
+                        borderRadius: BorderRadius.circular(14),
                       ),
                       child: Center(
                         child: Text(
@@ -122,7 +122,7 @@ class WorldEndScreen extends ConsumerWidget {
                   child: Container(
                     decoration: BoxDecoration(
                       color: AppColors.surfaceSubtle,
-                      borderRadius: BorderRadius.circular(24),
+                      borderRadius: BorderRadius.circular(14),
                       border: Border.all(
                         color: AppColors.borderSubtle,
                         width: 0.8,

@@ -256,7 +256,7 @@ class _MatchmakingScreenState extends ConsumerState<MatchmakingScreen>
             child: Container(
               decoration: BoxDecoration(
                 color: AppColors.textPrimary,
-                borderRadius: BorderRadius.circular(24),
+                borderRadius: BorderRadius.circular(14),
               ),
               child: Center(
                 child: Text(
