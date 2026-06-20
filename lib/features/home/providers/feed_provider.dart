@@ -153,6 +153,16 @@ class ForYouFeedNotifier extends AsyncNotifier<FeedState> {
     state = AsyncValue.data(fresh);
   }
 
+  void removePost(String postId) {
+    final current = state.value;
+    if (current == null) return;
+    state = AsyncValue.data(
+      current.copyWith(
+        posts: current.posts.where((p) => p.postId != postId).toList(),
+      )
+    );
+  }
+
   Future<void> loadMore() async {
     final current = state.value;
     if (current == null ||
@@ -293,6 +303,16 @@ class FollowingFeedNotifier extends AsyncNotifier<FeedState> {
     state = AsyncValue.data(await _fetch());
   }
 
+  void removePost(String postId) {
+    final current = state.value;
+    if (current == null) return;
+    state = AsyncValue.data(
+      current.copyWith(
+        posts: current.posts.where((p) => p.postId != postId).toList()
+      )
+    );
+  }
+
   Future<void> loadMore() async {
     final current = state.value;
     if (current == null ||
@@ -392,7 +412,53 @@ final followingFeedProvider =
 AsyncNotifierProvider<FollowingFeedNotifier, FeedState>(
     FollowingFeedNotifier.new);
 
-// ─── Create post ──────────────────────────────────────────────────────────────
+// Delete Post
+
+class DeletePostNotifier extends Notifier<bool> {
+  @override
+  bool build() => false;
+
+  Future<bool> delete({
+    required String postId,
+    required String authorId,
+    required String type,
+  }) async {
+    state = true;
+    try {
+      final batch = FirebaseService.firestore.batch();
+
+      batch.delete(
+        FirebaseService.firestore.collection('posts').doc(postId),
+      );
+      batch.update(
+        FirebaseService.firestore.collection('public_profiles').doc(authorId),
+        {'totalPostCount': FieldValue.increment(-1)}
+      );
+
+      // delete all likes for this post
+      final likes = await FirebaseService.firestore
+          .collection('post_likes')
+          .where('postId', isEqualTo: postId)
+          .get();
+      for (final d in likes.docs) {
+        batch.delete(d.reference);
+      }
+
+      await batch.commit();
+      state = false;
+      return true;
+    } catch (e) {
+      debugPrint('[DeletePost] $e');
+      state = false;
+      return false;
+    }
+  }
+}
+
+final deletePostProvider =
+NotifierProvider<DeletePostNotifier, bool>(DeletePostNotifier.new);
+
+//  Create post
 
 class CreatePostNotifier extends Notifier<bool> {
   @override

@@ -376,7 +376,11 @@ class _SpillsTab extends ConsumerWidget {
               onTap: () => Navigator.of(ctx).push(
                 postDetailHeroRoute(post.postId, initialPost: post),
               ),
-              onLike: () {},
+              onLike: () =>
+                  ref.read(forYouFeedProvider.notifier).toggleLike(post.postId),
+              onAuthorTap: post.authorId != anonId
+                  ? () => context.push('/profile/${post.authorId}')
+                  : null,
             );
           },
         );
@@ -422,7 +426,11 @@ class _TeaTab extends ConsumerWidget {
               onTap: () => Navigator.of(ctx).push(
                 postDetailHeroRoute(post.postId, initialPost: post),
               ),
-              onLike: () {},
+              onLike: () =>
+                  ref.read(forYouFeedProvider.notifier).toggleLike(post.postId),
+              onAuthorTap: post.authorId != anonId // only navigate if now viewing own profile
+                  ? () => context.push('/profiles/${post.authorId}')
+                  : null,
             );
           },
         );

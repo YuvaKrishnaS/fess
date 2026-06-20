@@ -58,6 +58,16 @@ class _MySpillsNotifier extends AsyncNotifier<FeedState> {
     state = AsyncValue.data(await _fetch());
   }
 
+  void removePost(String postId) {
+    final current = state.value;
+    if (current == null) return;
+    state = AsyncValue.data(
+      current.copyWith(
+        posts: current.posts.where((p) => p.postId != postId).toList()
+      )
+    );
+  }
+
   Future<void> loadMore() async {
     final cur = state.value;
     if (cur == null || cur.isLoadingMore || !cur.hasMore || cur.lastDocument == null) return;
@@ -138,6 +148,76 @@ class _MyTeaNotifier extends AsyncNotifier<FeedState> {
       state = AsyncValue.data(cur.copyWith(isLoading: true, clearError: true));
     }
     state = AsyncValue.data(await _fetch());
+  }
+
+  // add this method to both MySpillsNotifier and MyTeaNotifier:
+  void removePost(String postId) {
+    final current = state.value;
+    if (current == null) return;
+    state = AsyncValue.data(
+      current.copyWith(
+        posts: current.posts.where((p) => p.postId != postId).toList(),
+      )
+    );
+  }
+
+  Future<void> toggleLike(String postId) async {
+    final anonId = LocalStorageService.getCachedAnonId();
+    if (anonId == null) return;
+    final current = state.value;
+    if (current == null) return;
+
+    final idx = current.posts.indexWhere((p) => p.postId == postId);
+    if (idx == -1) return;
+
+    final post = current.posts[idx];
+    final nowLiked = !post.isLiked;
+    final newCount = post.likeCount + (nowLiked ? 1 : -1);
+
+    // optimistic update
+    final optimistic = List<PostModel>.from(current.posts);
+    optimistic[idx] = post.copyWith(isLiked: nowLiked, likeCount: newCount);
+    state = AsyncValue.data(current.copyWith(posts: optimistic));
+
+    try {
+      final likeId = '${postId}_$anonId';
+      final batch = FirebaseService.firestore.batch();
+      final delta = nowLiked ? 1 : -1;
+
+      if (nowLiked) {
+        batch.set(
+          FirebaseService.firestore.collection('post_likes').doc(likeId),
+          {
+            'postId': postId,
+            'anonId': anonId,
+            'likedAt': FieldValue.serverTimestamp(),
+          },
+        );
+      } else {
+        batch.delete(
+          FirebaseService.firestore.collection('post_likes').doc(likeId),
+        );
+      }
+      batch.update(
+        FirebaseService.firestore.collection('posts').doc(postId),
+        {'likeCount': FieldValue.increment(delta)},
+      );
+      if (post.authorId.isNotEmpty) {
+        batch.update(
+          FirebaseService.firestore
+              .collection('public_profiles')
+              .doc(post.authorId),
+          {'totalLikeCount': FieldValue.increment(delta)},
+        );
+      }
+      await batch.commit();
+    } catch (e) {
+      debugPrint('[toggleLike profile] $e — reverting');
+      // revert on failure
+      final reverted = List<PostModel>.from(current.posts);
+      reverted[idx] = post;
+      state = AsyncValue.data(current.copyWith(posts: reverted));
+    }
   }
 
   Future<void> loadMore() async {
