@@ -25,8 +25,7 @@ class CreateConfessionSheet extends ConsumerStatefulWidget {
       _CreateConfessionSheetState();
 }
 
-class _CreateConfessionSheetState
-    extends ConsumerState<CreateConfessionSheet>
+class _CreateConfessionSheetState extends ConsumerState<CreateConfessionSheet>
     with SingleTickerProviderStateMixin {
   late final TabController _tabCtrl;
 
@@ -37,7 +36,9 @@ class _CreateConfessionSheetState
 
   // tea
   final _teaHeadingCtrl = TextEditingController();
+  final _teaBodyCtrl = TextEditingController(); //   NEW
   final _teaFocus = FocusNode();
+  final _teaBodyFocus = FocusNode(); //   NEW
 
   // voice
   _VoiceState _voice = _VoiceState.idle;
@@ -54,6 +55,7 @@ class _CreateConfessionSheetState
     return _headingCtrl.text.trim().isNotEmpty ||
         _bodyCtrl.text.trim().isNotEmpty ||
         _teaHeadingCtrl.text.trim().isNotEmpty ||
+        _teaBodyCtrl.text.trim().isNotEmpty || // NEW
         _recPath != null ||
         _voice == _VoiceState.recording;
   }
@@ -67,9 +69,9 @@ class _CreateConfessionSheetState
   void initState() {
     super.initState();
     _tabCtrl = TabController(length: 2, vsync: this);
-    // intercept tab change — show discard dialog if recording/recorded
     _tabCtrl.addListener(_onTabChange);
-    for (final c in [_headingCtrl, _bodyCtrl, _teaHeadingCtrl]) {
+    //   _teaBodyCtrl added to listeners
+    for (final c in [_headingCtrl, _bodyCtrl, _teaHeadingCtrl, _teaBodyCtrl]) {
       c.addListener(() => setState(() {}));
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -87,7 +89,9 @@ class _CreateConfessionSheetState
     _bodyCtrl.dispose();
     _headingFocus.dispose();
     _teaHeadingCtrl.dispose();
+    _teaBodyCtrl.dispose(); //   NEW
     _teaFocus.dispose();
+    _teaBodyFocus.dispose(); //   NEW
     _timer?.cancel();
     AudioService.instance.stop();
     super.dispose();
@@ -97,11 +101,8 @@ class _CreateConfessionSheetState
 
   void _onTabChange() {
     if (!_tabCtrl.indexIsChanging) return;
-    // If there's a recording (in progress or saved), block and show dialog
     if (_voice != _VoiceState.idle) {
-      // Snap back to current index before animation commits
       final previousIndex = _tabCtrl.previousIndex;
-      // Show dialog — if confirmed, discard voice and allow switch
       WidgetsBinding.instance.addPostFrameCallback((_) async {
         if (!mounted) return;
         final confirmed = await _showDiscardDialog(
@@ -111,10 +112,8 @@ class _CreateConfessionSheetState
         );
         if (confirmed == true) {
           await _discardRec();
-          // now actually switch
           _tabCtrl.animateTo(_tabCtrl.index);
         } else {
-          // revert to previous tab
           _tabCtrl.animateTo(previousIndex);
         }
       });
@@ -301,7 +300,7 @@ class _CreateConfessionSheetState
     }
   }
 
-  // ── Post ─────────────────────────────────────────────────────────────────
+  // ── Post ──────────────────────────────────────────────────────────────────
 
   Future<void> _post() async {
     if (!_canPost) return;
@@ -315,7 +314,10 @@ class _CreateConfessionSheetState
       );
       if (!mounted) return;
       if (ok) {
-        ref.read(streakNotifierProvider.notifier).recordActivity().catchError((e) {
+        ref
+            .read(streakNotifierProvider.notifier)
+            .recordActivity()
+            .catchError((e) {
           debugPrint('[CreateSheet] streak update failed silently: $e');
         });
         Navigator.of(context).pop();
@@ -327,12 +329,16 @@ class _CreateConfessionSheetState
     } else {
       final ok = await ref.read(createTeaProvider.notifier).createTea(
         heading: _teaHeadingCtrl.text,
+        body: _teaBodyCtrl.text.isNotEmpty ? _teaBodyCtrl.text : null, //   NEW
         localAudioPath: _recPath!,
         audioDurationSeconds: _recSecs,
       );
       if (!mounted) return;
       if (ok) {
-        ref.read(streakNotifierProvider.notifier).recordActivity().catchError((e) {
+        ref
+            .read(streakNotifierProvider.notifier)
+            .recordActivity()
+            .catchError((e) {
           debugPrint('[CreateSheet] streak update failed silently: $e');
         });
         Navigator.of(context).pop();
@@ -344,7 +350,7 @@ class _CreateConfessionSheetState
     }
   }
 
-  // BUILD
+  // ── Build ─────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
@@ -378,22 +384,19 @@ class _CreateConfessionSheetState
                 ),
               ),
 
-              // ── Top bar: close + tabs + post button
+              // ── Top bar
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
                 child: Row(
                   children: [
-                    // close — with discard guard
                     GestureDetector(
                       onTap: _onClose,
                       child: const Icon(LucideIcons.x,
                           size: 20, color: AppColors.textSecondary),
                     ),
                     const SizedBox(width: 16),
-                    // tabs
                     _SheetTabBar(ctrl: _tabCtrl),
                     const Spacer(),
-                    // post button
                     _PostBtn(
                       label: _isSpill ? 'Post' : 'Drop',
                       canPost: _canPost,
@@ -438,7 +441,9 @@ class _CreateConfessionSheetState
                       avatarUrl: avatarUrl,
                       username: profile?['username'] as String? ?? 'anon',
                       headingCtrl: _teaHeadingCtrl,
+                      bodyCtrl: _teaBodyCtrl, //   NEW
                       focus: _teaFocus,
+                      bodyFocus: _teaBodyFocus, //   NEW
                       voice: _voice,
                       elapsed: _elapsed,
                       recSecs: _recSecs,
@@ -466,12 +471,24 @@ class _CreateConfessionSheetState
                           fontSize: 13, color: AppColors.hintText),
                     ),
                     const Spacer(),
+                    //   Spill body counter — updated to 1500
                     if (_isSpill && _bodyCtrl.text.isNotEmpty)
                       Text(
-                        '${_bodyCtrl.text.length}/500',
+                        '${_bodyCtrl.text.length}/1500',
                         style: AppTypography.bodySmall.copyWith(
                           fontSize: 11,
-                          color: _bodyCtrl.text.length > 450
+                          color: _bodyCtrl.text.length > 1400
+                              ? AppColors.errorLight
+                              : AppColors.hintText,
+                        ),
+                      ),
+                    //   Tea body counter — NEW
+                    if (!_isSpill && _teaBodyCtrl.text.isNotEmpty)
+                      Text(
+                        '${_teaBodyCtrl.text.length}/1000',
+                        style: AppTypography.bodySmall.copyWith(
+                          fontSize: 11,
+                          color: _teaBodyCtrl.text.length > 900
                               ? AppColors.errorLight
                               : AppColors.hintText,
                         ),
@@ -486,7 +503,6 @@ class _CreateConfessionSheetState
     );
   }
 
-  // FIX: use 'adventurer' style, not 'avataaars'
   String? _buildAvatarUrlFromProfile(Map<String, dynamic>? profile) {
     final raw = profile?['avatarConfig'];
     if (raw == null) return null;
@@ -497,7 +513,7 @@ class _CreateConfessionSheetState
 
 enum _VoiceState { idle, recording, recorded }
 
-// SHEET TEA BAR
+// ── Sheet Tab Bar ─────────────────────────────────────────────────────────────
 
 class _SheetTabBar extends StatelessWidget {
   final TabController ctrl;
@@ -538,7 +554,7 @@ class _SheetTabBar extends StatelessWidget {
   );
 }
 
-// SPILL COMPOSER
+// ── Spill Composer ────────────────────────────────────────────────────────────
 
 class _SpillComposer extends StatelessWidget {
   final String? avatarUrl;
@@ -592,7 +608,6 @@ class _SpillComposer extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // FIX: @ before username
                 Text(
                   '@$username',
                   style: AppTypography.bodyMedium.copyWith(
@@ -638,10 +653,11 @@ class _SpillComposer extends StatelessWidget {
                   cursorWidth: 2,
                 ),
                 const SizedBox(height: 6),
+                //   maxLength updated to 1500
                 TextField(
                   controller: bodyCtrl,
                   maxLines: null,
-                  maxLength: 500,
+                  maxLength: 1500,
                   buildCounter: (_, {required currentLength,
                     required isFocused, maxLength}) =>
                   null,
@@ -689,13 +705,15 @@ class _SpillComposer extends StatelessWidget {
   }
 }
 
-// Tea Composer
+// ── Tea Composer ──────────────────────────────────────────────────────────────
 
 class _TeaComposer extends StatelessWidget {
   final String? avatarUrl;
   final String username;
   final TextEditingController headingCtrl;
+  final TextEditingController bodyCtrl; //   NEW
   final FocusNode focus;
+  final FocusNode bodyFocus; //   NEW
   final _VoiceState voice;
   final int elapsed;
   final int recSecs;
@@ -709,7 +727,9 @@ class _TeaComposer extends StatelessWidget {
     required this.avatarUrl,
     required this.username,
     required this.headingCtrl,
+    required this.bodyCtrl, //   NEW
     required this.focus,
+    required this.bodyFocus, //   NEW
     required this.voice,
     required this.elapsed,
     required this.recSecs,
@@ -741,7 +761,6 @@ class _TeaComposer extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // FIX: @ before username
                 Text(
                   '@$username',
                   style: AppTypography.bodyMedium.copyWith(
@@ -752,6 +771,7 @@ class _TeaComposer extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 8),
+                // Heading
                 TextField(
                   controller: headingCtrl,
                   focusNode: focus,
@@ -786,6 +806,38 @@ class _TeaComposer extends StatelessWidget {
                   cursorColor: AppColors.accentPrimary,
                   cursorWidth: 2,
                 ),
+                const SizedBox(height: 6),
+                //   NEW — optional body field, maxLength 1000
+                TextField(
+                  controller: bodyCtrl,
+                  focusNode: bodyFocus,
+                  maxLines: null,
+                  maxLength: 1000,
+                  buildCounter: (_, {required currentLength,
+                    required isFocused, maxLength}) =>
+                  null,
+                  style: AppTypography.bodyMedium.copyWith(
+                    fontSize: 15,
+                    color: AppColors.textSecondary,
+                    height: 1.6,
+                  ),
+                  decoration: InputDecoration(
+                    hintText: 'Spill it completely... (optional)',
+                    hintStyle: AppTypography.bodySmall.copyWith(
+                      fontSize: 15,
+                      color: AppColors.hintText,
+                      height: 1.6,
+                    ),
+                    border: InputBorder.none,
+                    enabledBorder: InputBorder.none,
+                    focusedBorder: InputBorder.none,
+                    contentPadding: EdgeInsets.zero,
+                    isDense: true,
+                    filled: false,
+                  ),
+                  cursorColor: AppColors.accentPrimary,
+                  cursorWidth: 2,
+                ),
                 const SizedBox(height: 14),
                 _VoiceSection(
                   optional: false,
@@ -808,7 +860,7 @@ class _TeaComposer extends StatelessWidget {
   }
 }
 
-// Compose avatar
+// ── Composer Avatar ───────────────────────────────────────────────────────────
 
 class _ComposerAvatar extends StatelessWidget {
   final String? url;
@@ -847,7 +899,7 @@ class _ComposerAvatar extends StatelessWidget {
   );
 }
 
-// Voice Section
+// ── Voice Section ─────────────────────────────────────────────────────────────
 
 class _VoiceSection extends StatelessWidget {
   final bool optional;
@@ -912,7 +964,7 @@ class _VoiceSection extends StatelessWidget {
   );
 }
 
-// Idle Voice
+// ── Idle Voice ────────────────────────────────────────────────────────────────
 
 class _IdleVoice extends StatelessWidget {
   final bool optional;
@@ -938,8 +990,8 @@ class _IdleVoice extends StatelessWidget {
           decoration: BoxDecoration(
             color: const Color(0xFF141420),
             shape: BoxShape.circle,
-            border: Border.all(
-                color: const Color(0xFF252535), width: 0.8),
+            border:
+            Border.all(color: const Color(0xFF252535), width: 0.8),
           ),
           child: const Icon(LucideIcons.mic,
               size: 16, color: AppColors.accentPrimary),
@@ -959,7 +1011,7 @@ class _IdleVoice extends StatelessWidget {
   );
 }
 
-// RECORDING VOICE
+// ── Recording Voice ───────────────────────────────────────────────────────────
 
 class _RecordingVoice extends StatelessWidget {
   final int elapsed;
@@ -985,7 +1037,6 @@ class _RecordingVoice extends StatelessWidget {
 
     return Row(
       children: [
-        // stop button
         GestureDetector(
           onTap: () {
             HapticFeedback.mediumImpact();
@@ -1011,7 +1062,6 @@ class _RecordingVoice extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 10),
-        // waveform
         Expanded(
           child: SizedBox(
             height: 36,
@@ -1037,7 +1087,6 @@ class _RecordingVoice extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 10),
-        // timer
         _RecDot(),
         const SizedBox(width: 5),
         Text(
@@ -1088,7 +1137,7 @@ class _RecDotState extends State<_RecDot> with SingleTickerProviderStateMixin {
   );
 }
 
-// RECORD VOICE (SWIPE TO DELETE)
+// ── Recorded Voice ────────────────────────────────────────────────────────────
 
 class _RecordedVoice extends StatefulWidget {
   final int recSecs;
@@ -1171,7 +1220,6 @@ class _RecordedVoiceState extends State<_RecordedVoice> {
         HapticFeedback.mediumImpact();
         widget.onDiscard();
       },
-      // FIX: visible red background with label
       background: Container(
         alignment: Alignment.centerRight,
         padding: const EdgeInsets.only(right: 12),
@@ -1200,7 +1248,6 @@ class _RecordedVoiceState extends State<_RecordedVoice> {
         padding: const EdgeInsets.symmetric(horizontal: 2),
         child: Row(
           children: [
-            // play/pause
             GestureDetector(
               onTap: _toggle,
               child: AnimatedContainer(
@@ -1220,14 +1267,14 @@ class _RecordedVoiceState extends State<_RecordedVoice> {
                       _playing ? LucideIcons.pause : LucideIcons.play,
                       key: ValueKey(_playing),
                       size: 14,
-                      color: _playing ? Colors.black : AppColors.accentPrimary,
+                      color:
+                      _playing ? Colors.black : AppColors.accentPrimary,
                     ),
                   ),
                 ),
               ),
             ),
             const SizedBox(width: 10),
-            // scrubber
             Expanded(
               child: SliderTheme(
                 data: SliderTheme.of(context).copyWith(
@@ -1269,7 +1316,7 @@ class _RecordedVoiceState extends State<_RecordedVoice> {
   }
 }
 
-// POST BUTTON
+// ── Post Button ───────────────────────────────────────────────────────────────
 
 class _PostBtn extends StatefulWidget {
   final String label;

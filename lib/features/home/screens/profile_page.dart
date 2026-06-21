@@ -361,14 +361,14 @@ class _SpillsTab extends ConsumerWidget {
               onTap: () => Navigator.of(ctx).push(
                 postDetailHeroRoute(post.postId, initialPost: post),
               ),
-              // ✅ FutureProvider has no notifier — use forYouFeedProvider for likes
+              //   FutureProvider has no notifier — use forYouFeedProvider for likes
               onLike: () => ref
                   .read(forYouFeedProvider.notifier)
                   .toggleLike(post.postId),
               onAuthorTap: post.authorId != myId
                   ? () => context.push('/profile/${post.authorId}')
                   : null,
-              // ✅ invalidate re-fetches the list after delete
+              //   invalidate re-fetches the list after delete
               onDelete: () => ref.invalidate(mySpillsProvider(anonId)),
             );
           },
@@ -413,7 +413,7 @@ class _TeaTab extends ConsumerWidget {
               onTap: () => Navigator.of(ctx).push(
                 postDetailHeroRoute(post.postId, initialPost: post),
               ),
-              // ✅ same — forYouFeedProvider is the writable notifier for likes
+              //   same — forYouFeedProvider is the writable notifier for likes
               onLike: () => ref
                   .read(forYouFeedProvider.notifier)
                   .toggleLike(post.postId),

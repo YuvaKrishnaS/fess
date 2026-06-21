@@ -5,7 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/models/tea_post_model.dart';
 import 'feed_provider.dart'; // for currentAnonIdProvider
 
-// Feed State
+// ── Feed State ────────────────────────────────────────────────────────────────
 
 class TeaFeedState {
   final List<TeaPost> posts;
@@ -43,7 +43,7 @@ class TeaFeedState {
       );
 }
 
-// Notifier
+// ── Tea Feed Notifier ─────────────────────────────────────────────────────────
 
 class TeaFeedNotifier extends AsyncNotifier<TeaFeedState> {
   static const int _pageSize = 15;
@@ -73,7 +73,7 @@ class TeaFeedNotifier extends AsyncNotifier<TeaFeedState> {
       );
     } catch (e, st) {
       debugPrint('[TeaFeed] load error: $e\n$st');
-      return TeaFeedState(error: 'Could not load tea. Pull to refresh.');
+      return const TeaFeedState(error: 'Could not load tea. Pull to refresh.');
     }
   }
 
@@ -136,25 +136,21 @@ class TeaFeedNotifier extends AsyncNotifier<TeaFeedState> {
 
     try {
       final likeId = '${postId}_$anonId';
-      final likeRef = FirebaseFirestore.instance
-          .collection('post_likes')
-          .doc(likeId);
-      final postRef = FirebaseFirestore.instance
-          .collection('posts')
-          .doc(postId);
+      final likeRef =
+      FirebaseFirestore.instance.collection('post_likes').doc(likeId);
+      final postRef =
+      FirebaseFirestore.instance.collection('posts').doc(postId);
 
       if (liked) {
         await likeRef.delete();
-        await postRef.update(
-            {'likeCount': FieldValue.increment(-1)});
+        await postRef.update({'likeCount': FieldValue.increment(-1)});
       } else {
         await likeRef.set({
           'postId': postId,
           'anonId': anonId,
           'likedAt': FieldValue.serverTimestamp(),
         });
-        await postRef.update(
-            {'likeCount': FieldValue.increment(1)});
+        await postRef.update({'likeCount': FieldValue.increment(1)});
       }
     } catch (e) {
       debugPrint('[TeaFeed] toggleLike error: $e');
@@ -163,10 +159,10 @@ class TeaFeedNotifier extends AsyncNotifier<TeaFeedState> {
     }
   }
 
-  // Helper
+  // ── Helper ──────────────────────────────────────────────────────────────────
 
   Future<List<TeaPost>> _hydratePosts(
-      List<DocumentSnapshot> docs,
+      List<QueryDocumentSnapshot> docs,
       String? anonId,
       ) async {
     if (docs.isEmpty) return [];
@@ -215,10 +211,9 @@ class TeaFeedNotifier extends AsyncNotifier<TeaFeedState> {
 }
 
 final teaFeedProvider =
-AsyncNotifierProvider<TeaFeedNotifier, TeaFeedState>(
-    TeaFeedNotifier.new);
+AsyncNotifierProvider<TeaFeedNotifier, TeaFeedState>(TeaFeedNotifier.new);
 
-// Create tea provider
+// ── Create Tea Provider ───────────────────────────────────────────────────────
 
 class CreateTeaNotifier extends Notifier<bool> {
   @override
@@ -226,6 +221,7 @@ class CreateTeaNotifier extends Notifier<bool> {
 
   Future<bool> createTea({
     required String heading,
+    String? body, // NEW — optional body, passed from sheet
     required String localAudioPath,
     required int audioDurationSeconds,
   }) async {
@@ -239,10 +235,12 @@ class CreateTeaNotifier extends Notifier<bool> {
         anonId: anonId,
       );
 
+      // ✅ body written to Firestore only when non-null/non-empty
       await FirebaseFirestore.instance.collection('posts').add({
         'type': 'tea',
         'authorId': anonId,
         'heading': heading.trim(),
+        if (body != null && body.trim().isNotEmpty) 'body': body.trim(), //
         'audioUrl': audioUrl,
         'audioDuration': audioDurationSeconds,
         'likeCount': 0,
@@ -250,8 +248,6 @@ class CreateTeaNotifier extends Notifier<bool> {
         'createdAt': FieldValue.serverTimestamp(),
       });
 
-      // FIX: increment totalTeaCount silently
-      // CORRECT - increments the tea-specific counter
       await FirebaseFirestore.instance
           .collection('public_profiles')
           .doc(anonId)
