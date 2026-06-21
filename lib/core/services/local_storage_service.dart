@@ -11,7 +11,7 @@ class LocalStorageService {
   static Box? _appBox;
   static Box? _userBox;
 
-  // ── Initialization ──────────────────────────────────────────────────────────
+  // -- Initialization -----------------------------─────────────────────────────
 
   static Future<void> initialize() async {
     await Hive.initFlutter();

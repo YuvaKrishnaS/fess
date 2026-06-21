@@ -25,7 +25,7 @@ class DmConversationModel {
     this.createdAt,
   });
 
-  // ── Firestore deserialization ─────────────────────────────────────────────
+  // -- Firestore deserialization ---------────────────────────────────────────
 
   factory DmConversationModel.fromFirestore(
       DocumentSnapshot<Map<String, dynamic>> doc,

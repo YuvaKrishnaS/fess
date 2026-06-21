@@ -1,7 +1,7 @@
 class AvatarOptions {
   AvatarOptions._();
 
-  // ─── Skin Colors (hex values only) ────────────────────────────────────────
+  // --- Skin Colors (hex values only) -------------------------
   static const List<String> skinColors = [
     '614335', // deep brown
     'ae5d29', // medium brown
@@ -12,7 +12,7 @@ class AvatarOptions {
     'ffdbb4', // very light
   ];
 
-  // ─── Hair Styles (top param) ──────────────────────────────────────────────
+  // ─── Hair Styles (top param) ------──────────
   static const List<String> hairStyles = [
     'bigHair',
     'bob',

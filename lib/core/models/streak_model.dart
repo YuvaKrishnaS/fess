@@ -142,7 +142,7 @@ class StreakModel {
     );
   }
 
-  // ── Display helpers ───────────────────────────────────────────────────────
+  //  - - Display helpers  - - ---------------------------------
 
   /// True if the streak is "alive" - user was active today or yesterday.
   bool get isAlive {
@@ -158,7 +158,7 @@ class StreakModel {
   /// Label for the streak badge - e.g. "12🔥" or "1d"
   String get badgeLabel => '$currentStreak';
 
-  // ── Private ───────────────────────────────────────────────────────────────
+  // ── Private ----------───
 
   /// Strip time component - gives midnight of the given date
   static DateTime _dateOnly(DateTime dt) =>

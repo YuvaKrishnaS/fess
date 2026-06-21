@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart'; //   added
 import 'package:just_audio/just_audio.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:timeago/timeago.dart' as timeago;
@@ -17,7 +18,8 @@ import '../../../core/models/post_model.dart';
 import '../../../core/services/audio_service.dart';
 import '../../../core/widgets/fess_snackbar.dart';
 import '../providers/post_detail_provider.dart';
-// import '../providers/witness_provider.dart';
+
+// ─── Route helper ─────────────────────────────────────────────────────────────
 
 Route<void> postDetailHeroRoute(String postId, {PostModel? initialPost}) {
   return PageRouteBuilder(
@@ -30,7 +32,7 @@ Route<void> postDetailHeroRoute(String postId, {PostModel? initialPost}) {
         parent: animation,
         curve: const Interval(0.0, 0.6, curve: Curves.easeOut),
       );
-      final scale = Tween(begin: 0.97, end: 1.0).animate(
+      final scale = Tween<double>(begin: 0.97, end: 1.0).animate(
         CurvedAnimation(parent: animation, curve: Curves.easeOutCubic),
       );
       return FadeTransition(
@@ -44,6 +46,8 @@ Route<void> postDetailHeroRoute(String postId, {PostModel? initialPost}) {
     },
   );
 }
+
+// ─── Screen ───────────────────────────────────────────────────────────────────
 
 class PostDetailScreen extends ConsumerStatefulWidget {
   final String postId;
@@ -202,6 +206,8 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
   }
 }
 
+// ─── App Bar ──────────────────────────────────────────────────────────────────
+
 class _DetailAppBar extends StatelessWidget {
   final PostModel? post;
   const _DetailAppBar({this.post});
@@ -250,6 +256,8 @@ class _DetailAppBar extends StatelessWidget {
   }
 }
 
+// ─── Post Body ────────────────────────────────────────────────────────────────
+
 class _PostBody extends ConsumerWidget {
   final PostModel post;
   final VoidCallback onLike;
@@ -261,39 +269,52 @@ class _PostBody extends ConsumerWidget {
     final avatarUrl = post.authorAvatarConfig != null
         ? AvatarConfig.fromMap(post.authorAvatarConfig!).buildUrl(size: 72)
         : null;
-    final timeStr = post.createdAt != null ? timeago.format(post.createdAt!) : 'just now';
+    final timeStr =
+    post.createdAt != null ? timeago.format(post.createdAt!) : 'just now';
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              _AvatarRing(url: avatarUrl, size: 40),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '@${post.authorUsername ?? 'anon'}',
-                      style: AppTypography.bodyMedium.copyWith(
-                        fontFamily: 'DM Sans',
-                        fontWeight: FontWeight.w700,
-                        fontSize: 14,
-                        color: AppColors.textPrimary
-                      )
-                    ),
-                    Text(
-                      timeStr,
-                      style: AppTypography.bodySmall.copyWith(fontSize:11, color: AppColors.hintText)
-                    )
-                  ]
-                )
-              )
-            ],
+          //   Author row is now tappable — navigates to profile
+          GestureDetector(
+            onTap: () {
+              if (post.authorId.isNotEmpty) {
+                HapticFeedback.selectionClick();
+                context.push('/profile/${post.authorId}');
+              }
+            },
+            behavior: HitTestBehavior.opaque,
+            child: Row(
+              children: [
+                _AvatarRing(url: avatarUrl, size: 40),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '@${post.authorUsername ?? 'anon'}',
+                        style: AppTypography.bodyMedium.copyWith(
+                          fontFamily: 'DM Sans',
+                          fontWeight: FontWeight.w700,
+                          fontSize: 14,
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                      Text(
+                        timeStr,
+                        style: AppTypography.bodySmall.copyWith(
+                            fontSize: 11, color: AppColors.hintText),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
+
           const SizedBox(height: 14),
 
           Text(
@@ -303,9 +324,10 @@ class _PostBody extends ConsumerWidget {
               fontSize: 18,
               fontWeight: FontWeight.w800,
               color: AppColors.textPrimary,
-              height: 1.4
-            )
+              height: 1.4,
+            ),
           ),
+
           if (post.body != null && post.body!.isNotEmpty) ...[
             const SizedBox(height: 8),
             Text(
@@ -313,31 +335,36 @@ class _PostBody extends ConsumerWidget {
               style: AppTypography.bodyMedium.copyWith(
                 color: AppColors.textSecondary,
                 fontSize: 15,
-                height: 1.6
-              )
-            )
+                height: 1.6,
+              ),
+            ),
           ],
+
           if (post.imageUrls.isNotEmpty) ...[
             const SizedBox(height: 12),
-            _ImageGrid(urls: post.imageUrls)
+            _ImageGrid(urls: post.imageUrls),
           ],
+
           if (post.audioUrl != null && post.audioUrl!.isNotEmpty) ...[
             const SizedBox(height: 12),
             _VoicePlayer(
               key: ValueKey('detail_${post.postId}'),
               audioUrl: post.audioUrl!,
-              durationSecs: post.audioDuration ?? 0
-            )
+              durationSecs: post.audioDuration ?? 0,
+            ),
           ],
+
           const SizedBox(height: 14),
           _PostReactions(post: post, onLike: onLike),
           const SizedBox(height: 14),
-          Container(height: 0.5, color: const Color(0xFF1A1A1A))
+          Container(height: 0.5, color: const Color(0xFF1A1A1A)),
         ],
       ),
     );
   }
 }
+
+// ─── Avatar Ring ──────────────────────────────────────────────────────────────
 
 class _AvatarRing extends StatelessWidget {
   final String? url;
@@ -359,7 +386,9 @@ class _AvatarRing extends StatelessWidget {
     padding: const EdgeInsets.all(1.5),
     child: Container(
       decoration: const BoxDecoration(
-          shape: BoxShape.circle, color: AppColors.backgroundMain),
+        shape: BoxShape.circle,
+        color: AppColors.backgroundMain,
+      ),
       padding: const EdgeInsets.all(1),
       child: ClipOval(
         child: url != null
@@ -381,71 +410,7 @@ class _AvatarRing extends StatelessWidget {
   );
 }
 
-class _WitnessBtn extends StatefulWidget {
-  final bool isWitnessing;
-  final VoidCallback onTap;
-  const _WitnessBtn({required this.isWitnessing, required this.onTap});
-
-  @override
-  State<_WitnessBtn> createState() => _WitnessBtnState();
-}
-
-class _WitnessBtnState extends State<_WitnessBtn> {
-  bool _pressed = false;
-
-  @override
-  Widget build(BuildContext context) => GestureDetector(
-    onTapDown: (_) => setState(() => _pressed = true),
-    onTapUp: (_) {
-      setState(() => _pressed = false);
-      HapticFeedback.selectionClick();
-      widget.onTap();
-    },
-    onTapCancel: () => setState(() => _pressed = false),
-    child: AnimatedScale(
-      scale: _pressed ? 0.93 : 1.0,
-      duration: const Duration(milliseconds: 100),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        curve: Curves.easeInOut,
-        height: 28,
-        padding: const EdgeInsets.symmetric(horizontal: 12),
-        decoration: BoxDecoration(
-          color: widget.isWitnessing
-              ? AppColors.accentPrimary.withOpacity(0.12)
-              : Colors.transparent,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: widget.isWitnessing
-                ? AppColors.accentPrimary.withOpacity(0.5)
-                : AppColors.accentPrimary.withOpacity(0.4),
-            width: 0.8,
-          ),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (widget.isWitnessing) ...[
-              const Icon(LucideIcons.check,
-                  size: 10, color: AppColors.accentPrimary),
-              const SizedBox(width: 4),
-            ],
-            AnimatedDefaultTextStyle(
-              duration: const Duration(milliseconds: 200),
-              style: AppTypography.labelSmall.copyWith(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: AppColors.accentPrimary,
-              ),
-              child:
-              Text(widget.isWitnessing ? 'Witnessing' : 'Witness'),
-            ),
-          ],
-        ),
-      ),
-    ),
-  );
-}
+// ─── Image Grid ───────────────────────────────────────────────────────────────
 
 class _ImageGrid extends StatelessWidget {
   final List<String> urls;
@@ -493,13 +458,16 @@ class _ImgTile extends StatelessWidget {
         errorWidget: (_, __, ___) => Container(
           color: const Color(0xFF1A1A1A),
           child: const Center(
-              child: Icon(LucideIcons.imageOff,
-                  size: 20, color: AppColors.hintText)),
+            child: Icon(LucideIcons.imageOff,
+                size: 20, color: AppColors.hintText),
+          ),
         ),
       ),
     ),
   );
 }
+
+// ─── Voice Player ─────────────────────────────────────────────────────────────
 
 class _VoicePlayer extends StatefulWidget {
   final String audioUrl;
@@ -616,8 +584,7 @@ class _VoicePlayerState extends State<_VoicePlayer> {
                     _isPlaying ? LucideIcons.pause : LucideIcons.play,
                     key: ValueKey(_isPlaying),
                     size: 14,
-                    color:
-                    _isPlaying ? Colors.black : AppColors.accentPrimary,
+                    color: _isPlaying ? Colors.black : AppColors.accentPrimary,
                   ),
                 ),
               ),
@@ -669,6 +636,8 @@ class _VoicePlayerState extends State<_VoicePlayer> {
   }
 }
 
+// ─── Post Reactions ───────────────────────────────────────────────────────────
+
 class _PostReactions extends StatefulWidget {
   final PostModel post;
   final VoidCallback onLike;
@@ -688,7 +657,7 @@ class _PostReactionsState extends State<_PostReactions>
     super.initState();
     _ctrl = AnimationController(
         vsync: this, duration: const Duration(milliseconds: 200));
-    _scale = TweenSequence([
+    _scale = TweenSequence<double>([
       TweenSequenceItem(tween: Tween(begin: 1.0, end: 1.3), weight: 50),
       TweenSequenceItem(tween: Tween(begin: 1.3, end: 1.0), weight: 50),
     ]).animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut));
@@ -754,6 +723,8 @@ class _PostReactionsState extends State<_PostReactions>
   );
 }
 
+// ─── Comments Header ──────────────────────────────────────────────────────────
+
 class _CommentsHeader extends StatelessWidget {
   final int count;
   const _CommentsHeader({required this.count});
@@ -791,6 +762,8 @@ class _CommentsHeader extends StatelessWidget {
   );
 }
 
+// ─── Empty Comments ───────────────────────────────────────────────────────────
+
 class _EmptyComments extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Padding(
@@ -811,6 +784,8 @@ class _EmptyComments extends StatelessWidget {
     ),
   );
 }
+
+// ─── Comment Tile ─────────────────────────────────────────────────────────────
 
 class _CommentTile extends StatelessWidget {
   final CommentModel comment;
@@ -871,6 +846,8 @@ class _CommentTile extends StatelessWidget {
   }
 }
 
+// ─── Comment Like Button ──────────────────────────────────────────────────────
+
 class _CommentLikeBtn extends StatefulWidget {
   final CommentModel comment;
   final VoidCallback onLike;
@@ -890,7 +867,7 @@ class _CommentLikeBtnState extends State<_CommentLikeBtn>
     super.initState();
     _ctrl = AnimationController(
         vsync: this, duration: const Duration(milliseconds: 180));
-    _scale = TweenSequence([
+    _scale = TweenSequence<double>([
       TweenSequenceItem(tween: Tween(begin: 1.0, end: 1.4), weight: 50),
       TweenSequenceItem(tween: Tween(begin: 1.4, end: 1.0), weight: 50),
     ]).animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut));
@@ -943,6 +920,8 @@ class _CommentLikeBtnState extends State<_CommentLikeBtn>
   );
 }
 
+// ─── Comments Shimmer ─────────────────────────────────────────────────────────
+
 class _CommentsShimmer extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Column(
@@ -989,6 +968,8 @@ class _Bone extends StatelessWidget {
   );
 }
 
+// ─── Comment Input ────────────────────────────────────────────────────────────
+
 class _CommentInput extends StatelessWidget {
   final TextEditingController controller;
   final FocusNode focusNode;
@@ -1013,8 +994,7 @@ class _CommentInput extends StatelessWidget {
       ),
       decoration: const BoxDecoration(
         color: AppColors.backgroundMain,
-        border:
-        Border(top: BorderSide(color: Color(0xFF1A1A1A), width: 0.5)),
+        border: Border(top: BorderSide(color: Color(0xFF1A1A1A), width: 0.5)),
       ),
       child: Row(
         children: [

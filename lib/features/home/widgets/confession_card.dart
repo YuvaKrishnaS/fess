@@ -20,8 +20,7 @@ import '../providers/profile_provider.dart';
 
 class ConfessionCard extends ConsumerStatefulWidget {
   final PostModel post;
-  // IMPORTANT: must be the logged-in user's anonId, NOT the profile owner's
-  final String? currentAnonId;
+  final String? currentAnonId; // the LOGGED-IN user's anonId
   final VoidCallback onLike;
   final VoidCallback onTap;
   final VoidCallback? onComment;
@@ -48,10 +47,9 @@ class ConfessionCard extends ConsumerStatefulWidget {
 class _ConfessionCardState extends ConsumerState<ConfessionCard>
     with SingleTickerProviderStateMixin {
   bool _pressed = false;
-  bool _deleting = false;
+  bool _deleted = false;
   late final AnimationController _deleteCtrl;
-  late final Animation<double> _deleteOpacity;
-  late final Animation<Color?> _deleteColor;
+  late final Animation<double> _deleteFade;
 
   bool get _isOwn =>
       widget.currentAnonId != null &&
@@ -64,13 +62,9 @@ class _ConfessionCardState extends ConsumerState<ConfessionCard>
       vsync: this,
       duration: const Duration(milliseconds: 420),
     );
-    _deleteOpacity = Tween<double>(begin: 1.0, end: 0.0).animate(
-      CurvedAnimation(parent: _deleteCtrl, curve: const Interval(0.4, 1.0)),
+    _deleteFade = Tween<double>(begin: 0, end: 1).animate(
+      CurvedAnimation(parent: _deleteCtrl, curve: Curves.easeIn),
     );
-    _deleteColor = ColorTween(
-      begin: Colors.transparent,
-      end: const Color(0x22FF3B30),
-    ).animate(CurvedAnimation(parent: _deleteCtrl, curve: Curves.easeIn));
   }
 
   @override
@@ -79,43 +73,56 @@ class _ConfessionCardState extends ConsumerState<ConfessionCard>
     super.dispose();
   }
 
-  void _onDeleteConfirmed() async {
-    setState(() => _deleting = true);
+  Future<void> _animateDelete() async {
+    setState(() => _deleted = true);
     await _deleteCtrl.forward();
     widget.onDelete?.call();
+    // Remove from providers
+    ref.invalidate(mySpillsProvider(widget.post.authorId));
+    ref.invalidate(myTeaProvider(widget.post.authorId));
+    ref.read(forYouFeedProvider.notifier).removePost(widget.post.postId);
   }
 
-  void _showMoreSheet(BuildContext context) {
-    HapticFeedback.mediumImpact();
+  void _showDeleteSheet() {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
-      builder: (_) => _MoreSheet(
+      builder: (_) => _DeleteSheet(
         post: widget.post,
-        isOwn: _isOwn,
         ref: ref,
-        onDeleteConfirmed: _onDeleteConfirmed,
+        onDeleted: _animateDelete,
       ),
+    );
+  }
+
+  void _showMoreSheet() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _MoreSheet(post: widget.post),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _deleteCtrl,
-      builder: (context, child) {
-        return Opacity(
-          opacity: _deleting ? _deleteOpacity.value : 1.0,
+    return AnimatedSize(
+      duration: const Duration(milliseconds: 380),
+      curve: Curves.easeInOut,
+      child: _deleted
+          ? AnimatedBuilder(
+        animation: _deleteFade,
+        builder: (_, __) => Opacity(
+          opacity: (1 - _deleteFade.value).clamp(0.0, 1.0),
           child: Container(
-            color: _deleting ? _deleteColor.value : Colors.transparent,
-            child: child,
+            color: AppColors.errorLight.withOpacity(
+                0.06 * _deleteFade.value),
+            height: _deleted && _deleteCtrl.isCompleted ? 0 : null,
+            child: _cardBody(context),
           ),
-        );
-      },
-      child: GestureDetector(
-        onTap: _deleting
-            ? null
-            : () {
+        ),
+      )
+          : GestureDetector(
+        onTap: () {
           HapticFeedback.selectionClick();
           widget.onTap();
         },
@@ -124,96 +131,112 @@ class _ConfessionCardState extends ConsumerState<ConfessionCard>
         onTapCancel: () => setState(() => _pressed = false),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 80),
-          color: _pressed ? const Color(0xFF111111) : Colors.transparent,
-          padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _CardHeader(
-                post: widget.post,
-                onAuthorTap: widget.onAuthorTap,
-                onMoreTap: () => _showMoreSheet(context),
-              ),
-              const SizedBox(height: 10),
-              if (widget.post.type == 'spill_in_tea')
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: Container(
-                    padding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF1A0A2E),
-                      borderRadius: BorderRadius.circular(6),
-                      border: Border.all(
-                        color: AppColors.accentSecondary.withOpacity(0.3),
-                        width: 0.6,
-                      ),
-                    ),
-                    child: Text(
-                      'spilled completely',
-                      style: TextStyle(
-                        fontFamily: 'DM Serif Display',
-                        fontStyle: FontStyle.italic,
-                        fontSize: 11,
-                        color: AppColors.accentSecondary.withOpacity(0.8),
-                      ),
-                    ),
-                  ),
-                ),
-              Text(
-                widget.post.heading,
-                style: AppTypography.h4.copyWith(
-                  fontFamily: 'DM Sans',
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.textPrimary,
-                  height: 1.4,
-                ),
-              ),
-              if (widget.post.body != null &&
-                  widget.post.body!.isNotEmpty) ...[
-                const SizedBox(height: 5),
-                Text(
-                  widget.post.body!,
-                  maxLines: 3,
-                  overflow: TextOverflow.ellipsis,
-                  style: AppTypography.bodyMedium.copyWith(
-                    color: AppColors.textSecondary,
-                    height: 1.55,
-                  ),
-                ),
-              ],
-              if (widget.post.imageUrls.isNotEmpty) ...[
-                const SizedBox(height: 10),
-                _CardImage(url: widget.post.imageUrls.first),
-              ],
-              if (widget.post.audioUrl != null &&
-                  widget.post.audioUrl!.isNotEmpty) ...[
-                const SizedBox(height: 10),
-                _InlineVoicePlayer(
-                  key: ValueKey('voice_${widget.post.postId}'),
-                  audioUrl: widget.post.audioUrl!,
-                  durationSecs: widget.post.audioDuration ?? 0,
-                ),
-              ],
-              const SizedBox(height: 12),
-              _ReactionRow(
-                post: widget.post,
-                onLike: widget.onLike,
-                onComment: widget.onComment ?? widget.onTap,
-                onShare: widget.onShare ?? () {},
-              ),
-              const SizedBox(height: 14),
-              const Divider(
-                  height: 0.5, thickness: 0.5, color: Color(0xFF1A1A1A)),
-            ],
-          ),
+          color:
+          _pressed ? const Color(0xFF111111) : Colors.transparent,
+          child: _cardBody(context),
         ),
+      )
+          .animate()
+          .fadeIn(duration: 300.ms)
+          .slideY(
+          begin: 0.04,
+          end: 0,
+          duration: 300.ms,
+          curve: Curves.easeOut),
+    );
+  }
+
+  Widget _cardBody(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _CardHeader(
+            post: widget.post,
+            onAuthorTap: widget.onAuthorTap,
+            isOwn: _isOwn,
+            onDeleteTap: _showDeleteSheet,
+            onMoreTap: _showMoreSheet,
+          ),
+          const SizedBox(height: 10),
+
+          // spill_in_tea badge
+          if (widget.post.type == 'spill_in_tea')
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Container(
+                padding:
+                const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1A0A2E),
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(
+                    color: AppColors.accentSecondary.withOpacity(0.3),
+                    width: 0.6,
+                  ),
+                ),
+                child: Text(
+                  'spilled completely',
+                  style: TextStyle(
+                    fontFamily: 'DM Serif Display',
+                    fontStyle: FontStyle.italic,
+                    fontSize: 11,
+                    color: AppColors.accentSecondary.withOpacity(0.8),
+                  ),
+                ),
+              ),
+            ),
+
+          Text(
+            widget.post.heading,
+            style: AppTypography.h4.copyWith(
+              fontFamily: 'DM Sans',
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+              color: AppColors.textPrimary,
+              height: 1.4,
+            ),
+          ),
+          if (widget.post.body != null &&
+              widget.post.body!.isNotEmpty) ...[
+            const SizedBox(height: 5),
+            Text(
+              widget.post.body!,
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+              style: AppTypography.bodyMedium.copyWith(
+                color: AppColors.textSecondary,
+                height: 1.55,
+              ),
+            ),
+          ],
+          if (widget.post.imageUrls.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            _CardImage(url: widget.post.imageUrls.first),
+          ],
+          if (widget.post.audioUrl != null &&
+              widget.post.audioUrl!.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            _InlineVoicePlayer(
+              key: ValueKey('voice_${widget.post.postId}'),
+              audioUrl: widget.post.audioUrl!,
+              durationSecs: widget.post.audioDuration ?? 0,
+            ),
+          ],
+          const SizedBox(height: 12),
+          _ReactionRow(
+            post: widget.post,
+            onLike: widget.onLike,
+            onComment: widget.onComment ?? widget.onTap,
+            onShare: widget.onShare ?? () {},
+          ),
+          const SizedBox(height: 14),
+          const Divider(
+              height: 0.5, thickness: 0.5, color: Color(0xFF1A1A1A)),
+        ],
       ),
-    )
-        .animate()
-        .fadeIn(duration: 300.ms)
-        .slideY(begin: 0.04, end: 0, duration: 300.ms, curve: Curves.easeOut);
+    );
   }
 }
 
@@ -222,10 +245,14 @@ class _ConfessionCardState extends ConsumerState<ConfessionCard>
 class _CardHeader extends StatelessWidget {
   final PostModel post;
   final VoidCallback? onAuthorTap;
+  final bool isOwn;
+  final VoidCallback onDeleteTap;
   final VoidCallback onMoreTap;
 
   const _CardHeader({
     required this.post,
+    required this.isOwn,
+    required this.onDeleteTap,
     required this.onMoreTap,
     this.onAuthorTap,
   });
@@ -243,7 +270,7 @@ class _CardHeader extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        // Author row — tappable to go to profile
+        // Tappable author area (avatar + name + time)
         Expanded(
           child: GestureDetector(
             onTap: onAuthorTap,
@@ -266,21 +293,11 @@ class _CardHeader extends StatelessWidget {
                           color: AppColors.textPrimary,
                         ),
                       ),
-                      GestureDetector(
-                        onLongPress: () {
-                          if (post.createdAt == null) return;
-                          final full =
-                              '${post.createdAt!.day}/${post.createdAt!.month}/${post.createdAt!.year} '
-                              '${post.createdAt!.hour.toString().padLeft(2, '0')}:${post.createdAt!.minute.toString().padLeft(2, '0')}';
-                          FessSnackbar.show(context, full,
-                              type: SnackbarType.info);
-                        },
-                        child: Text(
-                          timeStr,
-                          style: AppTypography.bodySmall.copyWith(
-                            fontSize: 11,
-                            color: AppColors.hintText,
-                          ),
+                      Text(
+                        timeStr,
+                        style: AppTypography.bodySmall.copyWith(
+                          fontSize: 11,
+                          color: AppColors.hintText,
                         ),
                       ),
                     ],
@@ -290,15 +307,36 @@ class _CardHeader extends StatelessWidget {
             ),
           ),
         ),
-        // Three dots
+
+        // Actions — trash (own only) + three dots (everyone)
+        if (isOwn)
+          GestureDetector(
+            onTap: () {
+              HapticFeedback.selectionClick();
+              onDeleteTap();
+            },
+            behavior: HitTestBehavior.opaque,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(8, 4, 4, 4),
+              child: Icon(
+                LucideIcons.trash2,
+                size: 15,
+                color: AppColors.errorLight.withOpacity(0.55),
+              ),
+            ),
+          ),
+
         GestureDetector(
-          onTap: onMoreTap,
+          onTap: () {
+            HapticFeedback.selectionClick();
+            onMoreTap();
+          },
           behavior: HitTestBehavior.opaque,
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(12, 4, 0, 4),
+            padding: const EdgeInsets.fromLTRB(8, 4, 0, 4),
             child: Icon(
-              LucideIcons.moreVertical,
-              size: 17,
+              LucideIcons.moreHorizontal,
+              size: 16,
               color: AppColors.hintText,
             ),
           ),
@@ -306,270 +344,6 @@ class _CardHeader extends StatelessWidget {
       ],
     );
   }
-}
-
-// ── More / Options Bottom Sheet ───────────────────────────────────────────────
-
-class _MoreSheet extends ConsumerStatefulWidget {
-  final PostModel post;
-  final bool isOwn;
-  final WidgetRef ref;
-  final VoidCallback onDeleteConfirmed;
-
-  const _MoreSheet({
-    required this.post,
-    required this.isOwn,
-    required this.ref,
-    required this.onDeleteConfirmed,
-  });
-
-  @override
-  ConsumerState<_MoreSheet> createState() => _MoreSheetState();
-}
-
-class _MoreSheetState extends ConsumerState<_MoreSheet> {
-  bool _showDeleteConfirm = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final bottomPad = MediaQuery.of(context).padding.bottom;
-    final isDeleting = widget.ref.watch(deletePostProvider);
-
-    return AnimatedSize(
-      duration: const Duration(milliseconds: 220),
-      curve: Curves.easeOutCubic,
-      child: Container(
-        decoration: const BoxDecoration(
-          color: Color(0xFF0E0E12),
-          borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
-        ),
-        padding: EdgeInsets.fromLTRB(0, 10, 0, bottomPad + 8),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Handle
-            Container(
-              width: 36,
-              height: 4,
-              margin: const EdgeInsets.only(bottom: 6),
-              decoration: BoxDecoration(
-                color: const Color(0xFF2A2A2A),
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-
-            if (!_showDeleteConfirm) ...[
-              // ── Normal options ──
-              if (widget.isOwn) ...[
-                _SheetOption(
-                  icon: LucideIcons.trash2,
-                  label: 'Delete post',
-                  color: AppColors.errorLight,
-                  onTap: () => setState(() => _showDeleteConfirm = true),
-                ),
-                _Divider(),
-              ],
-              _SheetOption(
-                icon: LucideIcons.flag,
-                label: 'Report',
-                color: AppColors.textSecondary,
-                onTap: () {
-                  Navigator.of(context).pop();
-                  FessSnackbar.show(context, 'Report — coming soon',
-                      type: SnackbarType.info);
-                },
-              ),
-              _SheetOption(
-                icon: LucideIcons.userX,
-                label: 'Block user',
-                color: AppColors.textSecondary,
-                onTap: () {
-                  Navigator.of(context).pop();
-                  FessSnackbar.show(context, 'Block — coming soon',
-                      type: SnackbarType.info);
-                },
-              ),
-              const SizedBox(height: 4),
-            ] else ...[
-              // ── Delete confirmation ──
-              Padding(
-                padding:
-                const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Delete this post?',
-                      style: TextStyle(
-                        fontFamily: 'DM Sans',
-                        fontSize: 17,
-                        fontWeight: FontWeight.w800,
-                        color: AppColors.textPrimary,
-                        letterSpacing: -0.3,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Gone forever. No undoing this.',
-                      style: AppTypography.bodySmall.copyWith(
-                          color: AppColors.textSecondary, fontSize: 13),
-                    ),
-                    const SizedBox(height: 14),
-                    // Post preview
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF111114),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: const Color(0xFF1E1E1E)),
-                      ),
-                      child: Text(
-                        widget.post.heading,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: AppTypography.bodySmall.copyWith(
-                          color: AppColors.textSecondary,
-                          fontStyle: FontStyle.italic,
-                          fontSize: 13,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: GestureDetector(
-                            onTap: () =>
-                                setState(() => _showDeleteConfirm = false),
-                            child: Container(
-                              height: 46,
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF1A1A1A),
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Center(
-                                child: Text(
-                                  'Keep it',
-                                  style: AppTypography.bodyMedium.copyWith(
-                                    color: AppColors.textSecondary,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: GestureDetector(
-                            onTap: isDeleting
-                                ? null
-                                : () async {
-                              HapticFeedback.mediumImpact();
-                              final ok = await widget.ref
-                                  .read(deletePostProvider.notifier)
-                                  .delete(
-                                postId: widget.post.postId,
-                                authorId: widget.post.authorId,
-                                type: widget.post.type,
-                              );
-                              if (ok && context.mounted) {
-                                Navigator.of(context).pop();
-                                widget.onDeleteConfirmed();
-                              }
-                            },
-                            child: Container(
-                              height: 46,
-                              decoration: BoxDecoration(
-                                color:
-                                AppColors.errorLight.withOpacity(0.12),
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(
-                                  color:
-                                  AppColors.errorLight.withOpacity(0.3),
-                                  width: 0.8,
-                                ),
-                              ),
-                              child: Center(
-                                child: isDeleting
-                                    ? const SizedBox(
-                                  width: 16,
-                                  height: 16,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 1.5,
-                                    color: AppColors.errorLight,
-                                  ),
-                                )
-                                    : const Text(
-                                  'Delete',
-                                  style: TextStyle(
-                                    fontFamily: 'DM Sans',
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.w700,
-                                    color: AppColors.errorLight,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _SheetOption extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final Color color;
-  final VoidCallback onTap;
-
-  const _SheetOption({
-    required this.icon,
-    required this.label,
-    required this.color,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) => GestureDetector(
-    onTap: () {
-      HapticFeedback.selectionClick();
-      onTap();
-    },
-    behavior: HitTestBehavior.opaque,
-    child: Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-      child: Row(
-        children: [
-          Icon(icon, size: 18, color: color),
-          const SizedBox(width: 14),
-          Text(
-            label,
-            style: AppTypography.bodyMedium.copyWith(
-              color: color,
-              fontWeight: FontWeight.w500,
-              fontSize: 15,
-            ),
-          ),
-        ],
-      ),
-    ),
-  );
-}
-
-class _Divider extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) =>
-      Container(height: 0.5, color: const Color(0xFF1A1A1A));
 }
 
 // ── Avatar ────────────────────────────────────────────────────────────────────
@@ -672,15 +446,20 @@ class _InlineVoicePlayerState extends State<_InlineVoicePlayer> {
   void initState() {
     super.initState();
     _duration = Duration(seconds: widget.durationSecs);
+
     _stateSub = AudioService.instance.playerStateStream.listen((s) {
       if (!mounted) return;
       final currentUrl = AudioService.instance.currentUrl;
       final playing = s.playing &&
           s.processingState != ProcessingState.completed &&
           currentUrl == widget.audioUrl;
+
       if (s.processingState == ProcessingState.completed &&
           currentUrl == widget.audioUrl) {
-        setState(() { _isPlaying = false; _position = Duration.zero; });
+        setState(() {
+          _isPlaying = false;
+          _position = Duration.zero;
+        });
         return;
       }
       setState(() => _isPlaying = playing);
@@ -688,83 +467,127 @@ class _InlineVoicePlayerState extends State<_InlineVoicePlayer> {
         setState(() => _position = Duration.zero);
       }
     });
+
     _posSub = AudioService.instance.positionStream.listen((p) {
       if (!mounted) return;
-      if (AudioService.instance.currentUrl == widget.audioUrl) setState(() => _position = p);
+      if (AudioService.instance.currentUrl == widget.audioUrl) {
+        setState(() => _position = p);
+      }
     });
+
     _durSub = AudioService.instance.durationStream.listen((d) {
       if (!mounted) return;
-      if (d != null && AudioService.instance.currentUrl == widget.audioUrl) setState(() => _duration = d);
+      if (d != null && AudioService.instance.currentUrl == widget.audioUrl) {
+        setState(() => _duration = d);
+      }
     });
   }
 
   @override
   void dispose() {
-    _stateSub?.cancel(); _posSub?.cancel(); _durSub?.cancel();
+    _stateSub?.cancel();
+    _posSub?.cancel();
+    _durSub?.cancel();
     super.dispose();
   }
 
   Future<void> _toggle() async {
     HapticFeedback.selectionClick();
-    if (_isPlaying) { await AudioService.instance.pause(); }
-    else { await AudioService.instance.playUrl(widget.audioUrl); }
+    if (_isPlaying) {
+      await AudioService.instance.pause();
+    } else {
+      await AudioService.instance.playUrl(widget.audioUrl);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final total = _duration.inMilliseconds > 0 ? _duration.inMilliseconds : (widget.durationSecs * 1000);
-    final pct = total > 0 ? (_position.inMilliseconds / total).clamp(0.0, 1.0) : 0.0;
+    final total = _duration.inMilliseconds > 0
+        ? _duration.inMilliseconds
+        : (widget.durationSecs * 1000);
+    final pct =
+    total > 0 ? (_position.inMilliseconds / total).clamp(0.0, 1.0) : 0.0;
+
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
       decoration: BoxDecoration(
         color: const Color(0xFF0D0D15),
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: AppColors.accentPrimary.withOpacity(0.15), width: 0.8),
+        border: Border.all(
+          color: AppColors.accentPrimary.withOpacity(0.15),
+          width: 0.8,
+        ),
       ),
-      child: Row(children: [
-        GestureDetector(
-          onTap: _toggle,
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 150),
-            width: 32, height: 32,
-            decoration: BoxDecoration(
-              color: _isPlaying ? AppColors.accentPrimary : AppColors.accentPrimary.withOpacity(0.12),
-              shape: BoxShape.circle,
-            ),
-            child: Center(child: AnimatedSwitcher(
+      child: Row(
+        children: [
+          GestureDetector(
+            onTap: _toggle,
+            child: AnimatedContainer(
               duration: const Duration(milliseconds: 150),
-              child: Icon(_isPlaying ? LucideIcons.pause : LucideIcons.play,
-                  key: ValueKey(_isPlaying), size: 13,
-                  color: _isPlaying ? Colors.black : AppColors.accentPrimary),
-            )),
+              width: 32,
+              height: 32,
+              decoration: BoxDecoration(
+                color: _isPlaying
+                    ? AppColors.accentPrimary
+                    : AppColors.accentPrimary.withOpacity(0.12),
+                shape: BoxShape.circle,
+              ),
+              child: Center(
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 150),
+                  child: Icon(
+                    _isPlaying ? LucideIcons.pause : LucideIcons.play,
+                    key: ValueKey(_isPlaying),
+                    size: 13,
+                    color:
+                    _isPlaying ? Colors.black : AppColors.accentPrimary,
+                  ),
+                ),
+              ),
+            ),
           ),
-        ),
-        const SizedBox(width: 10),
-        Expanded(child: SliderTheme(
-          data: SliderTheme.of(context).copyWith(
-            trackHeight: 2,
-            thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 4),
-            overlayShape: const RoundSliderOverlayShape(overlayRadius: 10),
-            activeTrackColor: AppColors.accentPrimary,
-            inactiveTrackColor: const Color(0xFF2A2A38),
-            thumbColor: AppColors.accentPrimary,
-            overlayColor: AppColors.accentPrimary.withOpacity(0.12),
+          const SizedBox(width: 10),
+          Expanded(
+            child: SliderTheme(
+              data: SliderTheme.of(context).copyWith(
+                trackHeight: 2,
+                thumbShape:
+                const RoundSliderThumbShape(enabledThumbRadius: 4),
+                overlayShape:
+                const RoundSliderOverlayShape(overlayRadius: 10),
+                activeTrackColor: AppColors.accentPrimary,
+                inactiveTrackColor: const Color(0xFF2A2A38),
+                thumbColor: AppColors.accentPrimary,
+                overlayColor: AppColors.accentPrimary.withOpacity(0.12),
+              ),
+              child: Slider(
+                value: pct.toDouble(),
+                min: 0,
+                max: 1,
+                onChanged: (v) {
+                  if (total == 0 ||
+                      AudioService.instance.currentUrl != widget.audioUrl) {
+                    return;
+                  }
+                  AudioService.instance
+                      .seekTo(Duration(milliseconds: (v * total).round()));
+                },
+              ),
+            ),
           ),
-          child: Slider(
-            value: pct.toDouble(), min: 0, max: 1,
-            onChanged: (v) {
-              if (total == 0 || AudioService.instance.currentUrl != widget.audioUrl) return;
-              AudioService.instance.seekTo(Duration(milliseconds: (v * total).round()));
-            },
+          const SizedBox(width: 8),
+          Text(
+            _isPlaying && _position.inSeconds > 0
+                ? _fmt(_position.inSeconds)
+                : _fmt(widget.durationSecs),
+            style: AppTypography.bodySmall.copyWith(
+              fontSize: 11,
+              color: AppColors.textSecondary,
+              fontFeatures: [const FontFeature.tabularFigures()],
+            ),
           ),
-        )),
-        const SizedBox(width: 8),
-        Text(
-          _isPlaying && _position.inSeconds > 0 ? _fmt(_position.inSeconds) : _fmt(widget.durationSecs),
-          style: AppTypography.bodySmall.copyWith(fontSize: 11, color: AppColors.textSecondary,
-              fontFeatures: [const FontFeature.tabularFigures()]),
-        ),
-      ]),
+        ],
+      ),
     );
   }
 }
@@ -778,144 +601,583 @@ class _ReactionRow extends StatelessWidget {
   final VoidCallback onShare;
 
   const _ReactionRow({
-    required this.post, required this.onLike,
-    required this.onComment, required this.onShare,
+    required this.post,
+    required this.onLike,
+    required this.onComment,
+    required this.onShare,
   });
 
   @override
-  Widget build(BuildContext context) => Row(children: [
-    _ReactionBtn(icon: LucideIcons.messageCircle, count: post.commentCount,
-        onTap: onComment, active: false, activeColor: AppColors.accentPrimary),
-    const SizedBox(width: 20),
-    _LikeBtn(post: post, onLike: onLike),
-    const Spacer(),
-    _ReactionBtn(icon: LucideIcons.share2, count: null,
-        onTap: onShare, active: false, activeColor: AppColors.textSecondary),
-  ]);
+  Widget build(BuildContext context) => Row(
+    children: [
+      _ReactionBtn(
+        icon: LucideIcons.messageCircle,
+        count: post.commentCount,
+        onTap: onComment,
+        active: false,
+        activeColor: AppColors.accentPrimary,
+      ),
+      const SizedBox(width: 20),
+      _LikeBtn(post: post, onLike: onLike),
+      const Spacer(),
+      _ReactionBtn(
+        icon: LucideIcons.share2,
+        count: null,
+        onTap: onShare,
+        active: false,
+        activeColor: AppColors.textSecondary,
+      ),
+    ],
+  );
 }
 
 class _ReactionBtn extends StatelessWidget {
-  final IconData icon; final int? count; final VoidCallback onTap;
-  final bool active; final Color activeColor;
-  const _ReactionBtn({required this.icon, required this.count, required this.onTap,
-    required this.active, required this.activeColor});
+  final IconData icon;
+  final int? count;
+  final VoidCallback onTap;
+  final bool active;
+  final Color activeColor;
+
+  const _ReactionBtn({
+    required this.icon,
+    required this.count,
+    required this.onTap,
+    required this.active,
+    required this.activeColor,
+  });
+
   @override
   Widget build(BuildContext context) => GestureDetector(
-    onTap: () { HapticFeedback.selectionClick(); onTap(); },
+    onTap: () {
+      HapticFeedback.selectionClick();
+      onTap();
+    },
     behavior: HitTestBehavior.opaque,
-    child: Padding(padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(mainAxisSize: MainAxisSize.min, children: [
-        Icon(icon, size: 17, color: active ? activeColor : AppColors.textSecondary),
-        if (count != null) ...[const SizedBox(width: 5),
-          Text('$count', style: AppTypography.bodySmall.copyWith(fontSize: 13,
-              color: active ? activeColor : AppColors.textSecondary,
-              fontFeatures: [const FontFeature.tabularFigures()]))],
-      ]),
+    child: Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon,
+              size: 17,
+              color: active ? activeColor : AppColors.textSecondary),
+          if (count != null) ...[
+            const SizedBox(width: 5),
+            Text(
+              '$count',
+              style: AppTypography.bodySmall.copyWith(
+                fontSize: 13,
+                color: active ? activeColor : AppColors.textSecondary,
+                fontFeatures: [const FontFeature.tabularFigures()],
+              ),
+            ),
+          ],
+        ],
+      ),
     ),
   );
 }
 
 class _LikeBtn extends StatefulWidget {
-  final PostModel post; final VoidCallback onLike;
+  final PostModel post;
+  final VoidCallback onLike;
   const _LikeBtn({required this.post, required this.onLike});
-  @override State<_LikeBtn> createState() => _LikeBtnState();
+
+  @override
+  State<_LikeBtn> createState() => _LikeBtnState();
 }
 
-class _LikeBtnState extends State<_LikeBtn> with SingleTickerProviderStateMixin {
+class _LikeBtnState extends State<_LikeBtn>
+    with SingleTickerProviderStateMixin {
   late final AnimationController _ctrl;
   late final Animation<double> _scale;
+
   @override
   void initState() {
     super.initState();
-    _ctrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 200));
+    _ctrl = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 200));
     _scale = TweenSequence([
       TweenSequenceItem(tween: Tween(begin: 1.0, end: 1.25), weight: 50),
       TweenSequenceItem(tween: Tween(begin: 1.25, end: 1.0), weight: 50),
     ]).animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut));
   }
-  @override void dispose() { _ctrl.dispose(); super.dispose(); }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) => GestureDetector(
-    onTap: () { HapticFeedback.mediumImpact(); _ctrl.forward(from: 0); widget.onLike(); },
+    onTap: () {
+      HapticFeedback.mediumImpact();
+      _ctrl.forward(from: 0);
+      widget.onLike();
+    },
     behavior: HitTestBehavior.opaque,
-    child: Padding(padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(mainAxisSize: MainAxisSize.min, children: [
-        ScaleTransition(scale: _scale,
-            child: Icon(widget.post.isLiked ? Icons.favorite_rounded : Icons.favorite_border_rounded,
-                size: 17, color: widget.post.isLiked ? AppColors.errorLight : AppColors.textSecondary)),
-        const SizedBox(width: 5),
-        Text('${widget.post.likeCount}', style: AppTypography.bodySmall.copyWith(
-            fontSize: 13, color: widget.post.isLiked ? AppColors.errorLight : AppColors.textSecondary,
-            fontFeatures: [const FontFeature.tabularFigures()])),
-      ]),
+    child: Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ScaleTransition(
+            scale: _scale,
+            child: Icon(
+              widget.post.isLiked
+                  ? Icons.favorite_rounded
+                  : Icons.favorite_border_rounded,
+              size: 17,
+              color: widget.post.isLiked
+                  ? AppColors.errorLight
+                  : AppColors.textSecondary,
+            ),
+          ),
+          const SizedBox(width: 5),
+          Text(
+            '${widget.post.likeCount}',
+            style: AppTypography.bodySmall.copyWith(
+              fontSize: 13,
+              color: widget.post.isLiked
+                  ? AppColors.errorLight
+                  : AppColors.textSecondary,
+              fontFeatures: [const FontFeature.tabularFigures()],
+            ),
+          ),
+        ],
+      ),
     ),
   );
 }
 
-// ── Shimmer ───────────────────────────────────────────────────────────────────
+// ── More Sheet (three dots) ───────────────────────────────────────────────────
+
+class _MoreSheet extends StatelessWidget {
+  final PostModel post;
+  const _MoreSheet({required this.post});
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomPad = MediaQuery.of(context).padding.bottom;
+
+    return Container(
+      decoration: const BoxDecoration(
+        color: Color(0xFF0E0E0E),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      padding: EdgeInsets.fromLTRB(0, 12, 0, bottomPad + 16),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 36,
+            height: 4,
+            decoration: BoxDecoration(
+              color: const Color(0xFF2A2A2A),
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          const SizedBox(height: 8),
+
+          // Post preview
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 4),
+            child: Text(
+              post.heading,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: AppTypography.bodySmall.copyWith(
+                fontSize: 12,
+                color: AppColors.hintText,
+                fontStyle: FontStyle.italic,
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 4),
+          Container(height: 0.5, color: const Color(0xFF1A1A1A)),
+          const SizedBox(height: 8),
+
+          _SheetItem(
+            icon: LucideIcons.flag,
+            label: 'Report post',
+            subtitle: 'Something about this isn\'t right',
+            onTap: () {
+              Navigator.of(context).pop();
+              FessSnackbar.show(
+                context,
+                'Report received — we\'ll look into it.',
+                type: SnackbarType.info,
+              );
+            },
+          ),
+
+          _SheetItem(
+            icon: LucideIcons.userX,
+            label: 'Block user',
+            subtitle: 'You won\'t see their posts anymore',
+            onTap: () {
+              Navigator.of(context).pop();
+              FessSnackbar.show(
+                context,
+                'Blocking — coming soon.',
+                type: SnackbarType.info,
+              );
+            },
+          ),
+
+          const SizedBox(height: 8),
+          GestureDetector(
+            onTap: () => Navigator.of(context).pop(),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              child: Text(
+                'Cancel',
+                style: AppTypography.bodyMedium.copyWith(
+                  color: AppColors.textSecondary,
+                  fontSize: 14,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SheetItem extends StatefulWidget {
+  final IconData icon;
+  final String label;
+  final String? subtitle;
+  final VoidCallback onTap;
+  final Color? labelColor;
+  final Color? iconColor;
+
+  const _SheetItem({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.subtitle,
+    this.labelColor,
+    this.iconColor,
+  });
+
+  @override
+  State<_SheetItem> createState() => _SheetItemState();
+}
+
+class _SheetItemState extends State<_SheetItem> {
+  bool _pressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTapDown: (_) => setState(() => _pressed = true),
+      onTapUp: (_) {
+        setState(() => _pressed = false);
+        HapticFeedback.selectionClick();
+        widget.onTap();
+      },
+      onTapCancel: () => setState(() => _pressed = false),
+      behavior: HitTestBehavior.opaque,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 80),
+        color: _pressed ? const Color(0xFF161616) : Colors.transparent,
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+        child: Row(
+          children: [
+            Icon(
+              widget.icon,
+              size: 18,
+              color: widget.iconColor ?? AppColors.textSecondary,
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    widget.label,
+                    style: AppTypography.bodyMedium.copyWith(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: widget.labelColor ?? AppColors.textPrimary,
+                    ),
+                  ),
+                  if (widget.subtitle != null)
+                    Text(
+                      widget.subtitle!,
+                      style: AppTypography.bodySmall.copyWith(
+                        fontSize: 11,
+                        color: AppColors.hintText,
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Delete Sheet ──────────────────────────────────────────────────────────────
+
+class _DeleteSheet extends ConsumerWidget {
+  final PostModel post;
+  final WidgetRef ref;
+  final VoidCallback onDeleted;
+
+  const _DeleteSheet({
+    required this.post,
+    required this.ref,
+    required this.onDeleted,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef _) {
+    final isDeleting = ref.watch(deletePostProvider);
+    final bottomPad = MediaQuery.of(context).padding.bottom;
+
+    return Container(
+      decoration: const BoxDecoration(
+        color: Color(0xFF0E0E0E),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      padding: EdgeInsets.fromLTRB(0, 12, 0, bottomPad + 12),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 36,
+            height: 4,
+            decoration: BoxDecoration(
+              color: const Color(0xFF2A2A2A),
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          const SizedBox(height: 24),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Delete this post?',
+                  style: TextStyle(
+                    fontFamily: 'DM Sans',
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.textPrimary,
+                    letterSpacing: -0.3,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'This removes it from your profile and the feed. Cannot be undone.',
+                  style: AppTypography.bodyMedium.copyWith(
+                    color: AppColors.textSecondary,
+                    height: 1.5,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 20),
+          Container(
+            margin: const EdgeInsets.symmetric(horizontal: 24),
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: const Color(0xFF111111),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFF1A1A1A)),
+            ),
+            child: Text(
+              post.heading,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: AppTypography.bodyMedium.copyWith(
+                color: AppColors.textSecondary,
+                fontStyle: FontStyle.italic,
+              ),
+            ),
+          ),
+          const SizedBox(height: 24),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            child: GestureDetector(
+              onTap: isDeleting
+                  ? null
+                  : () async {
+                HapticFeedback.mediumImpact();
+                final ok = await ref
+                    .read(deletePostProvider.notifier)
+                    .delete(
+                  postId: post.postId,
+                  authorId: post.authorId,
+                  type: post.type,
+                );
+                if (ok && context.mounted) {
+                  Navigator.of(context).pop();
+                  onDeleted();
+                }
+              },
+              child: Container(
+                width: double.infinity,
+                height: 50,
+                decoration: BoxDecoration(
+                  color: AppColors.errorLight.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: AppColors.errorLight.withOpacity(0.3),
+                  ),
+                ),
+                child: Center(
+                  child: isDeleting
+                      ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 1.5,
+                      color: AppColors.errorLight,
+                    ),
+                  )
+                      : const Text(
+                    'Delete post',
+                    style: TextStyle(
+                      fontFamily: 'DM Sans',
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.errorLight,
+                      letterSpacing: -0.2,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          GestureDetector(
+            onTap: () => Navigator.of(context).pop(),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              child: Text(
+                'Keep it',
+                style: AppTypography.bodyMedium.copyWith(
+                  color: AppColors.textSecondary,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Shimmer Card ──────────────────────────────────────────────────────────────
 
 class ConfessionShimmerCard extends StatefulWidget {
   const ConfessionShimmerCard({super.key});
-  @override State<ConfessionShimmerCard> createState() => _ConfessionShimmerCardState();
+
+  @override
+  State<ConfessionShimmerCard> createState() => _ConfessionShimmerCardState();
 }
 
 class _ConfessionShimmerCardState extends State<ConfessionShimmerCard>
     with SingleTickerProviderStateMixin {
   late final AnimationController _ctrl;
   late final Animation<double> _anim;
+
   @override
   void initState() {
     super.initState();
-    _ctrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 1500))..repeat();
+    _ctrl = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 1500))
+      ..repeat();
     _anim = CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut);
   }
-  @override void dispose() { _ctrl.dispose(); super.dispose(); }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) => AnimatedBuilder(
     animation: _anim,
     builder: (_, __) => Container(
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          _Bone(w: 36, h: 36, radius: 18, anim: _anim),
-          const SizedBox(width: 9),
-          Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            _Bone(w: 100, h: 12, radius: 4, anim: _anim),
-            const SizedBox(height: 4),
-            _Bone(w: 50, h: 10, radius: 4, anim: _anim),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            _Bone(w: 36, h: 36, radius: 18, anim: _anim),
+            const SizedBox(width: 9),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _Bone(w: 100, h: 12, radius: 4, anim: _anim),
+                const SizedBox(height: 4),
+                _Bone(w: 50, h: 10, radius: 4, anim: _anim),
+              ],
+            ),
           ]),
-        ]),
-        const SizedBox(height: 12),
-        _Bone(w: double.infinity, h: 14, radius: 4, anim: _anim),
-        const SizedBox(height: 6),
-        _Bone(w: double.infinity, h: 12, radius: 4, anim: _anim),
-        const SizedBox(height: 4),
-        _Bone(w: 200, h: 12, radius: 4, anim: _anim),
-        const SizedBox(height: 14),
-        Row(children: [
-          _Bone(w: 40, h: 12, radius: 4, anim: _anim),
-          const SizedBox(width: 20),
-          _Bone(w: 40, h: 12, radius: 4, anim: _anim),
-        ]),
-        const SizedBox(height: 14),
-        const Divider(height: 0.5, thickness: 0.5, color: Color(0xFF1A1A1A)),
-      ]),
+          const SizedBox(height: 12),
+          _Bone(w: double.infinity, h: 14, radius: 4, anim: _anim),
+          const SizedBox(height: 6),
+          _Bone(w: double.infinity, h: 12, radius: 4, anim: _anim),
+          const SizedBox(height: 4),
+          _Bone(w: 200, h: 12, radius: 4, anim: _anim),
+          const SizedBox(height: 14),
+          Row(children: [
+            _Bone(w: 40, h: 12, radius: 4, anim: _anim),
+            const SizedBox(width: 20),
+            _Bone(w: 40, h: 12, radius: 4, anim: _anim),
+          ]),
+          const SizedBox(height: 14),
+          const Divider(
+              height: 0.5, thickness: 0.5, color: Color(0xFF1A1A1A)),
+        ],
+      ),
     ),
   );
 }
 
 class _Bone extends StatelessWidget {
-  final double w, h, radius; final Animation<double> anim;
-  const _Bone({required this.w, required this.h, required this.radius, required this.anim});
+  final double w;
+  final double h;
+  final double radius;
+  final Animation<double> anim;
+  const _Bone(
+      {required this.w,
+        required this.h,
+        required this.radius,
+        required this.anim});
+
   @override
   Widget build(BuildContext context) => Container(
-    width: w, height: h,
+    width: w,
+    height: h,
     decoration: BoxDecoration(
       borderRadius: BorderRadius.circular(radius),
       gradient: LinearGradient(
-        begin: Alignment.centerLeft, end: Alignment.centerRight,
-        colors: const [Color(0xFF1A1A28), Color(0xFF252535), Color(0xFF1A1A28)],
-        stops: [(anim.value - 0.5).clamp(0.0, 1.0), anim.value.clamp(0.0, 1.0), (anim.value + 0.5).clamp(0.0, 1.0)],
+        begin: Alignment.centerLeft,
+        end: Alignment.centerRight,
+        colors: const [
+          Color(0xFF1A1A28),
+          Color(0xFF252535),
+          Color(0xFF1A1A28),
+        ],
+        stops: [
+          (anim.value - 0.5).clamp(0.0, 1.0),
+          anim.value.clamp(0.0, 1.0),
+          (anim.value + 0.5).clamp(0.0, 1.0),
+        ],
       ),
     ),
   );
