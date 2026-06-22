@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -15,7 +14,7 @@ import '../../streak/providers/streak_provider.dart';
 import '../providers/feed_provider.dart';
 import '../providers/tea_feed_provider.dart';
 
-// ── Entry point ───────────────────────────────────────────────────────────────
+// Entry Point
 
 class CreateConfessionSheet extends ConsumerStatefulWidget {
   const CreateConfessionSheet({super.key});
@@ -36,9 +35,9 @@ class _CreateConfessionSheetState extends ConsumerState<CreateConfessionSheet>
 
   // tea
   final _teaHeadingCtrl = TextEditingController();
-  final _teaBodyCtrl = TextEditingController(); //   NEW
+  final _teaBodyCtrl = TextEditingController();
   final _teaFocus = FocusNode();
-  final _teaBodyFocus = FocusNode(); //   NEW
+  final _teaBodyFocus = FocusNode();
 
   // voice
   _VoiceState _voice = _VoiceState.idle;
@@ -55,7 +54,7 @@ class _CreateConfessionSheetState extends ConsumerState<CreateConfessionSheet>
     return _headingCtrl.text.trim().isNotEmpty ||
         _bodyCtrl.text.trim().isNotEmpty ||
         _teaHeadingCtrl.text.trim().isNotEmpty ||
-        _teaBodyCtrl.text.trim().isNotEmpty || // NEW
+        _teaBodyCtrl.text.trim().isNotEmpty ||
         _recPath != null ||
         _voice == _VoiceState.recording;
   }
@@ -70,14 +69,14 @@ class _CreateConfessionSheetState extends ConsumerState<CreateConfessionSheet>
     super.initState();
     _tabCtrl = TabController(length: 2, vsync: this);
     _tabCtrl.addListener(_onTabChange);
-    //   _teaBodyCtrl added to listeners
     for (final c in [_headingCtrl, _bodyCtrl, _teaHeadingCtrl, _teaBodyCtrl]) {
       c.addListener(() => setState(() {}));
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       Future.delayed(
-          const Duration(milliseconds: 350),
-              () => mounted ? _headingFocus.requestFocus() : null);
+        const Duration(milliseconds: 350),
+            () => mounted ? _headingFocus.requestFocus() : null,
+      );
     });
   }
 
@@ -89,15 +88,15 @@ class _CreateConfessionSheetState extends ConsumerState<CreateConfessionSheet>
     _bodyCtrl.dispose();
     _headingFocus.dispose();
     _teaHeadingCtrl.dispose();
-    _teaBodyCtrl.dispose(); //   NEW
+    _teaBodyCtrl.dispose();
     _teaFocus.dispose();
-    _teaBodyFocus.dispose(); //   NEW
+    _teaBodyFocus.dispose();
     _timer?.cancel();
     AudioService.instance.stop();
     super.dispose();
   }
 
-  // ── Tab switch guard ──────────────────────────────────────────────────────
+  // Tab switch guard
 
   void _onTabChange() {
     if (!_tabCtrl.indexIsChanging) return;
@@ -120,7 +119,7 @@ class _CreateConfessionSheetState extends ConsumerState<CreateConfessionSheet>
     }
   }
 
-  // ── Voice ─────────────────────────────────────────────────────────────────
+  // Voice
 
   Future<void> _startRec() async {
     final ok = await AudioService.instance.hasPermission();
@@ -177,7 +176,7 @@ class _CreateConfessionSheetState extends ConsumerState<CreateConfessionSheet>
     });
   }
 
-  // ── Discard dialog ────────────────────────────────────────────────────────
+  // Discard dialog
 
   Future<bool?> _showDiscardDialog({
     required String title,
@@ -283,7 +282,7 @@ class _CreateConfessionSheetState extends ConsumerState<CreateConfessionSheet>
     );
   }
 
-  // ── Close with discard guard ──────────────────────────────────────────────
+  // Close with discard guard
 
   Future<void> _onClose() async {
     if (!_hasContent) {
@@ -300,7 +299,7 @@ class _CreateConfessionSheetState extends ConsumerState<CreateConfessionSheet>
     }
   }
 
-  // ── Post ──────────────────────────────────────────────────────────────────
+  // Post
 
   Future<void> _post() async {
     if (!_canPost) return;
@@ -329,7 +328,7 @@ class _CreateConfessionSheetState extends ConsumerState<CreateConfessionSheet>
     } else {
       final ok = await ref.read(createTeaProvider.notifier).createTea(
         heading: _teaHeadingCtrl.text,
-        body: _teaBodyCtrl.text.isNotEmpty ? _teaBodyCtrl.text : null, //   NEW
+        body: _teaBodyCtrl.text.isNotEmpty ? _teaBodyCtrl.text : null,
         localAudioPath: _recPath!,
         audioDurationSeconds: _recSecs,
       );
@@ -350,14 +349,12 @@ class _CreateConfessionSheetState extends ConsumerState<CreateConfessionSheet>
     }
   }
 
-  // ── Build ─────────────────────────────────────────────────────────────────
+  // Build
 
   @override
   Widget build(BuildContext context) {
     final isPosting =
         ref.watch(createPostProvider) || ref.watch(createTeaProvider);
-    final profile = ref.watch(currentProfileProvider).value;
-    final avatarUrl = _buildAvatarUrlFromProfile(profile);
     final bottomPad = MediaQuery.of(context).viewInsets.bottom;
 
     return Container(
@@ -371,7 +368,7 @@ class _CreateConfessionSheetState extends ConsumerState<CreateConfessionSheet>
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // ── Handle
+              // Handle
               Center(
                 child: Container(
                   margin: const EdgeInsets.only(top: 10, bottom: 6),
@@ -384,7 +381,7 @@ class _CreateConfessionSheetState extends ConsumerState<CreateConfessionSheet>
                 ),
               ),
 
-              // ── Top bar
+              // Top Bar
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
                 child: Row(
@@ -411,55 +408,55 @@ class _CreateConfessionSheetState extends ConsumerState<CreateConfessionSheet>
               const Divider(
                   height: 0.5, thickness: 0.5, color: Color(0xFF141420)),
 
-              // ── Content
+              // Scrollable content area (heading + body only)
               ConstrainedBox(
                 constraints: BoxConstraints(
-                  maxHeight: MediaQuery.of(context).size.height * 0.72,
+                  maxHeight: MediaQuery.of(context).size.height * 0.52,
                 ),
                 child: TabBarView(
                   controller: _tabCtrl,
                   physics: const NeverScrollableScrollPhysics(),
                   children: [
-                    // Spill tab
+                    // Spill: just heading + body, no avatar/username
                     _SpillComposer(
-                      avatarUrl: avatarUrl,
-                      username: profile?['username'] as String? ?? 'anon',
                       headingCtrl: _headingCtrl,
                       bodyCtrl: _bodyCtrl,
                       headingFocus: _headingFocus,
-                      voice: _voice,
-                      elapsed: _elapsed,
-                      recSecs: _recSecs,
-                      recPath: _recPath,
-                      amps: _amps,
-                      onStartRec: _startRec,
-                      onStopRec: _stopRec,
-                      onDiscardRec: _discardRec,
                     ),
-                    // Tea tab
+                    // Tea: just heading + body, no avatar/username
                     _TeaComposer(
-                      avatarUrl: avatarUrl,
-                      username: profile?['username'] as String? ?? 'anon',
                       headingCtrl: _teaHeadingCtrl,
-                      bodyCtrl: _teaBodyCtrl, //   NEW
+                      bodyCtrl: _teaBodyCtrl,
                       focus: _teaFocus,
-                      bodyFocus: _teaBodyFocus, //   NEW
-                      voice: _voice,
-                      elapsed: _elapsed,
-                      recSecs: _recSecs,
-                      recPath: _recPath,
-                      amps: _amps,
-                      onStartRec: _startRec,
-                      onStopRec: _stopRec,
-                      onDiscardRec: _discardRec,
+                      bodyFocus: _teaBodyFocus,
                     ),
                   ],
                 ),
               ),
 
-              // ── Bottom hint
+              const Divider(
+                  height: 0.5, thickness: 0.5, color: Color(0xFF141420)),
+
+              // Voice widget - moved to bottom, full-width pill style
               Padding(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+                padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
+                child: _VoiceSection(
+                  optional: _isSpill,
+                  maxSecs: _maxSecs,
+                  voice: _voice,
+                  elapsed: _elapsed,
+                  recSecs: _recSecs,
+                  recPath: _recPath,
+                  amps: _amps,
+                  onStart: _startRec,
+                  onStop: _stopRec,
+                  onDiscard: _discardRec,
+                ),
+              ),
+
+              // Bottom hint
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 2, 16, 8),
                 child: Row(
                   children: [
                     Icon(LucideIcons.globe,
@@ -471,7 +468,6 @@ class _CreateConfessionSheetState extends ConsumerState<CreateConfessionSheet>
                           fontSize: 13, color: AppColors.hintText),
                     ),
                     const Spacer(),
-                    //   Spill body counter — updated to 1500
                     if (_isSpill && _bodyCtrl.text.isNotEmpty)
                       Text(
                         '${_bodyCtrl.text.length}/1500',
@@ -482,7 +478,6 @@ class _CreateConfessionSheetState extends ConsumerState<CreateConfessionSheet>
                               : AppColors.hintText,
                         ),
                       ),
-                    //   Tea body counter — NEW
                     if (!_isSpill && _teaBodyCtrl.text.isNotEmpty)
                       Text(
                         '${_teaBodyCtrl.text.length}/1000',
@@ -513,7 +508,7 @@ class _CreateConfessionSheetState extends ConsumerState<CreateConfessionSheet>
 
 enum _VoiceState { idle, recording, recorded }
 
-// ── Sheet Tab Bar ─────────────────────────────────────────────────────────────
+// Sheet Tab Bar
 
 class _SheetTabBar extends StatelessWidget {
   final TabController ctrl;
@@ -554,150 +549,91 @@ class _SheetTabBar extends StatelessWidget {
   );
 }
 
-// ── Spill Composer ────────────────────────────────────────────────────────────
+// Spill Composer
+// Avatar, username, vertical line removed. Just heading + body.
 
 class _SpillComposer extends StatelessWidget {
-  final String? avatarUrl;
-  final String username;
   final TextEditingController headingCtrl;
   final TextEditingController bodyCtrl;
   final FocusNode headingFocus;
-  final _VoiceState voice;
-  final int elapsed;
-  final int recSecs;
-  final String? recPath;
-  final List<double> amps;
-  final VoidCallback onStartRec;
-  final VoidCallback onStopRec;
-  final VoidCallback onDiscardRec;
 
   const _SpillComposer({
-    required this.avatarUrl,
-    required this.username,
     required this.headingCtrl,
     required this.bodyCtrl,
     required this.headingFocus,
-    required this.voice,
-    required this.elapsed,
-    required this.recSecs,
-    required this.recPath,
-    required this.amps,
-    required this.onStartRec,
-    required this.onStopRec,
-    required this.onDiscardRec,
   });
 
   @override
   Widget build(BuildContext context) {
     return SingleChildScrollView(
       physics: const BouncingScrollPhysics(),
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
-      child: Row(
+      padding: const EdgeInsets.fromLTRB(20, 18, 20, 8),
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Column(
-            children: [
-              _ComposerAvatar(url: avatarUrl),
-              const SizedBox(height: 4),
-              Container(
-                  width: 1.5, height: 28, color: const Color(0xFF1E1E2A)),
-            ],
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '@$username',
-                  style: AppTypography.bodyMedium.copyWith(
-                    fontFamily: 'DM Sans',
-                    fontWeight: FontWeight.w700,
-                    fontSize: 15,
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: headingCtrl,
-                  focusNode: headingFocus,
-                  maxLines: null,
-                  maxLength: 100,
-                  buildCounter: (_, {required currentLength,
-                    required isFocused, maxLength}) =>
-                  null,
-                  style: const TextStyle(
-                    fontFamily: 'DM Sans',
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.textPrimary,
-                    height: 1.45,
-                  ),
-                  decoration: const InputDecoration(
-                    hintText: 'Title',
-                    hintStyle: TextStyle(
-                      fontFamily: 'DM Sans',
-                      fontSize: 18,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.hintText,
-                      height: 1.45,
-                    ),
-                    border: InputBorder.none,
-                    enabledBorder: InputBorder.none,
-                    focusedBorder: InputBorder.none,
-                    contentPadding: EdgeInsets.zero,
-                    isDense: true,
-                    filled: false,
-                  ),
-                  cursorColor: AppColors.accentPrimary,
-                  cursorWidth: 2,
-                ),
-                const SizedBox(height: 6),
-                //   maxLength updated to 1500
-                TextField(
-                  controller: bodyCtrl,
-                  maxLines: null,
-                  maxLength: 1500,
-                  buildCounter: (_, {required currentLength,
-                    required isFocused, maxLength}) =>
-                  null,
-                  style: AppTypography.bodyMedium.copyWith(
-                    fontSize: 15,
-                    color: AppColors.textSecondary,
-                    height: 1.6,
-                  ),
-                  decoration: InputDecoration(
-                    hintText: 'Spill it Completely..!',
-                    hintStyle: AppTypography.bodySmall.copyWith(
-                      fontSize: 15,
-                      color: AppColors.hintText,
-                      height: 1.6,
-                    ),
-                    border: InputBorder.none,
-                    enabledBorder: InputBorder.none,
-                    focusedBorder: InputBorder.none,
-                    contentPadding: EdgeInsets.zero,
-                    isDense: true,
-                    filled: false,
-                  ),
-                  cursorColor: AppColors.accentPrimary,
-                  cursorWidth: 2,
-                ),
-                const SizedBox(height: 14),
-                _VoiceSection(
-                  optional: true,
-                  maxSecs: 30,
-                  voice: voice,
-                  elapsed: elapsed,
-                  recSecs: recSecs,
-                  recPath: recPath,
-                  amps: amps,
-                  onStart: onStartRec,
-                  onStop: onStopRec,
-                  onDiscard: onDiscardRec,
-                ),
-              ],
+          TextField(
+            controller: headingCtrl,
+            focusNode: headingFocus,
+            maxLines: null,
+            maxLength: 100,
+            buildCounter: (_, {required currentLength,
+              required isFocused, maxLength}) =>
+            null,
+            style: const TextStyle(
+              fontFamily: 'DM Sans',
+              fontSize: 22,
+              fontWeight: FontWeight.w700,
+              color: AppColors.textPrimary,
+              height: 1.35,
             ),
+            decoration: const InputDecoration(
+              hintText: 'Title',
+              hintStyle: TextStyle(
+                fontFamily: 'DM Sans',
+                fontSize: 22,
+                fontWeight: FontWeight.w700,
+                color: AppColors.hintText,
+                height: 1.35,
+              ),
+              border: InputBorder.none,
+              enabledBorder: InputBorder.none,
+              focusedBorder: InputBorder.none,
+              contentPadding: EdgeInsets.zero,
+              isDense: true,
+              filled: false,
+            ),
+            cursorColor: AppColors.accentPrimary,
+            cursorWidth: 2,
+          ),
+          const SizedBox(height: 10),
+          TextField(
+            controller: bodyCtrl,
+            maxLines: null,
+            maxLength: 1500,
+            buildCounter: (_, {required currentLength,
+              required isFocused, maxLength}) =>
+            null,
+            style: AppTypography.bodyMedium.copyWith(
+              fontSize: 15,
+              color: AppColors.textSecondary,
+              height: 1.6,
+            ),
+            decoration: InputDecoration(
+              hintText: 'Spill it Completely..!',
+              hintStyle: AppTypography.bodySmall.copyWith(
+                fontSize: 15,
+                color: AppColors.hintText,
+                height: 1.6,
+              ),
+              border: InputBorder.none,
+              enabledBorder: InputBorder.none,
+              focusedBorder: InputBorder.none,
+              contentPadding: EdgeInsets.zero,
+              isDense: true,
+              filled: false,
+            ),
+            cursorColor: AppColors.accentPrimary,
+            cursorWidth: 2,
           ),
         ],
       ),
@@ -705,154 +641,94 @@ class _SpillComposer extends StatelessWidget {
   }
 }
 
-// ── Tea Composer ──────────────────────────────────────────────────────────────
+// Tea Composer
+// Avatar, username, vertical line removed. Just heading + body.
 
 class _TeaComposer extends StatelessWidget {
-  final String? avatarUrl;
-  final String username;
   final TextEditingController headingCtrl;
-  final TextEditingController bodyCtrl; //   NEW
+  final TextEditingController bodyCtrl;
   final FocusNode focus;
-  final FocusNode bodyFocus; //   NEW
-  final _VoiceState voice;
-  final int elapsed;
-  final int recSecs;
-  final String? recPath;
-  final List<double> amps;
-  final VoidCallback onStartRec;
-  final VoidCallback onStopRec;
-  final VoidCallback onDiscardRec;
+  final FocusNode bodyFocus;
 
   const _TeaComposer({
-    required this.avatarUrl,
-    required this.username,
     required this.headingCtrl,
-    required this.bodyCtrl, //   NEW
+    required this.bodyCtrl,
     required this.focus,
-    required this.bodyFocus, //   NEW
-    required this.voice,
-    required this.elapsed,
-    required this.recSecs,
-    required this.recPath,
-    required this.amps,
-    required this.onStartRec,
-    required this.onStopRec,
-    required this.onDiscardRec,
+    required this.bodyFocus,
   });
 
   @override
   Widget build(BuildContext context) {
     return SingleChildScrollView(
       physics: const BouncingScrollPhysics(),
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
-      child: Row(
+      padding: const EdgeInsets.fromLTRB(20, 18, 20, 8),
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Column(
-            children: [
-              _ComposerAvatar(url: avatarUrl),
-              const SizedBox(height: 4),
-              Container(
-                  width: 1.5, height: 28, color: const Color(0xFF1E1E2A)),
-            ],
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '@$username',
-                  style: AppTypography.bodyMedium.copyWith(
-                    fontFamily: 'DM Sans',
-                    fontWeight: FontWeight.w700,
-                    fontSize: 15,
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                // Heading
-                TextField(
-                  controller: headingCtrl,
-                  focusNode: focus,
-                  maxLines: null,
-                  maxLength: 100,
-                  buildCounter: (_, {required currentLength,
-                    required isFocused, maxLength}) =>
-                  null,
-                  style: const TextStyle(
-                    fontFamily: 'DM Sans',
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.textPrimary,
-                    height: 1.45,
-                  ),
-                  decoration: const InputDecoration(
-                    hintText: 'What\'s the tea?',
-                    hintStyle: TextStyle(
-                      fontFamily: 'DM Sans',
-                      fontSize: 18,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.hintText,
-                      height: 1.45,
-                    ),
-                    border: InputBorder.none,
-                    enabledBorder: InputBorder.none,
-                    focusedBorder: InputBorder.none,
-                    contentPadding: EdgeInsets.zero,
-                    isDense: true,
-                    filled: false,
-                  ),
-                  cursorColor: AppColors.accentPrimary,
-                  cursorWidth: 2,
-                ),
-                const SizedBox(height: 6),
-                //   NEW — optional body field, maxLength 1000
-                TextField(
-                  controller: bodyCtrl,
-                  focusNode: bodyFocus,
-                  maxLines: null,
-                  maxLength: 1000,
-                  buildCounter: (_, {required currentLength,
-                    required isFocused, maxLength}) =>
-                  null,
-                  style: AppTypography.bodyMedium.copyWith(
-                    fontSize: 15,
-                    color: AppColors.textSecondary,
-                    height: 1.6,
-                  ),
-                  decoration: InputDecoration(
-                    hintText: 'Spill it completely... (optional)',
-                    hintStyle: AppTypography.bodySmall.copyWith(
-                      fontSize: 15,
-                      color: AppColors.hintText,
-                      height: 1.6,
-                    ),
-                    border: InputBorder.none,
-                    enabledBorder: InputBorder.none,
-                    focusedBorder: InputBorder.none,
-                    contentPadding: EdgeInsets.zero,
-                    isDense: true,
-                    filled: false,
-                  ),
-                  cursorColor: AppColors.accentPrimary,
-                  cursorWidth: 2,
-                ),
-                const SizedBox(height: 14),
-                _VoiceSection(
-                  optional: false,
-                  maxSecs: 60,
-                  voice: voice,
-                  elapsed: elapsed,
-                  recSecs: recSecs,
-                  recPath: recPath,
-                  amps: amps,
-                  onStart: onStartRec,
-                  onStop: onStopRec,
-                  onDiscard: onDiscardRec,
-                ),
-              ],
+          TextField(
+            controller: headingCtrl,
+            focusNode: focus,
+            maxLines: null,
+            maxLength: 100,
+            buildCounter: (_, {required currentLength,
+              required isFocused, maxLength}) =>
+            null,
+            style: const TextStyle(
+              fontFamily: 'DM Sans',
+              fontSize: 22,
+              fontWeight: FontWeight.w700,
+              color: AppColors.textPrimary,
+              height: 1.35,
             ),
+            decoration: const InputDecoration(
+              hintText: 'What\'s the tea?',
+              hintStyle: TextStyle(
+                fontFamily: 'DM Sans',
+                fontSize: 22,
+                fontWeight: FontWeight.w700,
+                color: AppColors.hintText,
+                height: 1.35,
+              ),
+              border: InputBorder.none,
+              enabledBorder: InputBorder.none,
+              focusedBorder: InputBorder.none,
+              contentPadding: EdgeInsets.zero,
+              isDense: true,
+              filled: false,
+            ),
+            cursorColor: AppColors.accentPrimary,
+            cursorWidth: 2,
+          ),
+          const SizedBox(height: 10),
+          TextField(
+            controller: bodyCtrl,
+            focusNode: bodyFocus,
+            maxLines: null,
+            maxLength: 1000,
+            buildCounter: (_, {required currentLength,
+              required isFocused, maxLength}) =>
+            null,
+            style: AppTypography.bodyMedium.copyWith(
+              fontSize: 15,
+              color: AppColors.textSecondary,
+              height: 1.6,
+            ),
+            decoration: InputDecoration(
+              hintText: 'Spill it completely... (optional)',
+              hintStyle: AppTypography.bodySmall.copyWith(
+                fontSize: 15,
+                color: AppColors.hintText,
+                height: 1.6,
+              ),
+              border: InputBorder.none,
+              enabledBorder: InputBorder.none,
+              focusedBorder: InputBorder.none,
+              contentPadding: EdgeInsets.zero,
+              isDense: true,
+              filled: false,
+            ),
+            cursorColor: AppColors.accentPrimary,
+            cursorWidth: 2,
           ),
         ],
       ),
@@ -860,46 +736,7 @@ class _TeaComposer extends StatelessWidget {
   }
 }
 
-// ── Composer Avatar ───────────────────────────────────────────────────────────
-
-class _ComposerAvatar extends StatelessWidget {
-  final String? url;
-  const _ComposerAvatar({this.url});
-
-  @override
-  Widget build(BuildContext context) => Container(
-    width: 38,
-    height: 38,
-    decoration: BoxDecoration(
-      shape: BoxShape.circle,
-      border: Border.all(
-        color: AppColors.accentPrimary.withOpacity(0.3),
-        width: 1.2,
-      ),
-    ),
-    child: ClipOval(
-      child: url != null
-          ? CachedNetworkImage(
-        imageUrl: url!,
-        fit: BoxFit.cover,
-        placeholder: (_, __) =>
-            Container(color: const Color(0xFF1A1A28)),
-        errorWidget: (_, __, ___) => Container(
-          color: const Color(0xFF1A1A28),
-          child: const Icon(LucideIcons.user,
-              size: 18, color: AppColors.hintText),
-        ),
-      )
-          : Container(
-        color: const Color(0xFF1A1A28),
-        child: const Icon(LucideIcons.user,
-            size: 18, color: AppColors.hintText),
-      ),
-    ),
-  );
-}
-
-// ── Voice Section ─────────────────────────────────────────────────────────────
+// Voice Section
 
 class _VoiceSection extends StatelessWidget {
   final bool optional;
@@ -964,17 +801,19 @@ class _VoiceSection extends StatelessWidget {
   );
 }
 
-// ── Idle Voice ────────────────────────────────────────────────────────────────
+// Idle Voice
+// Redesigned as full-width pill to match reference screenshot
 
 class _IdleVoice extends StatelessWidget {
   final bool optional;
   final int maxSecs;
   final VoidCallback onStart;
-  const _IdleVoice(
-      {super.key,
-        required this.optional,
-        required this.maxSecs,
-        required this.onStart});
+  const _IdleVoice({
+    super.key,
+    required this.optional,
+    required this.maxSecs,
+    required this.onStart,
+  });
 
   @override
   Widget build(BuildContext context) => GestureDetector(
@@ -982,36 +821,44 @@ class _IdleVoice extends StatelessWidget {
       HapticFeedback.mediumImpact();
       onStart();
     },
-    child: Row(
-      children: [
-        Container(
-          width: 36,
-          height: 36,
-          decoration: BoxDecoration(
-            color: const Color(0xFF141420),
-            shape: BoxShape.circle,
-            border:
-            Border.all(color: const Color(0xFF252535), width: 0.8),
+    child: Container(
+      width: double.infinity,
+      height: 52,
+      decoration: BoxDecoration(
+        color: const Color(0xFF111118),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFF1E1E2A), width: 0.8),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Row(
+        children: [
+          Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(
+              color: AppColors.accentPrimary.withOpacity(0.12),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(LucideIcons.mic,
+                size: 16, color: AppColors.accentPrimary),
           ),
-          child: const Icon(LucideIcons.mic,
-              size: 16, color: AppColors.accentPrimary),
-        ),
-        const SizedBox(width: 10),
-        Text(
-          optional
-              ? 'Add a voice note · ${maxSecs}s max'
-              : 'Record your voice · ${maxSecs}s max',
-          style: AppTypography.bodySmall.copyWith(
-            fontSize: 13,
-            color: AppColors.textSecondary,
+          const SizedBox(width: 12),
+          Text(
+            optional
+                ? 'Add voice note (optional) · ${maxSecs}s max'
+                : 'Record your voice · ${maxSecs}s max',
+            style: AppTypography.bodySmall.copyWith(
+              fontSize: 14,
+              color: AppColors.textSecondary,
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     ),
   );
 }
 
-// ── Recording Voice ───────────────────────────────────────────────────────────
+// Recording Voice
 
 class _RecordingVoice extends StatelessWidget {
   final int elapsed;
@@ -1035,49 +882,59 @@ class _RecordingVoice extends StatelessWidget {
     final remaining = maxSecs - elapsed;
     final nearEnd = remaining <= 10;
 
-    return Row(
-      children: [
-        GestureDetector(
-          onTap: () {
-            HapticFeedback.mediumImpact();
-            onStop();
-          },
-          child: Container(
-            width: 36,
-            height: 36,
-            decoration: const BoxDecoration(
-              color: AppColors.errorLight,
-              shape: BoxShape.circle,
-            ),
-            child: Center(
-              child: Container(
-                width: 12,
-                height: 12,
-                decoration: const BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.all(Radius.circular(2)),
+    return Container(
+      width: double.infinity,
+      height: 52,
+      decoration: BoxDecoration(
+        color: const Color(0xFF111118),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFF1E1E2A), width: 0.8),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      child: Row(
+        children: [
+          GestureDetector(
+            onTap: () {
+              HapticFeedback.mediumImpact();
+              onStop();
+            },
+            child: Container(
+              width: 34,
+              height: 34,
+              decoration: const BoxDecoration(
+                color: AppColors.errorLight,
+                shape: BoxShape.circle,
+              ),
+              child: Center(
+                child: Container(
+                  width: 11,
+                  height: 11,
+                  decoration: const BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.all(Radius.circular(2)),
+                  ),
                 ),
               ),
             ),
           ),
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: SizedBox(
-            height: 36,
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: List.generate(
-                amps.length,
-                    (i) => Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 0.8),
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 60),
-                      height: (amps[i] * 32).clamp(2.5, 32.0),
-                      decoration: BoxDecoration(
-                        color: AppColors.errorLight.withOpacity(0.65),
-                        borderRadius: BorderRadius.circular(1.5),
+          const SizedBox(width: 10),
+          Expanded(
+            child: SizedBox(
+              height: 34,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: List.generate(
+                  amps.length,
+                      (i) => Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 0.8),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 60),
+                        height: (amps[i] * 28).clamp(2.5, 28.0),
+                        decoration: BoxDecoration(
+                          color: AppColors.errorLight.withOpacity(0.65),
+                          borderRadius: BorderRadius.circular(1.5),
+                        ),
                       ),
                     ),
                   ),
@@ -1085,20 +942,20 @@ class _RecordingVoice extends StatelessWidget {
               ),
             ),
           ),
-        ),
-        const SizedBox(width: 10),
-        _RecDot(),
-        const SizedBox(width: 5),
-        Text(
-          _fmt(elapsed),
-          style: AppTypography.bodySmall.copyWith(
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-            color: nearEnd ? AppColors.errorLight : AppColors.textPrimary,
-            fontFeatures: [const FontFeature.tabularFigures()],
+          const SizedBox(width: 10),
+          _RecDot(),
+          const SizedBox(width: 5),
+          Text(
+            _fmt(elapsed),
+            style: AppTypography.bodySmall.copyWith(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: nearEnd ? AppColors.errorLight : AppColors.textPrimary,
+              fontFeatures: [const FontFeature.tabularFigures()],
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
@@ -1137,7 +994,7 @@ class _RecDotState extends State<_RecDot> with SingleTickerProviderStateMixin {
   );
 }
 
-// ── Recorded Voice ────────────────────────────────────────────────────────────
+// Recorded Voice
 
 class _RecordedVoice extends StatefulWidget {
   final int recSecs;
@@ -1222,10 +1079,10 @@ class _RecordedVoiceState extends State<_RecordedVoice> {
       },
       background: Container(
         alignment: Alignment.centerRight,
-        padding: const EdgeInsets.only(right: 12),
+        padding: const EdgeInsets.only(right: 16),
         decoration: BoxDecoration(
           color: AppColors.errorLight.withOpacity(0.12),
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(14),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -1245,15 +1102,22 @@ class _RecordedVoiceState extends State<_RecordedVoice> {
         ),
       ),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 2),
+        width: double.infinity,
+        height: 52,
+        decoration: BoxDecoration(
+          color: const Color(0xFF111118),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: const Color(0xFF1E1E2A), width: 0.8),
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 12),
         child: Row(
           children: [
             GestureDetector(
               onTap: _toggle,
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 150),
-                width: 36,
-                height: 36,
+                width: 34,
+                height: 34,
                 decoration: BoxDecoration(
                   color: _playing
                       ? AppColors.accentPrimary
@@ -1267,8 +1131,7 @@ class _RecordedVoiceState extends State<_RecordedVoice> {
                       _playing ? LucideIcons.pause : LucideIcons.play,
                       key: ValueKey(_playing),
                       size: 14,
-                      color:
-                      _playing ? Colors.black : AppColors.accentPrimary,
+                      color: _playing ? Colors.black : AppColors.accentPrimary,
                     ),
                   ),
                 ),
@@ -1316,18 +1179,19 @@ class _RecordedVoiceState extends State<_RecordedVoice> {
   }
 }
 
-// ── Post Button ───────────────────────────────────────────────────────────────
+// Post Button
 
 class _PostBtn extends StatefulWidget {
   final String label;
   final bool canPost;
   final bool isPosting;
   final VoidCallback onPost;
-  const _PostBtn(
-      {required this.label,
-        required this.canPost,
-        required this.isPosting,
-        required this.onPost});
+  const _PostBtn({
+    required this.label,
+    required this.canPost,
+    required this.isPosting,
+    required this.onPost,
+  });
 
   @override
   State<_PostBtn> createState() => _PostBtnState();
