@@ -4,6 +4,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:timeago/timeago.dart' as timeago;
@@ -14,14 +15,18 @@ import '../../../core/models/avatar_config.dart';
 import '../../../core/models/post_model.dart';
 import '../../../core/services/audio_service.dart';
 import '../../../core/widgets/fess_snackbar.dart';
+import '../providers/feed_provider.dart';
+import '../providers/profile_provider.dart';
 
-class ConfessionCard extends StatefulWidget {
+class ConfessionCard extends ConsumerStatefulWidget {
   final PostModel post;
-  final String? currentAnonId;
+  final String? currentAnonId; // the LOGGED-IN user's anonId
   final VoidCallback onLike;
   final VoidCallback onTap;
   final VoidCallback? onComment;
   final VoidCallback? onShare;
+  final VoidCallback? onAuthorTap;
+  final VoidCallback? onDelete;
 
   const ConfessionCard({
     super.key,
@@ -31,100 +36,226 @@ class ConfessionCard extends StatefulWidget {
     required this.onTap,
     this.onComment,
     this.onShare,
+    this.onAuthorTap,
+    this.onDelete,
   });
 
   @override
-  State<ConfessionCard> createState() => _ConfessionCardState();
+  ConsumerState<ConfessionCard> createState() => _ConfessionCardState();
 }
 
-class _ConfessionCardState extends State<ConfessionCard> {
+class _ConfessionCardState extends ConsumerState<ConfessionCard>
+    with SingleTickerProviderStateMixin {
   bool _pressed = false;
+  bool _deleted = false;
+  late final AnimationController _deleteCtrl;
+  late final Animation<double> _deleteFade;
+
+  bool get _isOwn =>
+      widget.currentAnonId != null &&
+          widget.post.authorId == widget.currentAnonId;
+
+  @override
+  void initState() {
+    super.initState();
+    _deleteCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 420),
+    );
+    _deleteFade = Tween<double>(begin: 0, end: 1).animate(
+      CurvedAnimation(parent: _deleteCtrl, curve: Curves.easeIn),
+    );
+  }
+
+  @override
+  void dispose() {
+    _deleteCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _animateDelete() async {
+    setState(() => _deleted = true);
+    await _deleteCtrl.forward();
+    widget.onDelete?.call();
+    // Remove from providers
+    ref.invalidate(mySpillsProvider(widget.post.authorId));
+    ref.invalidate(myTeaProvider(widget.post.authorId));
+    ref.read(forYouFeedProvider.notifier).removePost(widget.post.postId);
+  }
+
+  void _showDeleteSheet() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _DeleteSheet(
+        post: widget.post,
+        ref: ref,
+        onDeleted: _animateDelete,
+      ),
+    );
+  }
+
+  void _showMoreSheet() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _MoreSheet(post: widget.post),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: () {
-        HapticFeedback.selectionClick();
-        widget.onTap();
-      },
-      onTapDown: (_) => setState(() => _pressed = true),
-      onTapUp: (_) => setState(() => _pressed = false),
-      onTapCancel: () => setState(() => _pressed = false),
-      onLongPress: () {
-        HapticFeedback.mediumImpact();
-        FessSnackbar.show(
-          context,
-          'Report & Block — coming soon',
-          type: SnackbarType.info,
-        );
-      },
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 80),
-        color: _pressed ? const Color(0xFF111111) : Colors.transparent,
-        padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _CardHeader(post: widget.post),
-            const SizedBox(height: 10),
-            Text(
-              widget.post.heading,
-              style: AppTypography.h4.copyWith(
-                fontFamily: 'DM Sans',
-                fontSize: 16,
-                fontWeight: FontWeight.w700,
-                color: AppColors.textPrimary,
-                height: 1.4,
-              ),
-            ),
-            if (widget.post.body != null && widget.post.body!.isNotEmpty) ...[
-              const SizedBox(height: 5),
-              Text(
-                widget.post.body!,
-                maxLines: 3,
-                overflow: TextOverflow.ellipsis,
-                style: AppTypography.bodyMedium.copyWith(
-                  color: AppColors.textSecondary,
-                  height: 1.55,
+    return AnimatedSize(
+      duration: const Duration(milliseconds: 380),
+      curve: Curves.easeInOut,
+      child: _deleted
+          ? AnimatedBuilder(
+        animation: _deleteFade,
+        builder: (_, __) => Opacity(
+          opacity: (1 - _deleteFade.value).clamp(0.0, 1.0),
+          child: Container(
+            color: AppColors.errorLight.withOpacity(
+                0.06 * _deleteFade.value),
+            height: _deleted && _deleteCtrl.isCompleted ? 0 : null,
+            child: _cardBody(context),
+          ),
+        ),
+      )
+          : GestureDetector(
+        onTap: () {
+          HapticFeedback.selectionClick();
+          widget.onTap();
+        },
+        onTapDown: (_) => setState(() => _pressed = true),
+        onTapUp: (_) => setState(() => _pressed = false),
+        onTapCancel: () => setState(() => _pressed = false),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 80),
+          color:
+          _pressed ? const Color(0xFF111111) : Colors.transparent,
+          child: _cardBody(context),
+        ),
+      )
+          .animate()
+          .fadeIn(duration: 300.ms)
+          .slideY(
+          begin: 0.04,
+          end: 0,
+          duration: 300.ms,
+          curve: Curves.easeOut),
+    );
+  }
+
+  Widget _cardBody(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _CardHeader(
+            post: widget.post,
+            onAuthorTap: widget.onAuthorTap,
+            isOwn: _isOwn,
+            onDeleteTap: _showDeleteSheet,
+            onMoreTap: _showMoreSheet,
+          ),
+          const SizedBox(height: 10),
+
+          // spill_in_tea badge
+          if (widget.post.type == 'spill_in_tea')
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Container(
+                padding:
+                const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1A0A2E),
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(
+                    color: AppColors.accentSecondary.withOpacity(0.3),
+                    width: 0.6,
+                  ),
+                ),
+                child: Text(
+                  'spilled completely',
+                  style: TextStyle(
+                    fontFamily: 'DM Serif Display',
+                    fontStyle: FontStyle.italic,
+                    fontSize: 11,
+                    color: AppColors.accentSecondary.withOpacity(0.8),
+                  ),
                 ),
               ),
-            ],
-            if (widget.post.imageUrls.isNotEmpty) ...[
-              const SizedBox(height: 10),
-              _CardImage(url: widget.post.imageUrls.first),
-            ],
-            if (widget.post.audioUrl != null &&
-                widget.post.audioUrl!.isNotEmpty) ...[
-              const SizedBox(height: 10),
-              _InlineVoicePlayer(
-                key: ValueKey('voice_${widget.post.postId}'),
-                audioUrl: widget.post.audioUrl!,
-                durationSecs: widget.post.audioDuration ?? 0,
-              ),
-            ],
-            const SizedBox(height: 12),
-            _ReactionRow(
-              post: widget.post,
-              onLike: widget.onLike,
-              onComment: widget.onComment ?? widget.onTap,
-              onShare: widget.onShare ?? () {},
             ),
-            const SizedBox(height: 14),
-            const Divider(height: 0.5, thickness: 0.5, color: Color(0xFF1A1A1A)),
+
+          Text(
+            widget.post.heading,
+            style: AppTypography.h4.copyWith(
+              fontFamily: 'DM Sans',
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+              color: AppColors.textPrimary,
+              height: 1.4,
+            ),
+          ),
+          if (widget.post.body != null &&
+              widget.post.body!.isNotEmpty) ...[
+            const SizedBox(height: 5),
+            Text(
+              widget.post.body!,
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+              style: AppTypography.bodyMedium.copyWith(
+                color: AppColors.textSecondary,
+                height: 1.55,
+              ),
+            ),
           ],
-        ),
+          if (widget.post.imageUrls.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            _CardImage(url: widget.post.imageUrls.first),
+          ],
+          if (widget.post.audioUrl != null &&
+              widget.post.audioUrl!.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            _InlineVoicePlayer(
+              key: ValueKey('voice_${widget.post.postId}'),
+              audioUrl: widget.post.audioUrl!,
+              durationSecs: widget.post.audioDuration ?? 0,
+            ),
+          ],
+          const SizedBox(height: 12),
+          _ReactionRow(
+            post: widget.post,
+            onLike: widget.onLike,
+            onComment: widget.onComment ?? widget.onTap,
+            onShare: widget.onShare ?? () {},
+          ),
+          const SizedBox(height: 14),
+          const Divider(
+              height: 0.5, thickness: 0.5, color: Color(0xFF1A1A1A)),
+        ],
       ),
-    )
-        .animate()
-        .fadeIn(duration: 300.ms)
-        .slideY(begin: 0.04, end: 0, duration: 300.ms, curve: Curves.easeOut);
+    );
   }
 }
 
+// ── Card Header ───────────────────────────────────────────────────────────────
+
 class _CardHeader extends StatelessWidget {
   final PostModel post;
+  final VoidCallback? onAuthorTap;
+  final bool isOwn;
+  final VoidCallback onDeleteTap;
+  final VoidCallback onMoreTap;
 
-  const _CardHeader({required this.post});
+  const _CardHeader({
+    required this.post,
+    required this.isOwn,
+    required this.onDeleteTap,
+    required this.onMoreTap,
+    this.onAuthorTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -139,45 +270,83 @@ class _CardHeader extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        _Avatar(url: avatarUrl),
-        const SizedBox(width: 9),
+        // Tappable author area (avatar + name + time)
         Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                '@${post.authorUsername ?? 'anon'}',
-                style: AppTypography.bodyMedium.copyWith(
-                  fontFamily: 'DM Sans',
-                  fontWeight: FontWeight.w700,
-                  fontSize: 14,
-                  color: AppColors.textPrimary,
-                ),
-              ),
-              GestureDetector(
-                onLongPress: () {
-                  if (post.createdAt == null) return;
-                  final full =
-                      '${post.createdAt!.day}/${post.createdAt!.month}/${post.createdAt!.year} '
-                      '${post.createdAt!.hour.toString().padLeft(2, '0')}:${post.createdAt!.minute.toString().padLeft(2, '0')}';
-                  FessSnackbar.show(context, full, type: SnackbarType.info);
-                },
-                child: Text(
-                  timeStr,
-                  style: AppTypography.bodySmall.copyWith(
-                    fontSize: 11,
-                    color: AppColors.hintText,
+          child: GestureDetector(
+            onTap: onAuthorTap,
+            behavior: HitTestBehavior.opaque,
+            child: Row(
+              children: [
+                _Avatar(url: avatarUrl),
+                const SizedBox(width: 9),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        '@${post.authorUsername ?? 'anon'}',
+                        style: AppTypography.bodyMedium.copyWith(
+                          fontFamily: 'DM Sans',
+                          fontWeight: FontWeight.w700,
+                          fontSize: 14,
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                      Text(
+                        timeStr,
+                        style: AppTypography.bodySmall.copyWith(
+                          fontSize: 11,
+                          color: AppColors.hintText,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
+              ],
+            ),
+          ),
+        ),
+
+        // Actions — trash (own only) + three dots (everyone)
+        if (isOwn)
+          GestureDetector(
+            onTap: () {
+              HapticFeedback.selectionClick();
+              onDeleteTap();
+            },
+            behavior: HitTestBehavior.opaque,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(8, 4, 4, 4),
+              child: Icon(
+                LucideIcons.trash2,
+                size: 15,
+                color: AppColors.errorLight.withOpacity(0.55),
               ),
-            ],
+            ),
+          ),
+
+        GestureDetector(
+          onTap: () {
+            HapticFeedback.selectionClick();
+            onMoreTap();
+          },
+          behavior: HitTestBehavior.opaque,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(8, 4, 0, 4),
+            child: Icon(
+              LucideIcons.moreHorizontal,
+              size: 16,
+              color: AppColors.hintText,
+            ),
           ),
         ),
       ],
     );
   }
 }
+
+// ── Avatar ────────────────────────────────────────────────────────────────────
 
 class _Avatar extends StatelessWidget {
   final String? url;
@@ -213,9 +382,12 @@ class _AnonAvatar extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Container(
     color: const Color(0xFF1A1A1A),
-    child: const Icon(LucideIcons.user, size: 18, color: AppColors.hintText),
+    child:
+    const Icon(LucideIcons.user, size: 18, color: AppColors.hintText),
   );
 }
+
+// ── Card Image ────────────────────────────────────────────────────────────────
 
 class _CardImage extends StatelessWidget {
   final String url;
@@ -241,6 +413,8 @@ class _CardImage extends StatelessWidget {
     ),
   );
 }
+
+// ── Inline Voice Player ───────────────────────────────────────────────────────
 
 class _InlineVoicePlayer extends StatefulWidget {
   final String audioUrl;
@@ -365,7 +539,8 @@ class _InlineVoicePlayerState extends State<_InlineVoicePlayer> {
                     _isPlaying ? LucideIcons.pause : LucideIcons.play,
                     key: ValueKey(_isPlaying),
                     size: 13,
-                    color: _isPlaying ? Colors.black : AppColors.accentPrimary,
+                    color:
+                    _isPlaying ? Colors.black : AppColors.accentPrimary,
                   ),
                 ),
               ),
@@ -376,7 +551,8 @@ class _InlineVoicePlayerState extends State<_InlineVoicePlayer> {
             child: SliderTheme(
               data: SliderTheme.of(context).copyWith(
                 trackHeight: 2,
-                thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 4),
+                thumbShape:
+                const RoundSliderThumbShape(enabledThumbRadius: 4),
                 overlayShape:
                 const RoundSliderOverlayShape(overlayRadius: 10),
                 activeTrackColor: AppColors.accentPrimary,
@@ -415,6 +591,8 @@ class _InlineVoicePlayerState extends State<_InlineVoicePlayer> {
     );
   }
 }
+
+// ── Reaction Row ──────────────────────────────────────────────────────────────
 
 class _ReactionRow extends StatelessWidget {
   final PostModel post;
@@ -573,6 +751,335 @@ class _LikeBtnState extends State<_LikeBtn>
   );
 }
 
+// ── More Sheet (three dots) ───────────────────────────────────────────────────
+
+class _MoreSheet extends StatelessWidget {
+  final PostModel post;
+  const _MoreSheet({required this.post});
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomPad = MediaQuery.of(context).padding.bottom;
+
+    return Container(
+      decoration: const BoxDecoration(
+        color: Color(0xFF0E0E0E),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      padding: EdgeInsets.fromLTRB(0, 12, 0, bottomPad + 16),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 36,
+            height: 4,
+            decoration: BoxDecoration(
+              color: const Color(0xFF2A2A2A),
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          const SizedBox(height: 8),
+
+          // Post preview
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 4),
+            child: Text(
+              post.heading,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: AppTypography.bodySmall.copyWith(
+                fontSize: 12,
+                color: AppColors.hintText,
+                fontStyle: FontStyle.italic,
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 4),
+          Container(height: 0.5, color: const Color(0xFF1A1A1A)),
+          const SizedBox(height: 8),
+
+          _SheetItem(
+            icon: LucideIcons.flag,
+            label: 'Report post',
+            subtitle: 'Something about this isn\'t right',
+            onTap: () {
+              Navigator.of(context).pop();
+              FessSnackbar.show(
+                context,
+                'Report received — we\'ll look into it.',
+                type: SnackbarType.info,
+              );
+            },
+          ),
+
+          _SheetItem(
+            icon: LucideIcons.userX,
+            label: 'Block user',
+            subtitle: 'You won\'t see their posts anymore',
+            onTap: () {
+              Navigator.of(context).pop();
+              FessSnackbar.show(
+                context,
+                'Blocking — coming soon.',
+                type: SnackbarType.info,
+              );
+            },
+          ),
+
+          const SizedBox(height: 8),
+          GestureDetector(
+            onTap: () => Navigator.of(context).pop(),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              child: Text(
+                'Cancel',
+                style: AppTypography.bodyMedium.copyWith(
+                  color: AppColors.textSecondary,
+                  fontSize: 14,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SheetItem extends StatefulWidget {
+  final IconData icon;
+  final String label;
+  final String? subtitle;
+  final VoidCallback onTap;
+  final Color? labelColor;
+  final Color? iconColor;
+
+  const _SheetItem({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.subtitle,
+    this.labelColor,
+    this.iconColor,
+  });
+
+  @override
+  State<_SheetItem> createState() => _SheetItemState();
+}
+
+class _SheetItemState extends State<_SheetItem> {
+  bool _pressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTapDown: (_) => setState(() => _pressed = true),
+      onTapUp: (_) {
+        setState(() => _pressed = false);
+        HapticFeedback.selectionClick();
+        widget.onTap();
+      },
+      onTapCancel: () => setState(() => _pressed = false),
+      behavior: HitTestBehavior.opaque,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 80),
+        color: _pressed ? const Color(0xFF161616) : Colors.transparent,
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+        child: Row(
+          children: [
+            Icon(
+              widget.icon,
+              size: 18,
+              color: widget.iconColor ?? AppColors.textSecondary,
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    widget.label,
+                    style: AppTypography.bodyMedium.copyWith(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: widget.labelColor ?? AppColors.textPrimary,
+                    ),
+                  ),
+                  if (widget.subtitle != null)
+                    Text(
+                      widget.subtitle!,
+                      style: AppTypography.bodySmall.copyWith(
+                        fontSize: 11,
+                        color: AppColors.hintText,
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Delete Sheet ──────────────────────────────────────────────────────────────
+
+class _DeleteSheet extends ConsumerWidget {
+  final PostModel post;
+  final WidgetRef ref;
+  final VoidCallback onDeleted;
+
+  const _DeleteSheet({
+    required this.post,
+    required this.ref,
+    required this.onDeleted,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef _) {
+    final isDeleting = ref.watch(deletePostProvider);
+    final bottomPad = MediaQuery.of(context).padding.bottom;
+
+    return Container(
+      decoration: const BoxDecoration(
+        color: Color(0xFF0E0E0E),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      padding: EdgeInsets.fromLTRB(0, 12, 0, bottomPad + 12),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 36,
+            height: 4,
+            decoration: BoxDecoration(
+              color: const Color(0xFF2A2A2A),
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          const SizedBox(height: 24),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Delete this post?',
+                  style: TextStyle(
+                    fontFamily: 'DM Sans',
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.textPrimary,
+                    letterSpacing: -0.3,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'This removes it from your profile and the feed. Cannot be undone.',
+                  style: AppTypography.bodyMedium.copyWith(
+                    color: AppColors.textSecondary,
+                    height: 1.5,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 20),
+          Container(
+            margin: const EdgeInsets.symmetric(horizontal: 24),
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: const Color(0xFF111111),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFF1A1A1A)),
+            ),
+            child: Text(
+              post.heading,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: AppTypography.bodyMedium.copyWith(
+                color: AppColors.textSecondary,
+                fontStyle: FontStyle.italic,
+              ),
+            ),
+          ),
+          const SizedBox(height: 24),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            child: GestureDetector(
+              onTap: isDeleting
+                  ? null
+                  : () async {
+                HapticFeedback.mediumImpact();
+                final ok = await ref
+                    .read(deletePostProvider.notifier)
+                    .delete(
+                  postId: post.postId,
+                  authorId: post.authorId,
+                  type: post.type,
+                );
+                if (ok && context.mounted) {
+                  Navigator.of(context).pop();
+                  onDeleted();
+                }
+              },
+              child: Container(
+                width: double.infinity,
+                height: 50,
+                decoration: BoxDecoration(
+                  color: AppColors.errorLight.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: AppColors.errorLight.withOpacity(0.3),
+                  ),
+                ),
+                child: Center(
+                  child: isDeleting
+                      ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 1.5,
+                      color: AppColors.errorLight,
+                    ),
+                  )
+                      : const Text(
+                    'Delete post',
+                    style: TextStyle(
+                      fontFamily: 'DM Sans',
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.errorLight,
+                      letterSpacing: -0.2,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          GestureDetector(
+            onTap: () => Navigator.of(context).pop(),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              child: Text(
+                'Keep it',
+                style: AppTypography.bodyMedium.copyWith(
+                  color: AppColors.textSecondary,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Shimmer Card ──────────────────────────────────────────────────────────────
+
 class ConfessionShimmerCard extends StatefulWidget {
   const ConfessionShimmerCard({super.key});
 
@@ -633,7 +1140,8 @@ class _ConfessionShimmerCardState extends State<ConfessionShimmerCard>
             _Bone(w: 40, h: 12, radius: 4, anim: _anim),
           ]),
           const SizedBox(height: 14),
-          const Divider(height: 0.5, thickness: 0.5, color: Color(0xFF1A1A1A)),
+          const Divider(
+              height: 0.5, thickness: 0.5, color: Color(0xFF1A1A1A)),
         ],
       ),
     ),

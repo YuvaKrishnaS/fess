@@ -37,7 +37,6 @@ class _ProfilePageState extends ConsumerState<ProfilePage>
   @override
   void initState() {
     super.initState();
-    // 2 tabs only — Spills + Tea
     _tab = TabController(
       length: 2,
       vsync: this,
@@ -60,12 +59,12 @@ class _ProfilePageState extends ConsumerState<ProfilePage>
       error: (_, __) =>
       const _PageScaffold(child: _PageError(msg: 'Could not load profile.')),
       data: (myId) {
-        // Confirm anonId matches — log it so you can verify
         debugPrint(
             '[ProfilePage] myId=$myId | viewing anonId=${widget.anonId} | isOwn=${widget.anonId == myId}');
         final isOwn = widget.anonId == myId;
         return _ProfilePageBody(
           anonId: widget.anonId,
+          myId: myId,
           isOwn: isOwn,
           tab: _tab,
         );
@@ -86,11 +85,13 @@ class _PageScaffold extends StatelessWidget {
 
 class _ProfilePageBody extends ConsumerWidget {
   final String anonId;
+  final String? myId;
   final bool isOwn;
   final TabController tab;
 
   const _ProfilePageBody({
     required this.anonId,
+    required this.myId,
     required this.isOwn,
     required this.tab,
   });
@@ -153,8 +154,8 @@ class _ProfilePageBody extends ConsumerWidget {
         body: TabBarView(
           controller: tab,
           children: [
-            _SpillsTab(anonId: anonId),
-            _TeaTab(anonId: anonId),
+            _SpillsTab(anonId: anonId, myId: myId),
+            _TeaTab(anonId: anonId, myId: myId),
           ],
         ),
       ),
@@ -240,9 +241,7 @@ class _FullProfileHeader extends StatelessWidget {
                   : const _AnonAvatarLg(),
             ),
           ),
-
           const SizedBox(height: 14),
-
           Text(
             '@${profile.username}',
             style: AppTypography.h2.copyWith(
@@ -251,9 +250,7 @@ class _FullProfileHeader extends StatelessWidget {
               color: AppColors.textPrimary,
             ),
           ),
-
           const SizedBox(height: 4),
-
           GestureDetector(
             onLongPress: () {
               Clipboard.setData(ClipboardData(text: profile.anonId));
@@ -273,24 +270,14 @@ class _FullProfileHeader extends StatelessWidget {
               ),
             ),
           ),
-
           const SizedBox(height: 20),
-
-          // ── Stats ──
           Row(
             children: [
-              _StatBlock(
-                label: 'Spills',
-                value: profile.totalPostCount,
-              ),
+              _StatBlock(label: 'Spills', value: profile.totalPostCount),
               const SizedBox(width: 28),
-              _StatBlock(
-                label: 'Tea',
-                value: profile.totalTeaCount,  // correct field now
-              ),
+              _StatBlock(label: 'Tea', value: profile.totalTeaCount),
             ],
           ),
-
           const SizedBox(height: 20),
         ],
       ),
@@ -340,7 +327,8 @@ class _StatBlock extends StatelessWidget {
 
 class _SpillsTab extends ConsumerWidget {
   final String anonId;
-  const _SpillsTab({required this.anonId});
+  final String? myId;
+  const _SpillsTab({required this.anonId, required this.myId});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -353,17 +341,14 @@ class _SpillsTab extends ConsumerWidget {
         return _emptyState('Could not load spills.\n$e', isError: true);
       },
       data: (feed) {
-        // Surface Firestore errors that were caught inside the provider
         if (feed.error != null) {
           debugPrint('[_SpillsTab] feed error: ${feed.error}');
           return _emptyState(feed.error!, isError: true);
         }
-
         if (feed.posts.isEmpty) {
           return _emptyState(
               'No spills yet.\nWhen you spill, they show up here.');
         }
-
         return ListView.builder(
           itemCount: feed.posts.length + 1,
           itemBuilder: (ctx, i) {
@@ -372,11 +357,19 @@ class _SpillsTab extends ConsumerWidget {
             return ConfessionCard(
               key: ValueKey(post.postId),
               post: post,
-              currentAnonId: anonId,
+              currentAnonId: myId,
               onTap: () => Navigator.of(ctx).push(
                 postDetailHeroRoute(post.postId, initialPost: post),
               ),
-              onLike: () {},
+              //   FutureProvider has no notifier — use forYouFeedProvider for likes
+              onLike: () => ref
+                  .read(forYouFeedProvider.notifier)
+                  .toggleLike(post.postId),
+              onAuthorTap: post.authorId != myId
+                  ? () => context.push('/profile/${post.authorId}')
+                  : null,
+              //   invalidate re-fetches the list after delete
+              onDelete: () => ref.invalidate(mySpillsProvider(anonId)),
             );
           },
         );
@@ -387,7 +380,8 @@ class _SpillsTab extends ConsumerWidget {
 
 class _TeaTab extends ConsumerWidget {
   final String anonId;
-  const _TeaTab({required this.anonId});
+  final String? myId;
+  const _TeaTab({required this.anonId, required this.myId});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -404,12 +398,9 @@ class _TeaTab extends ConsumerWidget {
           debugPrint('[_TeaTab] feed error: ${feed.error}');
           return _emptyState(feed.error!, isError: true);
         }
-
         if (feed.posts.isEmpty) {
-          return _emptyState(
-              'No tea yet.\nSpill the tea to see it here.');
+          return _emptyState('No tea yet.\nSpill the tea to see it here.');
         }
-
         return ListView.builder(
           itemCount: feed.posts.length + 1,
           itemBuilder: (ctx, i) {
@@ -418,11 +409,18 @@ class _TeaTab extends ConsumerWidget {
             return ConfessionCard(
               key: ValueKey(post.postId),
               post: post,
-              currentAnonId: anonId,
+              currentAnonId: myId,
               onTap: () => Navigator.of(ctx).push(
                 postDetailHeroRoute(post.postId, initialPost: post),
               ),
-              onLike: () {},
+              //   same — forYouFeedProvider is the writable notifier for likes
+              onLike: () => ref
+                  .read(forYouFeedProvider.notifier)
+                  .toggleLike(post.postId),
+              onAuthorTap: post.authorId != myId
+                  ? () => context.push('/profile/${post.authorId}')
+                  : null,
+              onDelete: () => ref.invalidate(myTeaProvider(anonId)),
             );
           },
         );
@@ -468,8 +466,7 @@ class _AnonAvatarLg extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       color: const Color(0xFF1A1A1A),
-      child:
-      const Icon(LucideIcons.user, size: 36, color: AppColors.hintText),
+      child: const Icon(LucideIcons.user, size: 36, color: AppColors.hintText),
     );
   }
 }
@@ -484,12 +481,12 @@ class _EasterEgg extends StatelessWidget {
         children: [
           Opacity(
             opacity: 0.25,
-            child: Image.asset('assets/images/logo.png',
-                width: 48, height: 48),
+            child:
+            Image.asset('assets/images/logo.png', width: 48, height: 48),
           ),
           const SizedBox(height: 16),
           Text(
-            "There's nothing here to discover more, bruhh !!",
+            "You reached the end of the posts! go touch some grass ;P",
             textAlign: TextAlign.center,
             style: AppTypography.bodyMedium.copyWith(
               fontSize: 13,
@@ -604,19 +601,18 @@ class _ShimmerBox extends StatelessWidget {
   const _ShimmerBox({
     required this.width,
     required this.height,
-    required this.radius
+    required this.radius,
   });
 
   @override
-
   Widget build(BuildContext context) {
     return Container(
       width: width,
       height: height,
       decoration: BoxDecoration(
         color: const Color(0xFF1A1A1A),
-        borderRadius: BorderRadius.circular(radius)
-      )
+        borderRadius: BorderRadius.circular(radius),
+      ),
     );
   }
 }

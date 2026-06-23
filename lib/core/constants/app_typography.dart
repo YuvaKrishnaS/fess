@@ -96,4 +96,14 @@ class AppTypography {
     color: AppColors.hintText,
     height: 1.5,
   );
+
+  static const TextStyle serifItalic = TextStyle(
+    fontFamily: 'DM Sans Display',
+    fontStyle: FontStyle.italic,
+    fontSize: 22,
+    fontWeight: FontWeight.w400,
+    color: AppColors.textSecondary,
+    height: 1.3,
+    letterSpacing: -0.3,
+  );
 }

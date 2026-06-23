@@ -142,7 +142,7 @@ class StreakModel {
     );
   }
 
-  // ── Display helpers ───────────────────────────────────────────────────────
+  //  - - Display helpers  - - ---------------------------------
 
   /// True if the streak is "alive" - user was active today or yesterday.
   bool get isAlive {
@@ -158,7 +158,7 @@ class StreakModel {
   /// Label for the streak badge - e.g. "12🔥" or "1d"
   String get badgeLabel => '$currentStreak';
 
-  // ── Private ───────────────────────────────────────────────────────────────
+  // ── Private ----------───
 
   /// Strip time component - gives midnight of the given date
   static DateTime _dateOnly(DateTime dt) =>
@@ -167,8 +167,21 @@ class StreakModel {
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-          other is StreakModel && other.anonId == anonId;
+          other is StreakModel &&
+              other.currentStreak == currentStreak &&
+              other.longestStreak == longestStreak &&
+              other.totalActiveDays == totalActiveDays &&
+              other.lastActiveDate?.day == lastActiveDate?.day &&
+              other.lastActiveDate?.month == lastActiveDate?.month &&
+              other.lastActiveDate?.year == lastActiveDate?.year &&
+              other.graceUsed == graceUsed;
 
   @override
-  int get hashCode => anonId.hashCode;
+  int get hashCode => Object.hash(
+      currentStreak,
+      longestStreak,
+      totalActiveDays,
+      lastActiveDate?.day,
+      graceUsed
+  );
 }

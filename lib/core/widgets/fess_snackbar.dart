@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:lucide_icons/lucide_icons.dart';
+
 import '../constants/app_colors.dart';
 import '../constants/app_typography.dart';
 
@@ -15,9 +16,8 @@ class FessSnackbar {
       BuildContext context,
       String message, {
         SnackbarType type = SnackbarType.info,
-        Duration duration = const Duration(milliseconds: 2500),
+        Duration duration = const Duration(milliseconds: 2800),
       }) {
-    // Dismiss any existing snackbar first
     _dismiss();
     HapticFeedback.lightImpact();
 
@@ -52,18 +52,24 @@ class FessSnackbar {
     switch (type) {
       case SnackbarType.success:
         return _SnackbarConfig(
-          icon: LucideIcons.checkCircle,
-          accentColor: AppColors.accentPrimary,
+          icon: LucideIcons.checkCircle2,
+          accentColor: const Color(0xFF1DE9B6),
+          bgColor: const Color(0xFF0D1F1B),
+          borderColor: const Color(0xFF1DE9B6),
         );
       case SnackbarType.error:
         return _SnackbarConfig(
-          icon: LucideIcons.alertCircle,
+          icon: LucideIcons.xCircle,
           accentColor: AppColors.errorLight,
+          bgColor: const Color(0xFF1F0D0D),
+          borderColor: AppColors.errorLight,
         );
       case SnackbarType.info:
         return _SnackbarConfig(
           icon: LucideIcons.info,
           accentColor: AppColors.textSecondary,
+          bgColor: const Color(0xFF141414),
+          borderColor: const Color(0xFF2A2A2A),
         );
     }
   }
@@ -72,7 +78,14 @@ class FessSnackbar {
 class _SnackbarConfig {
   final IconData icon;
   final Color accentColor;
-  const _SnackbarConfig({required this.icon, required this.accentColor});
+  final Color bgColor;
+  final Color borderColor;
+  const _SnackbarConfig({
+    required this.icon,
+    required this.accentColor,
+    required this.bgColor,
+    required this.borderColor,
+  });
 }
 
 class _FessSnackbarWidget extends StatefulWidget {
@@ -94,7 +107,7 @@ class _FessSnackbarWidget extends StatefulWidget {
 
 class _FessSnackbarWidgetState extends State<_FessSnackbarWidget>
     with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
+  late AnimationController _ctrl;
   late Animation<double> _slideAnim;
   late Animation<double> _fadeAnim;
   bool _dismissed = false;
@@ -102,19 +115,19 @@ class _FessSnackbarWidgetState extends State<_FessSnackbarWidget>
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(
+    _ctrl = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 320),
+      duration: const Duration(milliseconds: 380),
     );
 
-    _slideAnim = Tween<double>(begin: 24, end: 0).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic),
+    _slideAnim = Tween<double>(begin: 20, end: 0).animate(
+      CurvedAnimation(parent: _ctrl, curve: Curves.easeOutCubic),
     );
     _fadeAnim = Tween<double>(begin: 0, end: 1).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeOut),
+      CurvedAnimation(parent: _ctrl, curve: Curves.easeOut),
     );
 
-    _controller.forward();
+    _ctrl.forward();
 
     Future.delayed(widget.duration, () {
       if (mounted && !_dismissed) _exit();
@@ -124,13 +137,13 @@ class _FessSnackbarWidgetState extends State<_FessSnackbarWidget>
   void _exit() async {
     if (_dismissed) return;
     _dismissed = true;
-    await _controller.reverse();
+    await _ctrl.reverse();
     if (mounted) widget.onDismiss();
   }
 
   @override
   void dispose() {
-    _controller.dispose();
+    _ctrl.dispose();
     super.dispose();
   }
 
@@ -139,11 +152,11 @@ class _FessSnackbarWidgetState extends State<_FessSnackbarWidget>
     final bottomPad = MediaQuery.of(context).padding.bottom;
 
     return Positioned(
-      bottom: bottomPad + 24,
-      left: 16,
-      right: 16,
+      bottom: bottomPad + 28,
+      left: 24,
+      right: 24,
       child: AnimatedBuilder(
-        animation: _controller,
+        animation: _ctrl,
         builder: (_, child) => Transform.translate(
           offset: Offset(0, _slideAnim.value),
           child: Opacity(opacity: _fadeAnim.value, child: child),
@@ -153,57 +166,45 @@ class _FessSnackbarWidgetState extends State<_FessSnackbarWidget>
           child: Material(
             color: Colors.transparent,
             child: Container(
+              padding:
+              const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
               decoration: BoxDecoration(
-                color: const Color(0xFF1C1C1E),
-                borderRadius: BorderRadius.circular(14),
+                color: widget.config.bgColor,
+                borderRadius: BorderRadius.circular(12),
                 border: Border.all(
-                  color: Colors.white.withOpacity(0.07),
-                  width: 0.5,
+                  color: widget.config.borderColor.withOpacity(0.35),
+                  width: 0.8,
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.5),
-                    blurRadius: 24,
-                    offset: const Offset(0, 8),
+                    color: Colors.black.withOpacity(0.55),
+                    blurRadius: 20,
+                    offset: const Offset(0, 6),
                   ),
                 ],
               ),
               child: Row(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  // Left accent bar
-                  Container(
-                    width: 3,
-                    height: 52,
-                    decoration: BoxDecoration(
-                      color: widget.config.accentColor,
-                      borderRadius: const BorderRadius.only(
-                        topLeft: Radius.circular(14),
-                        bottomLeft: Radius.circular(14),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
                   Icon(
                     widget.config.icon,
-                    size: 18,
+                    size: 16,
                     color: widget.config.accentColor,
                   ),
                   const SizedBox(width: 10),
                   Expanded(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      child: Text(
-                        widget.message,
-                        style: AppTypography.bodySmall.copyWith(
-                          color: AppColors.textPrimary,
-                          fontWeight: FontWeight.w600,
-                          fontSize: 13,
-                          height: 1.4,
-                        ),
+                    child: Text(
+                      widget.message,
+                      style: AppTypography.bodySmall.copyWith(
+                        color: AppColors.textPrimary,
+                        fontWeight: FontWeight.w500,
+                        fontSize: 13,
+                        height: 1.3,
                       ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
-                  const SizedBox(width: 14),
                 ],
               ),
             ),

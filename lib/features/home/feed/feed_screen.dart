@@ -3,6 +3,7 @@ import 'package:fessv2/features/streak/widgets/streak_cup.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
 import '../../../core/constants/app_colors.dart';
@@ -12,8 +13,8 @@ import '../post_detail/post_detail_screen.dart';
 import '../providers/feed_provider.dart';
 import '../providers/scroll_visibility_provider.dart';
 import '../widgets/confession_card.dart';
-import '../../streak/widgets/streak_cup.dart';
-import '../../streak/providers/streak_provider.dart';
+// import '../../streak/widgets/streak_cup.dart';
+// import '../../streak/providers/streak_provider.dart';
 
 class FeedScreen extends ConsumerStatefulWidget {
   const FeedScreen({super.key});
@@ -342,6 +343,7 @@ class _ForYouTab extends ConsumerWidget {
                 ),
                 onLike: () =>
                     ref.read(forYouFeedProvider.notifier).toggleLike(post.postId),
+                onAuthorTap: () => context.push('/profile/${post.authorId}')
               );
             },
           ),
