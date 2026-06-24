@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../features/auth/login_screen.dart';
 import '../../features/home/home_scaffold.dart';
 import '../../features/home/post_detail/post_detail_screen.dart';
+import '../../features/home/screens/dm_conversation_screen.dart';
 import '../../features/home/screens/profile_page.dart';
 import '../../features/home/screens/profile_settings_page.dart';
 import '../../features/onboarding/onboarding_screen.dart';
@@ -70,6 +71,18 @@ class AppRouter {
           final tabParam = state.uri.queryParameters['tab'];
           final tab = int.tryParse(tabParam ?? '') ?? 0;
           return ProfilePage(anonId: anonId, initialTab: tab);
+        },
+      ),
+      GoRoute(
+        path: '/dm/:peerId',
+        builder: (context, state) {
+          final peerId = state.pathParameters['peerId']!;
+          final extra = state.extra as Map<String, dynamic>?;
+          return DmConversationScreen(
+            peerId: peerId,
+            initialUsername: extra?['username'] as String?,
+            initialAvatarUrl: extra?['avatarUrl'] as String?,
+          );
         },
       ),
     ],
