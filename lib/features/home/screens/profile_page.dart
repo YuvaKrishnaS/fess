@@ -169,7 +169,7 @@ class _ProfilePageBody extends ConsumerWidget {
   }
 }
 
-// ─── App Bar ──────────────────────────────────────────────────────────────────
+// App Bar
 
 class _ProfileAppBar extends ConsumerWidget {
   final String anonId;

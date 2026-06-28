@@ -36,16 +36,21 @@ StreamProvider<List<DmConversation>>((ref) async* {
 
 // Total unread count across all conversations
 
-final totalUnreadProvider = Provider<int>((ref) {
-  final inbox = ref.watch(dmInboxProvider);
-  final anonId = LocalStorageService.getCachedAnonId();
-  if (anonId == null) return 0;
-  return inbox.when(
-    data: (convos) =>
-        convos.fold(0, (sum, c) => sum + c.unreadFor(anonId)),
-    loading: () => 0,
-    error: (_, __) => 0,
-  );
+final totalUnreadProvider = StreamProvider<int>((ref) async* {
+  final anonId = await ref.watch(currentAnonIdProvider.future);
+  if (anonId == null) {
+    yield 0;
+    return;
+  }
+  yield* FirebaseService.firestore
+      .collection('conversations')
+      .where('participants', arrayContains: anonId)
+      .snapshots()
+      .map((snap) => snap.docs.fold<int>(0, (sum, doc) {
+    final counts =
+        (doc.data()['unreadCounts'] as Map<String, dynamic>?) ?? {};
+    return sum + ((counts[anonId] as num?)?.toInt() ?? 0);
+  }));
 });
 
 // Single conversation messages: real-time stream

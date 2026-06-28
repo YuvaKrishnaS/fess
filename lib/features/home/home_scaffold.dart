@@ -62,7 +62,7 @@ class _HomeScaffoldState extends ConsumerState<HomeScaffold> {
 
   @override
   Widget build(BuildContext context) {
-    final totalUnread = ref.watch(totalUnreadProvider);
+    final totalUnread = ref.watch(totalUnreadProvider).value ?? 0;
 
     return Scaffold(
       backgroundColor: AppColors.backgroundMain,
