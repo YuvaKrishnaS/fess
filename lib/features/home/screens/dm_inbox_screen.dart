@@ -11,7 +11,6 @@ import '../../../core/models/avatar_config.dart';
 import '../../../core/models/dm_model.dart';
 import '../../../core/services/local_storage_service.dart';
 import '../providers/dm_provider.dart';
-import '../providers/feed_provider.dart';
 
 class DmInboxScreen extends ConsumerWidget {
   const DmInboxScreen({super.key});
@@ -34,24 +33,17 @@ class DmInboxScreen extends ConsumerWidget {
         ),
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(0.5),
-          child: Container(height: 0.5, color: const Color(0xFF1A1A1A))
-        )
+          child: Container(height: 0.5, color: const Color(0xFF1A1A1A)),
+        ),
       ),
       body: inboxAsync.when(
         loading: () => const Center(
           child: CircularProgressIndicator(
             strokeWidth: 2,
             color: AppColors.accentPrimary,
-          )
+          ),
         ),
-        error: (e, _) => Center(
-          child: Text(
-            'Could not load messages.',
-            style: AppTypography.bodyMedium.copyWith(
-              color: AppColors.textSecondary,
-            )
-          )
-        ),
+        error: (e, _) => _EmptyInbox(),
         data: (convos) {
           if (convos.isEmpty) return _EmptyInbox();
           return ListView.separated(
@@ -63,13 +55,11 @@ class DmInboxScreen extends ConsumerWidget {
               indent: 72,
               color: Color(0xFF141414),
             ),
-            itemBuilder: (ctx, i) => _ConvoTile(
-              convo: convos[i],
-              myId: myId,
-            ),
+            itemBuilder: (ctx, i) =>
+                _ConvoTile(convo: convos[i], myId: myId),
           );
-        }
-      )
+        },
+      ),
     );
   }
 }
@@ -90,30 +80,25 @@ class _ConvoTile extends ConsumerWidget {
       loading: () => const SizedBox(height: 72),
       error: (_, __) => const SizedBox.shrink(),
       data: (profile) {
-        final username =
-            profile?['username'] as String? ?? 'anon';
+        final username = profile?['username'] as String? ?? 'anon';
         final avatarUrl = _avatarUrl(profile);
         final lastMsg = convo.lastMessage ?? '';
         final isFromMe = convo.lastSenderId == myId;
 
         return InkWell(
-          onTap: () {
-            context.push(
-              '/dm/$peerId',
-              extra: {'username': username, 'avatarUrl': avatarUrl},
-            );
-          },
+          onTap: () => context.push(
+            '/dm/$peerId',
+            extra: {'username': username, 'avatarUrl': avatarUrl},
+          ),
           splashColor: Colors.transparent,
           highlightColor: const Color(0xFF0F0F0F),
           child: Padding(
-            padding: const EdgeInsets.symmetric(
-                horizontal: 16, vertical: 12),
+            padding:
+            const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             child: Row(
               children: [
-                // Avatar
                 _DmAvatar(url: avatarUrl, size: 46),
                 const SizedBox(width: 12),
-                // Text
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -136,8 +121,7 @@ class _ConvoTile extends ConsumerWidget {
                           ),
                           if (convo.lastMessageAt != null)
                             Text(
-                              timeago.format(
-                                  convo.lastMessageAt!,
+                              timeago.format(convo.lastMessageAt!,
                                   allowFromNow: true),
                               style: AppTypography.bodySmall.copyWith(
                                 fontSize: 11,
@@ -153,9 +137,7 @@ class _ConvoTile extends ConsumerWidget {
                         children: [
                           Expanded(
                             child: Text(
-                              isFromMe
-                                  ? 'You: $lastMsg'
-                                  : lastMsg,
+                              isFromMe ? 'You: $lastMsg' : lastMsg,
                               style: AppTypography.bodySmall.copyWith(
                                 fontSize: 13,
                                 color: unread > 0
@@ -225,24 +207,36 @@ class _EmptyInbox extends StatelessWidget {
             width: 64,
             height: 64,
             decoration: BoxDecoration(
-              color: const Color(0xFF0F0F0F),
+              color: const Color(0xFF0D0D0D),
               shape: BoxShape.circle,
-              border: Border.all(
-                color: const Color(0xFF1E1E1E), width: 0.8),
+              border:
+              Border.all(color: const Color(0xFF1E1E1E), width: 0.8),
+            ),
+            child: const Icon(LucideIcons.messageCircle,
+                size: 28, color: AppColors.hintText),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'No messages yet',
+            style: AppTypography.bodyMedium.copyWith(
+              fontFamily: 'DM Sans',
+              fontWeight: FontWeight.w700,
+              fontSize: 16,
+              color: AppColors.textPrimary,
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 6),
           Text(
-            'Visit someone\'s profile and tap Message\n to start a private conversation',
+            'Visit someone\'s profile and tap\nMessage to start a private chat.',
             textAlign: TextAlign.center,
             style: AppTypography.bodySmall.copyWith(
               fontSize: 13,
               color: AppColors.hintText,
-              height: 1.6
-            )
-          )
+              height: 1.6,
+            ),
+          ),
         ],
-      )
+      ),
     );
   }
 }

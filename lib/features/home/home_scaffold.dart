@@ -12,7 +12,7 @@ import 'providers/scroll_visibility_provider.dart';
 import 'screens/dm_inbox_screen.dart';
 import 'tea/tea_screen.dart';
 import 'widgets/create_confession_sheet.dart';
-import 'world/world_placeholder_screen.dart';
+import 'world/world_screen.dart';
 
 class HomeScaffold extends ConsumerStatefulWidget {
   const HomeScaffold({super.key});
@@ -27,7 +27,7 @@ class _HomeScaffoldState extends ConsumerState<HomeScaffold> {
   final List<Widget> _screens = const [
     FeedScreen(),
     TeaScreen(),
-    WorldPlaceholderScreen(),
+    WorldScreen(),
     DmInboxScreen(),
   ];
 
@@ -47,8 +47,7 @@ class _HomeScaffoldState extends ConsumerState<HomeScaffold> {
 
   void _openCreate() {
     if (_currentIndex > 1) {
-      FessSnackbar.show(context, 'Coming soon',
-          type: SnackbarType.info);
+      FessSnackbar.show(context, 'Coming soon', type: SnackbarType.info);
       return;
     }
     HapticFeedback.mediumImpact();
@@ -150,9 +149,7 @@ class _BottomNav extends StatelessWidget {
           child: Row(
             children: List.generate(items.length, (i) {
               final active = i == currentIndex;
-              // Badge only on Chat tab (index 3)
-              final showBadge =
-                  i == 3 && totalUnread > 0 && !active;
+              final showBadge = i == 3 && totalUnread > 0 && !active;
               return Expanded(
                 child: GestureDetector(
                   onTap: () => onTap(i),
@@ -165,8 +162,7 @@ class _BottomNav extends StatelessWidget {
                         children: [
                           AnimatedScale(
                             scale: active ? 1.12 : 1.0,
-                            duration:
-                            const Duration(milliseconds: 180),
+                            duration: const Duration(milliseconds: 180),
                             curve: Curves.easeOut,
                             child: Icon(
                               items[i].icon,
@@ -189,9 +185,7 @@ class _BottomNav extends StatelessWidget {
                                 ),
                                 child: Center(
                                   child: Text(
-                                    totalUnread > 9
-                                        ? '9+'
-                                        : '$totalUnread',
+                                    totalUnread > 9 ? '9+' : '$totalUnread',
                                     style: const TextStyle(
                                       fontSize: 9,
                                       fontWeight: FontWeight.w800,
@@ -248,16 +242,14 @@ class _FabState extends State<_Fab> {
             shape: BoxShape.circle,
             boxShadow: [
               BoxShadow(
-                color:
-                const Color(0xFF7C4DFF).withOpacity(0.35),
+                color: const Color(0xFF7C4DFF).withOpacity(0.35),
                 blurRadius: 16,
                 offset: const Offset(0, 4),
               ),
             ],
           ),
           child: const Center(
-            child:
-            Icon(LucideIcons.feather, size: 20, color: Colors.white),
+            child: Icon(LucideIcons.feather, size: 20, color: Colors.white),
           ),
         ),
       ),

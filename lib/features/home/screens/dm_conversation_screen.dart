@@ -3,12 +3,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:lucide_icons/lucide_icons.dart';
 import 'package:intl/intl.dart';
+import 'package:lucide_icons/lucide_icons.dart';
 
-import '../../../core/models/avatar_config.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_typography.dart';
+import '../../../core/models/avatar_config.dart';
 import '../../../core/models/dm_model.dart';
 import '../../../core/services/local_storage_service.dart';
 import '../providers/dm_provider.dart';
@@ -36,10 +36,9 @@ class _DmConversationScreenState
   final _focusNode = FocusNode();
   final _scrollCtrl = ScrollController();
   bool _canSend = false;
+  int _lastMessageCount = 0;
 
-  String get _myId =>
-      LocalStorageService.getCachedAnonId() ?? '';
-
+  String get _myId => LocalStorageService.getCachedAnonId() ?? '';
   String get _convoId => conversationId(_myId, widget.peerId);
 
   @override
@@ -49,9 +48,7 @@ class _DmConversationScreenState
       final v = _ctrl.text.trim().isNotEmpty;
       if (v != _canSend) setState(() => _canSend = v);
     });
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _markRead();
-    });
+    WidgetsBinding.instance.addPostFrameCallback((_) => _markRead());
   }
 
   @override
@@ -63,22 +60,19 @@ class _DmConversationScreenState
   }
 
   void _markRead() {
-    if (_myId.isNotEmpty) {
-      markConversationRead(_convoId, _myId);
-    }
+    if (_myId.isNotEmpty) markConversationRead(_convoId, _myId);
   }
 
-  void _scrollToBottom({bool animated = false}) {
+  void _scrollToBottom({bool animated = true}) {
     if (!_scrollCtrl.hasClients) return;
-    final target = _scrollCtrl.position.maxScrollExtent;
     if (animated) {
       _scrollCtrl.animateTo(
-        target,
-        duration: const Duration(milliseconds: 300),
+        _scrollCtrl.position.maxScrollExtent,
+        duration: const Duration(milliseconds: 280),
         curve: Curves.easeOut,
       );
     } else {
-      _scrollCtrl.jumpTo(target);
+      _scrollCtrl.jumpTo(_scrollCtrl.position.maxScrollExtent);
     }
   }
 
@@ -88,42 +82,44 @@ class _DmConversationScreenState
     _ctrl.clear();
     setState(() => _canSend = false);
     HapticFeedback.selectionClick();
+    _focusNode.requestFocus();
 
-    final ok = await ref.read(dmSendProvider.notifier).send(
+    await ref.read(dmSendProvider.notifier).send(
       peerId: widget.peerId,
       text: text,
     );
-
-    if (ok) {
-      WidgetsBinding.instance.addPostFrameCallback(
-              (_) => _scrollToBottom(animated: true));
-    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final messagesAsync =
-    ref.watch(dmMessageProvider(_convoId));
-    final peerAsync =
-    ref.watch(dmPeerProfileProvider(widget.peerId));
+    final messagesAsync = ref.watch(dmMessagesProvider(_convoId));
+    final peerAsync = ref.watch(dmPeerProfileProvider(widget.peerId));
     final isSending = ref.watch(dmSendProvider);
-    final bottomPad = MediaQuery.of(context).viewInsets.bottom;
 
     final username = peerAsync.when(
-      data: (p) => p?['username'] as String? ?? widget.initialUsername ?? 'anon',
+      data: (p) =>
+      p?['username'] as String? ?? widget.initialUsername ?? 'anon',
       loading: () => widget.initialUsername ?? 'anon',
       error: (_, __) => widget.initialUsername ?? 'anon',
     );
 
-    // Mark read whenever new messages arrive
-    ref.listen(dmMessageProvider(_convoId), (_, __) => _markRead());
+    ref.listen(dmMessagesProvider(_convoId), (prev, next) {
+      _markRead();
+      next.whenData((msgs) {
+        if (msgs.length != _lastMessageCount) {
+          _lastMessageCount = msgs.length;
+          WidgetsBinding.instance
+              .addPostFrameCallback((_) => _scrollToBottom());
+        }
+      });
+    });
 
     return Scaffold(
+      resizeToAvoidBottomInset: true,
       backgroundColor: AppColors.backgroundMain,
       appBar: _buildAppBar(username, peerAsync),
       body: Column(
         children: [
-          // Messages list
           Expanded(
             child: messagesAsync.when(
               loading: () => const Center(
@@ -132,17 +128,9 @@ class _DmConversationScreenState
                   color: AppColors.accentPrimary,
                 ),
               ),
-              error: (e, _) => Center(
-                child: Text('Could not load messages.',
-                    style: AppTypography.bodySmall),
-              ),
+              error: (e, _) => _EmptyConvo(username: username),
               data: (msgs) {
-                if (msgs.isEmpty) return _EmptyConvo();
-
-                // Auto-scroll when list grows
-                WidgetsBinding.instance.addPostFrameCallback(
-                        (_) => _scrollToBottom());
-
+                if (msgs.isEmpty) return _EmptyConvo(username: username);
                 return ListView.builder(
                   controller: _scrollCtrl,
                   padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
@@ -151,15 +139,11 @@ class _DmConversationScreenState
                     final msg = msgs[i];
                     final isMe = msg.senderId == _myId;
                     final showDate = i == 0 ||
-                        !_sameDay(
-                            msgs[i - 1].createdAt, msg.createdAt);
+                        !_sameDay(msgs[i - 1].createdAt, msg.createdAt);
                     return Column(
                       children: [
                         if (showDate) _DateDivider(msg.createdAt),
-                        _MessageBubble(
-                          msg: msg,
-                          isMe: isMe,
-                        ),
+                        _MessageBubble(msg: msg, isMe: isMe),
                       ],
                     );
                   },
@@ -167,71 +151,12 @@ class _DmConversationScreenState
               },
             ),
           ),
-
-          // Input bar
-          Container(
-            decoration: const BoxDecoration(
-              color: AppColors.backgroundMain,
-              border: Border(
-                top: BorderSide(
-                    color: Color(0xFF1A1A1A), width: 0.5),
-              ),
-            ),
-            padding: EdgeInsets.fromLTRB(
-                12, 8, 12, 8 + bottomPad),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Expanded(
-                  child: Container(
-                    constraints:
-                    const BoxConstraints(maxHeight: 120),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF0F0F0F),
-                      borderRadius: BorderRadius.circular(22),
-                      border: Border.all(
-                        color: const Color(0xFF1E1E1E),
-                        width: 0.8,
-                      ),
-                    ),
-                    child: TextField(
-                      controller: _ctrl,
-                      focusNode: _focusNode,
-                      maxLines: null,
-                      maxLength: 500,
-                      buildCounter: (_, {required currentLength,
-                        required isFocused, maxLength}) =>
-                      null,
-                      textInputAction: TextInputAction.newline,
-                      keyboardType: TextInputType.multiline,
-                      style: AppTypography.bodyMedium.copyWith(
-                        fontSize: 15,
-                        color: AppColors.textPrimary,
-                        height: 1.45,
-                      ),
-                      decoration: InputDecoration(
-                        hintText: 'Message...',
-                        hintStyle: AppTypography.bodyMedium.copyWith(
-                          fontSize: 15,
-                          color: AppColors.hintText,
-                        ),
-                        border: InputBorder.none,
-                        contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 10),
-                        isDense: true,
-                      ),
-                      cursorColor: AppColors.accentPrimary,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                _SendButton(
-                  canSend: _canSend && !isSending,
-                  isSending: isSending,
-                  onTap: _send,
-                ),
-              ],
-            ),
+          _InputBar(
+            ctrl: _ctrl,
+            focusNode: _focusNode,
+            canSend: _canSend,
+            isSending: isSending,
+            onSend: _send,
           ),
         ],
       ),
@@ -239,13 +164,16 @@ class _DmConversationScreenState
   }
 
   PreferredSizeWidget _buildAppBar(
-      String username, AsyncValue<Map<String, dynamic>?> peerAsync) {
+      String username,
+      AsyncValue<Map<String, dynamic>?> peerAsync,
+      ) {
     final avatarUrl = peerAsync.when(
       data: (p) {
         final raw = p?['avatarConfig'];
         if (raw == null) return widget.initialAvatarUrl;
         try {
-          return _buildAvatarUrl(raw as Map<String, dynamic>);
+          return AvatarConfig.fromMap(raw as Map<String, dynamic>)
+              .buildUrl(size: 72);
         } catch (_) {
           return widget.initialAvatarUrl;
         }
@@ -269,45 +197,111 @@ class _DmConversationScreenState
           children: [
             _DmAvatarSmall(url: avatarUrl),
             const SizedBox(width: 10),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '@$username',
-                  style: AppTypography.bodyMedium.copyWith(
-                    fontFamily: 'DM Sans',
-                    fontWeight: FontWeight.w700,
-                    fontSize: 15,
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-              ],
+            Text(
+              '@$username',
+              style: AppTypography.bodyMedium.copyWith(
+                fontFamily: 'DM Sans',
+                fontWeight: FontWeight.w700,
+                fontSize: 15,
+                color: AppColors.textPrimary,
+              ),
             ),
           ],
         ),
       ),
       bottom: PreferredSize(
         preferredSize: const Size.fromHeight(0.5),
-        child:
-        Container(height: 0.5, color: const Color(0xFF1A1A1A)),
+        child: Container(height: 0.5, color: const Color(0xFF1A1A1A)),
       ),
     );
-  }
-
-  String? _buildAvatarUrl(Map<String, dynamic> raw) {
-    try {
-      final cfg = AvatarConfig.fromMap(raw);
-      return cfg.buildUrl(size: 72);
-    } catch (_) {
-      return null;
-    }
   }
 
   bool _sameDay(DateTime a, DateTime b) =>
       a.year == b.year && a.month == b.month && a.day == b.day;
 }
 
-// Message bubble
+class _InputBar extends StatelessWidget {
+  final TextEditingController ctrl;
+  final FocusNode focusNode;
+  final bool canSend;
+  final bool isSending;
+  final VoidCallback onSend;
+
+  const _InputBar({
+    required this.ctrl,
+    required this.focusNode,
+    required this.canSend,
+    required this.isSending,
+    required this.onSend,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      top: false,
+      child: Container(
+        decoration: const BoxDecoration(
+          color: AppColors.backgroundMain,
+          border: Border(
+            top: BorderSide(color: Color(0xFF1A1A1A), width: 0.5),
+          ),
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Expanded(
+              child: Container(
+                constraints: const BoxConstraints(maxHeight: 120),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF0A0A0A),
+                  borderRadius: BorderRadius.circular(22),
+                  border: Border.all(
+                    color: const Color(0xFF1E1E1E),
+                    width: 0.8,
+                  ),
+                ),
+                child: TextField(
+                  controller: ctrl,
+                  focusNode: focusNode,
+                  maxLines: null,
+                  maxLength: 500,
+                  buildCounter: (_, {required currentLength,
+                    required isFocused, maxLength}) => null,
+                  textInputAction: TextInputAction.newline,
+                  keyboardType: TextInputType.multiline,
+                  style: AppTypography.bodyMedium.copyWith(
+                    fontSize: 15,
+                    color: AppColors.textPrimary,
+                    height: 1.45,
+                  ),
+                  decoration: InputDecoration(
+                    hintText: 'Message...',
+                    hintStyle: AppTypography.bodyMedium.copyWith(
+                      fontSize: 15,
+                      color: AppColors.hintText,
+                    ),
+                    border: InputBorder.none,
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 10),
+                    isDense: true,
+                  ),
+                  cursorColor: AppColors.accentPrimary,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            _SendButton(
+              canSend: canSend && !isSending,
+              isSending: isSending,
+              onTap: onSend,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
 
 class _MessageBubble extends StatelessWidget {
   final DmMessage msg;
@@ -326,8 +320,8 @@ class _MessageBubble extends StatelessWidget {
           left: isMe ? 60 : 0,
           right: isMe ? 0 : 60,
         ),
-        padding: const EdgeInsets.symmetric(
-            horizontal: 14, vertical: 10),
+        padding:
+        const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: BoxDecoration(
           color: isMe
               ? AppColors.accentPrimary.withOpacity(0.15)
@@ -346,9 +340,8 @@ class _MessageBubble extends StatelessWidget {
           ),
         ),
         child: Column(
-          crossAxisAlignment: isMe
-              ? CrossAxisAlignment.end
-              : CrossAxisAlignment.start,
+          crossAxisAlignment:
+          isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
           children: [
             Text(
               msg.text,
@@ -390,8 +383,6 @@ class _MessageBubble extends StatelessWidget {
   }
 }
 
-// Date divider
-
 class _DateDivider extends StatelessWidget {
   final DateTime date;
   const _DateDivider(this.date);
@@ -411,8 +402,7 @@ class _DateDivider extends StatelessWidget {
     child: Row(
       children: [
         const Expanded(
-            child: Divider(
-                color: Color(0xFF1E1E1E), thickness: 0.5)),
+            child: Divider(color: Color(0xFF1E1E1E), thickness: 0.5)),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12),
           child: Text(
@@ -424,38 +414,49 @@ class _DateDivider extends StatelessWidget {
           ),
         ),
         const Expanded(
-            child: Divider(
-                color: Color(0xFF1E1E1E), thickness: 0.5)),
+            child: Divider(color: Color(0xFF1E1E1E), thickness: 0.5)),
       ],
     ),
   );
 }
 
-// Empty conversation
-
 class _EmptyConvo extends StatelessWidget {
+  final String username;
+  const _EmptyConvo({required this.username});
+
   @override
   Widget build(BuildContext context) => Center(
     child: Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        const Icon(LucideIcons.lock,
-            size: 28, color: AppColors.hintText),
-        const SizedBox(height: 12),
+        Container(
+          width: 56,
+          height: 56,
+          decoration: BoxDecoration(
+            color: const Color(0xFF0D0D0D),
+            shape: BoxShape.circle,
+            border: Border.all(
+                color: const Color(0xFF1E1E1E), width: 0.8),
+          ),
+          child: const Icon(LucideIcons.messageCircle,
+              size: 24, color: AppColors.hintText),
+        ),
+        const SizedBox(height: 16),
         Text(
-          'End-to-end encrypted',
+          'Say hi to @$username',
           style: AppTypography.bodyMedium.copyWith(
             fontFamily: 'DM Sans',
-            fontWeight: FontWeight.w600,
-            color: AppColors.textSecondary,
+            fontWeight: FontWeight.w700,
+            fontSize: 16,
+            color: AppColors.textPrimary,
           ),
         ),
-        const SizedBox(height: 4),
+        const SizedBox(height: 6),
         Text(
-          'Only you and this person can see\nwhat you send here.',
+          'This is the beginning of your\nprivate conversation.',
           textAlign: TextAlign.center,
           style: AppTypography.bodySmall.copyWith(
-            fontSize: 12,
+            fontSize: 13,
             color: AppColors.hintText,
             height: 1.6,
           ),
@@ -464,8 +465,6 @@ class _EmptyConvo extends StatelessWidget {
     ),
   );
 }
-
-// Small avatar for app bar
 
 class _DmAvatarSmall extends StatelessWidget {
   final String? url;
@@ -501,8 +500,6 @@ class _DmAvatarSmall extends StatelessWidget {
         size: 16, color: AppColors.hintText),
   );
 }
-
-// Send button
 
 class _SendButton extends StatefulWidget {
   final bool canSend;

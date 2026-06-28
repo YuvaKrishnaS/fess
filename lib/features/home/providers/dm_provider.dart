@@ -15,7 +15,7 @@ String conversationId(String a, String b) {
   return '${sorted[0]}_${sorted[1]}';
 }
 
-// Inbox: real-time streak of all conversation for current user
+// Inbox: real-time stream of all conversations for current user
 
 final dmInboxProvider =
 StreamProvider<List<DmConversation>>((ref) async* {
@@ -44,13 +44,14 @@ final totalUnreadProvider = Provider<int>((ref) {
     data: (convos) =>
         convos.fold(0, (sum, c) => sum + c.unreadFor(anonId)),
     loading: () => 0,
-    error: (_, __) => 0
+    error: (_, __) => 0,
   );
 });
 
 // Single conversation messages: real-time stream
 
-final dmMessageProvider = StreamProvider.family<List<DmMessage>, String>((ref, convoId) {
+final dmMessagesProvider =
+StreamProvider.family<List<DmMessage>, String>((ref, convoId) {
   return FirebaseService.firestore
       .collection('conversations')
       .doc(convoId)
@@ -60,9 +61,10 @@ final dmMessageProvider = StreamProvider.family<List<DmMessage>, String>((ref, c
       .map((snap) => snap.docs.map(DmMessage.fromFirestore).toList());
 });
 
-// Peer profile for conversation header
+// ── Peer profile for conversation header ──────────────────────────────────────
 
-final dmPeerProfileProvider = FutureProvider.family<Map<String, dynamic>?, String>((ref, peerId) async {
+final dmPeerProfileProvider =
+FutureProvider.family<Map<String, dynamic>?, String>((ref, peerId) async {
   if (peerId.isEmpty) return null;
   try {
     final doc = await FirebaseService.firestore
@@ -76,7 +78,7 @@ final dmPeerProfileProvider = FutureProvider.family<Map<String, dynamic>?, Strin
   }
 });
 
-// Send Messages
+// Send message
 
 class DmSendNotifier extends Notifier<bool> {
   @override
@@ -94,7 +96,8 @@ class DmSendNotifier extends Notifier<bool> {
 
     state = true;
     final convoId = conversationId(myId, peerId);
-    final convoRef = FirebaseService.firestore.collection('conversations').doc(convoId);
+    final convoRef =
+    FirebaseService.firestore.collection('conversations').doc(convoId);
 
     try {
       final batch = FirebaseService.firestore.batch();
@@ -119,7 +122,7 @@ class DmSendNotifier extends Notifier<bool> {
       batch.set(msgRef, {
         'senderId': myId,
         'text': trimmed,
-        'createAt': FieldValue.serverTimestamp(),
+        'createdAt': FieldValue.serverTimestamp(),
         'readAt': null,
       });
 
@@ -134,7 +137,8 @@ class DmSendNotifier extends Notifier<bool> {
   }
 }
 
-final dmSendProvider = NotifierProvider<DmSendNotifier, bool>(DmSendNotifier.new);
+final dmSendProvider =
+NotifierProvider<DmSendNotifier, bool>(DmSendNotifier.new);
 
 // Mark conversation as read
 
@@ -147,7 +151,7 @@ Future<void> markConversationRead(String convoId, String myId) async {
 
     // Mark all unread messages from peer as read
     final unread = await FirebaseService.firestore
-        .collection('coversations')
+        .collection('conversations')
         .doc(convoId)
         .collection('messages')
         .where('senderId', isNotEqualTo: myId)
@@ -158,11 +162,11 @@ Future<void> markConversationRead(String convoId, String myId) async {
 
     final batch = FirebaseService.firestore.batch();
     for (final doc in unread.docs) {
-      batch.update(doc.reference, {'readAt': FieldValue.serverTimestamp()});
+      batch.update(doc.reference,
+          {'readAt': FieldValue.serverTimestamp()});
     }
     await batch.commit();
   } catch (e) {
     debugPrint('[markRead] $e');
   }
 }
-

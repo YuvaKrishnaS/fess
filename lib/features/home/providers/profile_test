@@ -1,720 +1,274 @@
-// lib/features/home/screens/profile_page.dart
-
-import 'dart:ui';
-
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
-import '../../../core/constants/app_colors.dart';
-import '../../../core/constants/app_typography.dart';
-import '../../../core/models/avatar_config.dart';
-import '../../../core/widgets/fess_snackbar.dart';
-import '../../home/post_detail/post_detail_screen.dart';
-import '../providers/feed_provider.dart';
-import '../providers/profile_provider.dart';
-import '../widgets/confession_card.dart';
+import '../../core/constants/app_colors.dart';
+import '../../core/widgets/fess_snackbar.dart';
+import 'feed/feed_screen.dart';
+import 'providers/dm_provider.dart';
+import 'providers/scroll_visibility_provider.dart';
+import 'screens/dm_inbox_screen.dart';
+import 'tea/tea_screen.dart';
+import 'widgets/create_confession_sheet.dart';
+import 'world/world_placeholder_screen.dart';
 
-class ProfilePage extends ConsumerStatefulWidget {
-  final String anonId;
-  final int initialTab;
-
-  const ProfilePage({
-    super.key,
-    required this.anonId,
-    this.initialTab = 0,
-  });
+class HomeScaffold extends ConsumerStatefulWidget {
+  const HomeScaffold({super.key});
 
   @override
-  ConsumerState<ProfilePage> createState() => _ProfilePageState();
+  ConsumerState<HomeScaffold> createState() => _HomeScaffoldState();
 }
 
-class _ProfilePageState extends ConsumerState<ProfilePage>
-    with SingleTickerProviderStateMixin {
-  late final TabController _tab;
+class _HomeScaffoldState extends ConsumerState<HomeScaffold> {
+  int _currentIndex = 0;
 
-  @override
-  void initState() {
-    super.initState();
-    _tab = TabController(
-      length: 2,
-      vsync: this,
-      initialIndex: widget.initialTab.clamp(0, 1),
+  final List<Widget> _screens = const [
+    FeedScreen(),
+    TeaScreen(),
+    WorldPlaceholderScreen(),
+    DmInboxScreen(),
+  ];
+
+  static const List<_NavItem> _navItems = [
+    _NavItem(icon: LucideIcons.home, label: 'Home'),
+    _NavItem(icon: LucideIcons.coffee, label: 'Spill'),
+    _NavItem(icon: LucideIcons.globe, label: 'World'),
+    _NavItem(icon: LucideIcons.messageCircle, label: 'Chat'),
+  ];
+
+  void _onTab(int i) {
+    if (i == _currentIndex) return;
+    HapticFeedback.selectionClick();
+    scrollVisibilityNotifier.value = true;
+    setState(() => _currentIndex = i);
+  }
+
+  void _openCreate() {
+    if (_currentIndex > 1) {
+      FessSnackbar.show(context, 'Coming soon',
+          type: SnackbarType.info);
+      return;
+    }
+    HapticFeedback.mediumImpact();
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      barrierColor: Colors.black.withOpacity(0.6),
+      builder: (_) => const CreateConfessionSheet(),
     );
   }
 
   @override
-  void dispose() {
-    _tab.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
-    final myIdAsync = ref.watch(currentAnonIdProvider);
-
-    return myIdAsync.when(
-      loading: () => const _PageScaffold(child: _CenteredSpinner()),
-      error: (_, __) =>
-      const _PageScaffold(child: _PageError(msg: 'Could not load profile.')),
-      data: (myId) {
-        final isOwn = widget.anonId == myId;
-        return _ProfilePageBody(
-          anonId: widget.anonId,
-          myId: myId,
-          isOwn: isOwn,
-          tab: _tab,
-        );
-      },
-    );
-  }
-}
-
-class _PageScaffold extends StatelessWidget {
-  final Widget child;
-  const _PageScaffold({required this.child});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(backgroundColor: AppColors.backgroundMain, body: child);
-  }
-}
-
-// ─── Body ─────────────────────────────────────────────────────────────────────
-
-class _ProfilePageBody extends ConsumerWidget {
-  final String anonId;
-  final String? myId;
-  final bool isOwn;
-  final TabController tab;
-
-  const _ProfilePageBody({
-    required this.anonId,
-    required this.myId,
-    required this.isOwn,
-    required this.tab,
-  });
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final profileAsync = ref.watch(profileDataProvider(anonId));
+    final totalUnread = ref.watch(totalUnreadProvider);
 
     return Scaffold(
       backgroundColor: AppColors.backgroundMain,
-      body: NestedScrollView(
-        headerSliverBuilder: (ctx, _) => [
-          SliverToBoxAdapter(
-            child: Column(
-              children: [
-                _ProfileAppBar(anonId: anonId, isOwn: isOwn),
-                profileAsync.when(
-                  loading: () => const _FullHeaderShimmer(),
-                  error: (_, __) =>
-                  const _PageError(msg: 'Could not load profile.'),
-                  data: (profile) {
-                    if (profile == null) {
-                      return const _PageError(msg: 'Profile not found.');
-                    }
-                    return _FullProfileHeader(
-                      profile: profile,
-                      isOwn: isOwn,
-                      myId: myId,
-                    );
-                  },
-                ),
-                const SizedBox(height: 4),
-              ],
+      extendBody: true,
+      body: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 180),
+        switchInCurve: Curves.easeIn,
+        switchOutCurve: Curves.easeOut,
+        transitionBuilder: (child, anim) =>
+            FadeTransition(opacity: anim, child: child),
+        child: KeyedSubtree(
+          key: ValueKey(_currentIndex),
+          child: _screens[_currentIndex],
+        ),
+      ),
+      floatingActionButton: _currentIndex <= 1
+          ? ValueListenableBuilder<bool>(
+        valueListenable: scrollVisibilityNotifier,
+        builder: (_, visible, __) => AnimatedSlide(
+          offset: visible ? Offset.zero : const Offset(0, 2),
+          duration: const Duration(milliseconds: 260),
+          curve: Curves.easeInOutCubic,
+          child: AnimatedOpacity(
+            opacity: visible ? 1.0 : 0.0,
+            duration: const Duration(milliseconds: 200),
+            child: _Fab(onTap: _openCreate),
+          ),
+        ),
+      )
+          : null,
+      bottomNavigationBar: ValueListenableBuilder<bool>(
+        valueListenable: scrollVisibilityNotifier,
+        builder: (_, visible, __) => AnimatedSlide(
+          offset: visible ? Offset.zero : const Offset(0, 1),
+          duration: const Duration(milliseconds: 260),
+          curve: Curves.easeInOutCubic,
+          child: AnimatedOpacity(
+            opacity: visible ? 1.0 : 0.0,
+            duration: const Duration(milliseconds: 200),
+            child: _BottomNav(
+              currentIndex: _currentIndex,
+              items: _navItems,
+              onTap: _onTab,
+              totalUnread: totalUnread,
             ),
           ),
-          SliverPersistentHeader(
-            pinned: true,
-            delegate: _StickyTabBarDelegate(
-              TabBar(
-                controller: tab,
-                onTap: (_) => HapticFeedback.selectionClick(),
-                indicatorColor: AppColors.accentPrimary,
-                indicatorWeight: 2,
-                indicatorSize: TabBarIndicatorSize.label,
-                dividerColor: Colors.transparent,
-                labelColor: AppColors.textPrimary,
-                unselectedLabelColor: AppColors.textSecondary,
-                labelStyle: AppTypography.labelMedium.copyWith(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                ),
-                unselectedLabelStyle: AppTypography.labelMedium.copyWith(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w400,
-                ),
-                tabs: [
-                  Tab(text: isOwn ? 'My Spills' : 'Spills'),
-                  Tab(text: isOwn ? 'My Tea' : 'Tea'),
-                ],
-              ),
-            ),
-          ),
-        ],
-        body: TabBarView(
-          controller: tab,
-          children: [
-            _SpillsTab(anonId: anonId, myId: myId),
-            _TeaTab(anonId: anonId, myId: myId),
-          ],
         ),
       ),
     );
   }
 }
 
-// ─── App Bar ──────────────────────────────────────────────────────────────────
-
-class _ProfileAppBar extends ConsumerWidget {
-  final String anonId;
-  final bool isOwn;
-
-  const _ProfileAppBar({required this.anonId, required this.isOwn});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final topPad = MediaQuery.of(context).padding.top;
-
-    return Container(
-      color: AppColors.backgroundMain,
-      padding: EdgeInsets.fromLTRB(8, topPad + 8, 8, 4),
-      child: Row(
-        children: [
-          IconButton(
-            icon: const Icon(LucideIcons.arrowLeft,
-                size: 20, color: AppColors.textPrimary),
-            onPressed: () => context.pop(),
-          ),
-          const Spacer(),
-          if (isOwn)
-            IconButton(
-              icon: const Icon(LucideIcons.settings,
-                  size: 20, color: AppColors.textSecondary),
-              onPressed: () {
-                HapticFeedback.selectionClick();
-                context.push('/settings/profile');
-              },
-            ),
-        ],
-      ),
-    );
-  }
+class _NavItem {
+  final IconData icon;
+  final String label;
+  const _NavItem({required this.icon, required this.label});
 }
 
-// ─── Profile Header ───────────────────────────────────────────────────────────
+class _BottomNav extends StatelessWidget {
+  final int currentIndex;
+  final List<_NavItem> items;
+  final ValueChanged<int> onTap;
+  final int totalUnread;
 
-class _FullProfileHeader extends StatelessWidget {
-  final ProfileData profile;
-  final bool isOwn;
-  final String? myId;
-
-  const _FullProfileHeader({
-    required this.profile,
-    required this.isOwn,
-    required this.myId,
+  const _BottomNav({
+    required this.currentIndex,
+    required this.items,
+    required this.onTap,
+    required this.totalUnread,
   });
 
-  String? _avatarUrl() {
-    if (profile.avatarConfig.isEmpty) return null;
-    try {
-      return AvatarConfig.fromMap(profile.avatarConfig).buildUrl(size: 200);
-    } catch (_) {
-      return null;
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
-    final avatarUrl = _avatarUrl();
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // ── Avatar
-          Container(
-            width: 80,
-            height: 80,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              border: Border.all(
-                color: AppColors.accentPrimary.withOpacity(0.4),
-                width: 2,
-              ),
-            ),
-            child: ClipOval(
-              child: avatarUrl != null
-                  ? CachedNetworkImage(
-                imageUrl: avatarUrl,
-                fit: BoxFit.cover,
-                placeholder: (_, __) =>
-                    Container(color: const Color(0xFF1A1A1A)),
-                errorWidget: (_, __, ___) => const _AnonAvatarLg(),
-              )
-                  : const _AnonAvatarLg(),
-            ),
-          ),
-          const SizedBox(height: 14),
-
-          // ── Username
-          Text(
-            '@${profile.username}',
-            style: AppTypography.h2.copyWith(
-              fontSize: 22,
-              fontWeight: FontWeight.w900,
-              color: AppColors.textPrimary,
-            ),
-          ),
-          const SizedBox(height: 4),
-
-          // ── Anon ID (long-press to copy)
-          GestureDetector(
-            onLongPress: () {
-              Clipboard.setData(ClipboardData(text: profile.anonId));
-              FessSnackbar.show(
-                context,
-                'Anon ID copied',
-                type: SnackbarType.success,
-                duration: const Duration(seconds: 1),
-              );
-            },
-            child: Text(
-              '#${profile.anonId}',
-              style: AppTypography.bodySmall.copyWith(
-                fontSize: 11,
-                color: AppColors.hintText,
-                fontFamily: 'monospace',
-              ),
-            ),
-          ),
-          const SizedBox(height: 20),
-
-          // ── Stats
-          Row(
-            children: [
-              _StatBlock(label: 'Spills', value: profile.totalPostCount),
-              const SizedBox(width: 28),
-              _StatBlock(label: 'Tea', value: profile.totalTeaCount),
-            ],
-          ),
-          const SizedBox(height: 20),
-
-          // ── Action buttons (only on other people's profiles)
-          if (!isOwn) ...[
-            _ProfileActions(
-              profile: profile,
-              myId: myId,
-            ),
-            const SizedBox(height: 8),
-          ],
-        ],
+    return Container(
+      decoration: const BoxDecoration(
+        color: AppColors.backgroundMain,
+        border: Border(
+          top: BorderSide(color: Color(0xFF1A1A1A), width: 0.5),
+        ),
       ),
-    );
-  }
-}
-
-// ─── Profile Action Buttons ───────────────────────────────────────────────────
-// Shown only on other people's profiles: Message button
-
-class _ProfileActions extends StatelessWidget {
-  final ProfileData profile;
-  final String? myId;
-
-  const _ProfileActions({required this.profile, required this.myId});
-
-  String? _avatarUrl() {
-    if (profile.avatarConfig.isEmpty) return null;
-    try {
-      return AvatarConfig.fromMap(profile.avatarConfig).buildUrl(size: 92);
-    } catch (_) {
-      return null;
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        // ── Message button
-        GestureDetector(
-          onTap: () {
-            HapticFeedback.selectionClick();
-            context.push(
-              '/dm/${profile.anonId}',
-              extra: {
-                'username': profile.username,
-                'avatarUrl': _avatarUrl(),
-              },
-            );
-          },
-          child: Container(
-            height: 36,
-            padding: const EdgeInsets.symmetric(horizontal: 18),
-            decoration: BoxDecoration(
-              color: const Color(0xFF0D0D0D),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(
-                color: const Color(0xFF2A2A3A),
-                width: 0.8,
-              ),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(
-                  LucideIcons.messageCircle,
-                  size: 14,
-                  color: AppColors.textSecondary,
-                ),
-                const SizedBox(width: 7),
-                Text(
-                  'Message',
-                  style: AppTypography.labelSmall.copyWith(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.textSecondary,
+      child: SafeArea(
+        child: SizedBox(
+          height: 52,
+          child: Row(
+            children: List.generate(items.length, (i) {
+              final active = i == currentIndex;
+              // Badge only on Chat tab (index 3)
+              final showBadge =
+                  i == 3 && totalUnread > 0 && !active;
+              return Expanded(
+                child: GestureDetector(
+                  onTap: () => onTap(i),
+                  behavior: HitTestBehavior.opaque,
+                  child: SizedBox(
+                    height: 52,
+                    child: Center(
+                      child: Stack(
+                        clipBehavior: Clip.none,
+                        children: [
+                          AnimatedScale(
+                            scale: active ? 1.12 : 1.0,
+                            duration:
+                            const Duration(milliseconds: 180),
+                            curve: Curves.easeOut,
+                            child: Icon(
+                              items[i].icon,
+                              size: 22,
+                              color: active
+                                  ? AppColors.textPrimary
+                                  : AppColors.textSecondary,
+                            ),
+                          ),
+                          if (showBadge)
+                            Positioned(
+                              top: -4,
+                              right: -6,
+                              child: Container(
+                                width: 16,
+                                height: 16,
+                                decoration: const BoxDecoration(
+                                  color: AppColors.accentPrimary,
+                                  shape: BoxShape.circle,
+                                ),
+                                child: Center(
+                                  child: Text(
+                                    totalUnread > 9
+                                        ? '9+'
+                                        : '$totalUnread',
+                                    style: const TextStyle(
+                                      fontSize: 9,
+                                      fontWeight: FontWeight.w800,
+                                      color: Colors.black,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
                   ),
                 ),
-              ],
-            ),
+              );
+            }),
           ),
         ),
-      ],
+      ),
     );
   }
 }
 
-// ─── Stat block ───────────────────────────────────────────────────────────────
+class _Fab extends StatefulWidget {
+  final VoidCallback onTap;
+  const _Fab({required this.onTap});
 
-class _StatBlock extends StatelessWidget {
-  final String label;
-  final int value;
+  @override
+  State<_Fab> createState() => _FabState();
+}
 
-  const _StatBlock({required this.label, required this.value});
-
-  String _fmt(int n) {
-    if (n >= 1000000) return '${(n / 1000000).toStringAsFixed(1)}M';
-    if (n >= 1000) return '${(n / 1000).toStringAsFixed(1)}K';
-    return '$n';
-  }
+class _FabState extends State<_Fab> {
+  bool _pressed = false;
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          _fmt(value),
-          style: AppTypography.bodyMedium.copyWith(
-            fontSize: 20,
-            fontWeight: FontWeight.w900,
-            color: AppColors.textPrimary,
-            fontFeatures: const [FontFeature.tabularFigures()],
-          ),
-        ),
-        Text(
-          label,
-          style: AppTypography.bodySmall.copyWith(
-            fontSize: 11,
-            color: AppColors.textSecondary,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-// ─── Tabs ─────────────────────────────────────────────────────────────────────
-
-class _SpillsTab extends ConsumerWidget {
-  final String anonId;
-  final String? myId;
-  const _SpillsTab({required this.anonId, required this.myId});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final feedAsync = ref.watch(mySpillsProvider(anonId));
-
-    return feedAsync.when(
-      loading: _shimmerList,
-      error: (e, __) {
-        debugPrint('[_SpillsTab] provider error: $e');
-        return _emptyState('Could not load spills.\n$e', isError: true);
+    return GestureDetector(
+      onTapDown: (_) => setState(() => _pressed = true),
+      onTapUp: (_) {
+        setState(() => _pressed = false);
+        widget.onTap();
       },
-      data: (feed) {
-        if (feed.error != null) {
-          debugPrint('[_SpillsTab] feed error: ${feed.error}');
-          return _emptyState(feed.error!, isError: true);
-        }
-        if (feed.posts.isEmpty) {
-          return _emptyState(
-              'No spills yet.\nWhen you spill, they show up here.');
-        }
-        return ListView.builder(
-          itemCount: feed.posts.length + 1,
-          itemBuilder: (ctx, i) {
-            if (i == feed.posts.length) return _EasterEgg();
-            final post = feed.posts[i];
-            return ConfessionCard(
-              key: ValueKey(post.postId),
-              post: post,
-              currentAnonId: myId,
-              onTap: () => Navigator.of(ctx).push(
-                postDetailHeroRoute(post.postId, initialPost: post),
+      onTapCancel: () => setState(() => _pressed = false),
+      child: AnimatedScale(
+        scale: _pressed ? 0.92 : 1.0,
+        duration: const Duration(milliseconds: 100),
+        child: Container(
+          width: 52,
+          height: 52,
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              colors: [Color(0xFF7C4DFF), Color(0xFF1DE9B6)],
+            ),
+            shape: BoxShape.circle,
+            boxShadow: [
+              BoxShadow(
+                color:
+                const Color(0xFF7C4DFF).withOpacity(0.35),
+                blurRadius: 16,
+                offset: const Offset(0, 4),
               ),
-              onLike: () =>
-                  ref.read(forYouFeedProvider.notifier).toggleLike(post.postId),
-              onAuthorTap: post.authorId != myId
-                  ? () => context.push('/profile/${post.authorId}')
-                  : null,
-              onDelete: () => ref.invalidate(mySpillsProvider(anonId)),
-            );
-          },
-        );
-      },
-    );
-  }
-}
-
-class _TeaTab extends ConsumerWidget {
-  final String anonId;
-  final String? myId;
-  const _TeaTab({required this.anonId, required this.myId});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final feedAsync = ref.watch(myTeaProvider(anonId));
-
-    return feedAsync.when(
-      loading: _shimmerList,
-      error: (e, __) {
-        debugPrint('[_TeaTab] provider error: $e');
-        return _emptyState('Could not load tea.\n$e', isError: true);
-      },
-      data: (feed) {
-        if (feed.error != null) {
-          debugPrint('[_TeaTab] feed error: ${feed.error}');
-          return _emptyState(feed.error!, isError: true);
-        }
-        if (feed.posts.isEmpty) {
-          return _emptyState('No tea yet.\nSpill the tea to see it here.');
-        }
-        return ListView.builder(
-          itemCount: feed.posts.length + 1,
-          itemBuilder: (ctx, i) {
-            if (i == feed.posts.length) return _EasterEgg();
-            final post = feed.posts[i];
-            return ConfessionCard(
-              key: ValueKey(post.postId),
-              post: post,
-              currentAnonId: myId,
-              onTap: () => Navigator.of(ctx).push(
-                postDetailHeroRoute(post.postId, initialPost: post),
-              ),
-              onLike: () =>
-                  ref.read(forYouFeedProvider.notifier).toggleLike(post.postId),
-              onAuthorTap: post.authorId != myId
-                  ? () => context.push('/profile/${post.authorId}')
-                  : null,
-              onDelete: () => ref.invalidate(myTeaProvider(anonId)),
-            );
-          },
-        );
-      },
-    );
-  }
-}
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-class _StickyTabBarDelegate extends SliverPersistentHeaderDelegate {
-  final TabBar tabBar;
-  const _StickyTabBarDelegate(this.tabBar);
-
-  @override
-  double get minExtent => tabBar.preferredSize.height + 1;
-
-  @override
-  double get maxExtent => tabBar.preferredSize.height + 1;
-
-  @override
-  Widget build(
-      BuildContext context, double shrinkOffset, bool overlapsContent) {
-    return Container(
-      color: AppColors.backgroundMain,
-      child: Column(
-        children: [
-          tabBar,
-          Container(height: 1, color: const Color(0xFF1A1A1A)),
-        ],
-      ),
-    );
-  }
-
-  @override
-  bool shouldRebuild(_StickyTabBarDelegate old) => false;
-}
-
-class _AnonAvatarLg extends StatelessWidget {
-  const _AnonAvatarLg();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      color: const Color(0xFF1A1A1A),
-      child: const Icon(LucideIcons.user, size: 36, color: AppColors.hintText),
-    );
-  }
-}
-
-class _EasterEgg extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 48, horizontal: 24),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Opacity(
-            opacity: 0.25,
-            child: Image.asset('assets/images/logo.png', width: 48, height: 48),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            'You reached the end of the posts! go touch some grass ;P',
-            textAlign: TextAlign.center,
-            style: AppTypography.bodyMedium.copyWith(
-              fontSize: 13,
-              color: const Color(0xFF3A3A3A),
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            'Fess',
-            style: AppTypography.h3.copyWith(
-              fontSize: 22,
-              fontWeight: FontWeight.w900,
-              color: const Color(0xFF252525),
-              letterSpacing: -0.5,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-Widget _shimmerList() => ListView.builder(
-  physics: const NeverScrollableScrollPhysics(),
-  itemCount: 4,
-  itemBuilder: (_, __) => const ConfessionShimmerCard(),
-);
-
-Widget _emptyState(String msg, {bool isError = false}) => Center(
-  child: Padding(
-    padding: const EdgeInsets.all(32),
-    child: Text(
-      msg,
-      textAlign: TextAlign.center,
-      style: AppTypography.bodyMedium.copyWith(
-        fontSize: 14,
-        color: isError ? AppColors.errorLight : AppColors.textSecondary,
-        height: 1.6,
-        decoration: TextDecoration.none,
-      ),
-    ),
-  ),
-);
-
-class _CenteredSpinner extends StatelessWidget {
-  const _CenteredSpinner();
-
-  @override
-  Widget build(BuildContext context) => const Center(
-    child: SizedBox(
-      width: 20,
-      height: 20,
-      child: CircularProgressIndicator(
-        strokeWidth: 1.5,
-        color: AppColors.textSecondary,
-      ),
-    ),
-  );
-}
-
-class _PageError extends StatelessWidget {
-  final String msg;
-  const _PageError({required this.msg});
-
-  @override
-  Widget build(BuildContext context) => Center(
-    child: Text(
-      msg,
-      style: AppTypography.bodySmall.copyWith(
-        color: AppColors.textSecondary,
-        decoration: TextDecoration.none,
-      ),
-    ),
-  );
-}
-
-class _FullHeaderShimmer extends StatelessWidget {
-  const _FullHeaderShimmer();
-
-  @override
-  Widget build(BuildContext context) {
-    return const Padding(
-      padding: EdgeInsets.fromLTRB(20, 0, 20, 20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _ShimmerBox(width: 80, height: 80, radius: 40),
-          SizedBox(height: 14),
-          _ShimmerBox(width: 160, height: 20, radius: 5),
-          SizedBox(height: 6),
-          _ShimmerBox(width: 110, height: 11, radius: 5),
-          SizedBox(height: 20),
-          Row(
-            children: [
-              _ShimmerBox(width: 64, height: 36, radius: 6),
-              SizedBox(width: 28),
-              _ShimmerBox(width: 64, height: 36, radius: 6),
             ],
           ),
-        ],
+          child: const Center(
+            child:
+            Icon(LucideIcons.feather, size: 20, color: Colors.white),
+          ),
+        ),
       ),
-    );
-  }
-}
-
-class _ShimmerBox extends StatelessWidget {
-  final double width;
-  final double height;
-  final double radius;
-
-  const _ShimmerBox({
-    required this.width,
-    required this.height,
-    required this.radius,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: width,
-      height: height,
-      decoration: BoxDecoration(
-        color: const Color(0xFF1A1A1A),
-        borderRadius: BorderRadius.circular(radius),
-      ),
+    )
+        .animate()
+        .fadeIn(delay: 350.ms, duration: 400.ms)
+        .scale(
+      begin: const Offset(0.6, 0.6),
+      delay: 350.ms,
+      duration: 400.ms,
+      curve: Curves.easeOutBack,
     );
   }
 }

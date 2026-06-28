@@ -1,7 +1,4 @@
-import 'dart:developer';
-
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:http/http.dart';
 
 class DmConversation {
   final String id;
@@ -29,7 +26,7 @@ class DmConversation {
       lastMessage: d['lastMessage'] as String?,
       lastMessageAt: (d['lastMessageAt'] as Timestamp?)?.toDate(),
       lastSenderId: d['lastSenderId'] as String?,
-      unreadCounts: raw.map((k, v) => MapEntry(k, (v as num).toInt()))
+      unreadCounts: raw.map((k, v) => MapEntry(k, (v as num).toInt())),
     );
   }
 
