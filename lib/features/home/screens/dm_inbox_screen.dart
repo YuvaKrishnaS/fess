@@ -10,7 +10,6 @@ import '../../../core/constants/app_typography.dart';
 import '../../../core/models/avatar_config.dart';
 import '../../../core/models/dm_model.dart';
 import '../../../core/services/local_storage_service.dart';
-import '../../../core/widgets/dm_notification_overlay.dart';
 import '../providers/dm_provider.dart';
 
 String? _resolveAvatarUrl(Map<String, dynamic>? profile) {
@@ -30,37 +29,6 @@ class DmInboxScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final inboxAsync = ref.watch(dmInboxProvider);
     final myId = LocalStorageService.getCachedAnonId() ?? '';
-
-    ref.listen(dmInboxProvider, (prev, next) {
-      next.whenData((convos) {
-        if (prev?.value == null) return;
-        final prevConvos = prev!.value!;
-        for (final convo in convos) {
-          final prevConvo = prevConvos.firstWhere(
-                (c) => c.id == convo.id,
-            orElse: () => convo,
-          );
-          final id = LocalStorageService.getCachedAnonId() ?? '';
-          final newUnread = convo.unreadFor(id);
-          final prevUnread = prevConvo.unreadFor(id);
-          if (newUnread > prevUnread && convo.lastSenderId != id) {
-            final peerId = convo.otherParticipant(id);
-            ref.read(dmPeerProfileProvider(peerId).future).then((profile) {
-              if (!context.mounted) return;
-              DmNotificationOverlay.show(
-                context,
-                DmNotificationPayload(
-                  peerId: peerId,
-                  username: profile?['username'] as String? ?? 'anon',
-                  avatarUrl: _resolveAvatarUrl(profile),
-                  messagePreview: convo.lastMessage ?? '',
-                ),
-              );
-            });
-          }
-        }
-      });
-    });
 
     return Scaffold(
       backgroundColor: AppColors.backgroundMain,
@@ -153,9 +121,11 @@ class _ConvoTile extends ConsumerWidget {
                               style: AppTypography.bodyMedium.copyWith(
                                 fontFamily: 'DM Sans',
                                 fontWeight: unread > 0
-                                    ? FontWeight.w700
+                                    ? FontWeight.w800
                                     : FontWeight.w500,
-                                color: AppColors.textPrimary,
+                                color: unread > 0
+                                    ? AppColors.textPrimary
+                                    : AppColors.textSecondary,
                                 fontSize: 14,
                               ),
                               overflow: TextOverflow.ellipsis,
@@ -170,6 +140,9 @@ class _ConvoTile extends ConsumerWidget {
                                 color: unread > 0
                                     ? AppColors.accentPrimary
                                     : AppColors.hintText,
+                                fontWeight: unread > 0
+                                    ? FontWeight.w600
+                                    : FontWeight.w400,
                               ),
                             ),
                         ],
@@ -183,11 +156,11 @@ class _ConvoTile extends ConsumerWidget {
                               style: AppTypography.bodySmall.copyWith(
                                 fontSize: 13,
                                 color: unread > 0
-                                    ? AppColors.textSecondary
+                                    ? AppColors.textPrimary
                                     : AppColors.hintText,
                                 fontWeight: unread > 0
                                     ? FontWeight.w600
-                                    : FontWeight.normal,
+                                    : FontWeight.w400,
                               ),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
@@ -196,18 +169,20 @@ class _ConvoTile extends ConsumerWidget {
                           if (unread > 0)
                             Container(
                               margin: const EdgeInsets.only(left: 8),
-                              width: 18,
+                              constraints: const BoxConstraints(minWidth: 18),
                               height: 18,
+                              padding: const EdgeInsets.symmetric(horizontal: 4),
                               decoration: const BoxDecoration(
                                 color: AppColors.accentPrimary,
-                                shape: BoxShape.circle,
+                                borderRadius:
+                                BorderRadius.all(Radius.circular(9)),
                               ),
                               child: Center(
                                 child: Text(
-                                  unread > 9 ? '9+' : '$unread',
+                                  unread > 99 ? '99+' : '$unread',
                                   style: const TextStyle(
                                     fontSize: 10,
-                                    fontWeight: FontWeight.w700,
+                                    fontWeight: FontWeight.w800,
                                     color: Colors.black,
                                   ),
                                 ),

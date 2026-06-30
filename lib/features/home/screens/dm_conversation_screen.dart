@@ -1,4 +1,4 @@
-import 'dart:async';
+import 'dart:ui';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -34,23 +34,29 @@ class DmConversationScreen extends ConsumerStatefulWidget {
       _DmConversationScreenState();
 }
 
-class _DmConversationScreenState
-    extends ConsumerState<DmConversationScreen> {
+class _DmConversationScreenState extends ConsumerState<DmConversationScreen> {
   final _ctrl = TextEditingController();
   final _focusNode = FocusNode();
   final _scrollCtrl = ScrollController();
+  final Map<String, GlobalKey> _msgKeys = {};
 
   bool _canSend = false;
   bool _loadingMore = false;
   bool _hasMore = true;
+  bool _initialScrollDone = false;
 
   List<DmMessage> _olderMessages = [];
   DocumentSnapshot? _oldestDoc;
-  int _unreadCountOnOpen = 0;
-  bool _markedRead = false;
+
+  String? _firstUnreadMessageId;
+  bool _unreadIdCaptured = false;
+
+  String? _highlightedMessageId;
 
   DmReplyTo? _replyTo;
+  bool _replyIsFromMe = false;
   String? _editingMessageId;
+  String _peerUsername = '';
 
   String get _myId => LocalStorageService.getCachedAnonId() ?? '';
   String get _convoId => conversationId(_myId, widget.peerId);
@@ -58,6 +64,7 @@ class _DmConversationScreenState
   @override
   void initState() {
     super.initState();
+    _peerUsername = widget.initialUsername ?? 'anon';
     _ctrl.addListener(() {
       final v = _ctrl.text.trim().isNotEmpty;
       if (v != _canSend) setState(() => _canSend = v);
@@ -74,7 +81,8 @@ class _DmConversationScreenState
   }
 
   void _onScroll() {
-    if (_scrollCtrl.position.pixels <= 80 &&
+    if (!_scrollCtrl.hasClients) return;
+    if (_scrollCtrl.position.pixels <= 120 &&
         !_loadingMore &&
         _hasMore &&
         _oldestDoc != null) {
@@ -85,40 +93,58 @@ class _DmConversationScreenState
   Future<void> _loadMore() async {
     if (_loadingMore || !_hasMore || _oldestDoc == null) return;
     setState(() => _loadingMore = true);
-    final older = await loadOlderMessages(
-      convoId: _convoId,
-      beforeDoc: _oldestDoc!,
-    );
+    final older =
+    await loadOlderMessages(convoId: _convoId, beforeDoc: _oldestDoc!);
     if (!mounted) return;
     if (older.isNotEmpty) {
-      final prevOffset = _scrollCtrl.position.pixels;
+      final prevPixels = _scrollCtrl.hasClients ? _scrollCtrl.position.pixels : 0.0;
       setState(() {
         _olderMessages = [...older, ..._olderMessages];
         _hasMore = older.length == 25;
+        if (older.isNotEmpty) _oldestDoc = null;
       });
+      _fetchOldestDoc(older.first.id);
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (_scrollCtrl.hasClients) {
-          _scrollCtrl.jumpTo(
-              _scrollCtrl.position.pixels + prevOffset);
+          final newMax = _scrollCtrl.position.maxScrollExtent;
+          _scrollCtrl.jumpTo((newMax - prevPixels).clamp(0.0, newMax));
         }
       });
     } else {
       setState(() => _hasMore = false);
     }
-    setState(() => _loadingMore = false);
+    if (mounted) setState(() => _loadingMore = false);
   }
 
   void _scrollToBottom({bool animated = true}) {
     if (!_scrollCtrl.hasClients) return;
+    final max = _scrollCtrl.position.maxScrollExtent;
     if (animated) {
-      _scrollCtrl.animateTo(
-        _scrollCtrl.position.maxScrollExtent,
-        duration: const Duration(milliseconds: 280),
-        curve: Curves.easeOut,
-      );
+      _scrollCtrl.animateTo(max,
+          duration: const Duration(milliseconds: 280), curve: Curves.easeOut);
     } else {
-      _scrollCtrl.jumpTo(_scrollCtrl.position.maxScrollExtent);
+      _scrollCtrl.jumpTo(max);
     }
+  }
+
+  bool get _isNearBottom {
+    if (!_scrollCtrl.hasClients) return true;
+    return (_scrollCtrl.position.maxScrollExtent - _scrollCtrl.position.pixels) < 150;
+  }
+
+  void _scrollToMessage(String messageId) {
+    final key = _msgKeys[messageId];
+    if (key?.currentContext == null) return;
+    Scrollable.ensureVisible(
+      key!.currentContext!,
+      duration: const Duration(milliseconds: 320),
+      curve: Curves.easeOut,
+      alignment: 0.5,
+    );
+    setState(() => _highlightedMessageId = messageId);
+    Future.delayed(const Duration(milliseconds: 1400), () {
+      if (mounted) setState(() => _highlightedMessageId = null);
+    });
   }
 
   Future<void> _send() async {
@@ -133,10 +159,10 @@ class _DmConversationScreenState
     setState(() {
       _canSend = false;
       _replyTo = null;
+      _replyIsFromMe = false;
     });
     HapticFeedback.selectionClick();
     _focusNode.requestFocus();
-
     await ref.read(dmSendProvider.notifier).send(
       peerId: widget.peerId,
       text: text,
@@ -171,32 +197,33 @@ class _DmConversationScreenState
 
   void _startEdit(DmMessage msg) {
     _ctrl.text = msg.text;
-    _ctrl.selection =
-        TextSelection.collapsed(offset: _ctrl.text.length);
+    _ctrl.selection = TextSelection.collapsed(offset: _ctrl.text.length);
     setState(() {
       _editingMessageId = msg.id;
       _replyTo = null;
+      _replyIsFromMe = false;
       _canSend = true;
     });
     _focusNode.requestFocus();
   }
 
-  void _startReply(DmMessage msg, String myId) {
+  void _startReply(DmMessage msg) {
+    final isMe = msg.senderId == _myId;
     setState(() {
       _replyTo = DmReplyTo(
         messageId: msg.id,
         senderId: msg.senderId,
         text: msg.isDeleted ? 'Deleted message' : msg.text,
       );
+      _replyIsFromMe = isMe;
       _editingMessageId = null;
     });
     _focusNode.requestFocus();
   }
 
-  void _showMessageOptions(
-      BuildContext context, DmMessage msg, Offset tapPos) {
-    final isMe = msg.senderId == _myId;
+  void _showMessageOptions(BuildContext context, DmMessage msg) {
     if (msg.isDeleted) return;
+    final isMe = msg.senderId == _myId;
     HapticFeedback.mediumImpact();
 
     showGeneralDialog(
@@ -216,10 +243,9 @@ class _DmConversationScreenState
       pageBuilder: (ctx, _, __) => _MessageOptionsDialog(
         msg: msg,
         isMe: isMe,
-        myId: _myId,
         onReply: () {
           Navigator.of(ctx).pop();
-          _startReply(msg, _myId);
+          _startReply(msg);
         },
         onCopy: () {
           Clipboard.setData(ClipboardData(text: msg.text));
@@ -244,32 +270,55 @@ class _DmConversationScreenState
     );
   }
 
+  void _fetchOldestDoc(String msgId) async {
+    try {
+      final doc = await FirebaseService.firestore
+          .collection('conversations')
+          .doc(_convoId)
+          .collection('messages')
+          .doc(msgId)
+          .get();
+      if (mounted) setState(() => _oldestDoc = doc);
+    } catch (_) {}
+  }
+
   @override
   Widget build(BuildContext context) {
     final messagesAsync = ref.watch(dmMessagesProvider(_convoId));
     final peerAsync = ref.watch(dmPeerProfileProvider(widget.peerId));
     final isSending = ref.watch(dmSendProvider);
 
-    final username = peerAsync.when(
-      data: (p) =>
-      p?['username'] as String? ?? widget.initialUsername ?? 'anon',
-      loading: () => widget.initialUsername ?? 'anon',
-      error: (_, __) => widget.initialUsername ?? 'anon',
-    );
+    peerAsync.whenData((p) {
+      final name = p?['username'] as String?;
+      if (name != null && name != _peerUsername) {
+        WidgetsBinding.instance
+            .addPostFrameCallback((_) => setState(() => _peerUsername = name));
+      }
+    });
 
     ref.listen(dmMessagesProvider(_convoId), (prev, next) {
       next.whenData((msgs) {
-        if (!_markedRead && msgs.isNotEmpty) {
-          _unreadCountOnOpen = msgs
-              .where((m) => m.senderId != _myId && !m.isRead)
-              .length;
-          _markedRead = true;
+        if (!_unreadIdCaptured && msgs.isNotEmpty) {
+          final firstUnread = msgs
+              .where((m) => m.senderId != _myId && m.readAt == null)
+              .firstOrNull;
+          _firstUnreadMessageId = firstUnread?.id;
+          _unreadIdCaptured = true;
           markConversationRead(_convoId, _myId);
         }
-        if (prev?.value != null &&
-            msgs.length > (prev!.value?.length ?? 0)) {
-          final last = msgs.last;
-          if (last.senderId == _myId) {
+
+        if (!_initialScrollDone && msgs.isNotEmpty) {
+          _initialScrollDone = true;
+          _fetchOldestDoc(msgs.first.id);
+          WidgetsBinding.instance
+              .addPostFrameCallback((_) => _scrollToBottom(animated: false));
+          return;
+        }
+
+        final prevMsgs = prev?.value ?? [];
+        if (msgs.length > prevMsgs.length) {
+          final newest = msgs.last;
+          if (newest.senderId == _myId || _isNearBottom) {
             WidgetsBinding.instance
                 .addPostFrameCallback((_) => _scrollToBottom());
           }
@@ -280,114 +329,77 @@ class _DmConversationScreenState
     return Scaffold(
       resizeToAvoidBottomInset: true,
       backgroundColor: AppColors.backgroundMain,
-      appBar: _buildAppBar(username, peerAsync),
+      appBar: _buildAppBar(peerAsync),
       body: Column(
         children: [
           Expanded(
             child: messagesAsync.when(
               loading: () => const Center(
                 child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: AppColors.accentPrimary,
-                ),
+                    strokeWidth: 2, color: AppColors.accentPrimary),
               ),
-              error: (e, _) => _EmptyConvo(username: username),
+              error: (_, __) => _EmptyConvo(username: _peerUsername),
               data: (realtimeMsgs) {
-                if (_oldestDoc == null && realtimeMsgs.isNotEmpty) {
-                  WidgetsBinding.instance.addPostFrameCallback((_) {
-                    _scrollToBottom(animated: false);
-                  });
-                }
-
                 final allMsgs = [..._olderMessages, ...realtimeMsgs];
-
                 if (allMsgs.isEmpty) {
-                  return _EmptyConvo(username: username);
+                  return _EmptyConvo(username: _peerUsername);
                 }
 
-                final firstUnreadIndex = _unreadCountOnOpen > 0
-                    ? allMsgs.length - _unreadCountOnOpen
-                    : -1;
-
-                return RefreshIndicator(
-                  color: AppColors.accentPrimary,
-                  backgroundColor: const Color(0xFF111111),
-                  displacement: 20,
-                  onRefresh: () async {
-                    if (_oldestDoc != null) await _loadMore();
-                  },
-                  child: ListView.builder(
-                    controller: _scrollCtrl,
-                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-                    itemCount: allMsgs.length +
-                        (_loadingMore ? 1 : 0),
-                    itemBuilder: (ctx, i) {
-                      if (_loadingMore && i == 0) {
-                        return const Padding(
-                          padding: EdgeInsets.symmetric(vertical: 12),
-                          child: Center(
-                            child: SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(
+                return ListView.builder(
+                  controller: _scrollCtrl,
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                  itemCount: allMsgs.length + (_loadingMore ? 1 : 0),
+                  itemBuilder: (ctx, i) {
+                    if (_loadingMore && i == 0) {
+                      return const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 12),
+                        child: Center(
+                          child: SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
                                 strokeWidth: 1.5,
-                                color: AppColors.accentPrimary,
-                              ),
-                            ),
+                                color: AppColors.accentPrimary),
                           ),
-                        );
-                      }
-                      final idx = _loadingMore ? i - 1 : i;
-                      final msg = allMsgs[idx];
-
-                      if (_oldestDoc == null &&
-                          idx == 0 &&
-                          realtimeMsgs.isNotEmpty) {
-                        WidgetsBinding.instance.addPostFrameCallback(
-                              (_) {
-                            try {
-                              final rawDoc = FirebaseService.firestore
-                                  .collection('conversations')
-                                  .doc(_convoId)
-                                  .collection('messages')
-                                  .doc(realtimeMsgs.first.id);
-                              rawDoc.get().then((d) {
-                                if (mounted && _oldestDoc == null) {
-                                  setState(() => _oldestDoc = d);
-                                }
-                              });
-                            } catch (_) {}
-                          },
-                        );
-                      }
-
-                      final isMe = msg.senderId == _myId;
-                      final showDate = idx == 0 ||
-                          !_sameDay(
-                              allMsgs[idx - 1].createdAt, msg.createdAt);
-                      final showUnreadSep = idx == firstUnreadIndex;
-
-                      return Column(
-                        children: [
-                          if (showDate) _DateDivider(msg.createdAt),
-                          if (showUnreadSep) const _UnreadSeparator(),
-                          GestureDetector(
-                            onLongPress: () {
-                              final box = context.findRenderObject()
-                              as RenderBox?;
-                              final pos = box?.localToGlobal(Offset.zero) ??
-                                  Offset.zero;
-                              _showMessageOptions(context, msg, pos);
-                            },
-                            child: _MessageBubble(
-                              msg: msg,
-                              isMe: isMe,
-                            ),
-                          ),
-                        ],
+                        ),
                       );
-                    },
-                  ),
+                    }
+
+                    final idx = _loadingMore ? i - 1 : i;
+                    final msg = allMsgs[idx];
+                    _msgKeys[msg.id] ??= GlobalKey();
+
+                    final isMe = msg.senderId == _myId;
+                    final showDate = idx == 0 ||
+                        !_sameDay(allMsgs[idx - 1].createdAt, msg.createdAt);
+                    final showUnreadSep = _firstUnreadMessageId != null &&
+                        msg.id == _firstUnreadMessageId;
+
+                    return Column(
+                      key: _msgKeys[msg.id],
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        if (showDate) _DateDivider(msg.createdAt),
+                        if (showUnreadSep) const _UnreadSeparator(),
+                        _SwipeableMessage(
+                          msg: msg,
+                          isMe: isMe,
+                          onLongPress: () => _showMessageOptions(context, msg),
+                          onSwipeReply: () => _startReply(msg),
+                          child: _MessageBubble(
+                            msg: msg,
+                            isMe: isMe,
+                            isHighlighted: _highlightedMessageId == msg.id,
+                            myId: _myId,
+                            peerUsername: _peerUsername,
+                            onReplyTap: msg.replyTo != null
+                                ? () => _scrollToMessage(msg.replyTo!.messageId)
+                                : null,
+                          ),
+                        ),
+                      ],
+                    );
+                  },
                 );
               },
             ),
@@ -396,7 +408,11 @@ class _DmConversationScreenState
             _ReplyPreview(
               replyTo: _replyTo!,
               myId: _myId,
-              onCancel: () => setState(() => _replyTo = null),
+              peerUsername: _peerUsername,
+              onCancel: () => setState(() {
+                _replyTo = null;
+                _replyIsFromMe = false;
+              }),
             ),
           if (_editingMessageId != null)
             _EditingBanner(onCancel: _cancelEdit),
@@ -413,9 +429,7 @@ class _DmConversationScreenState
   }
 
   PreferredSizeWidget _buildAppBar(
-      String username,
-      AsyncValue<Map<String, dynamic>?> peerAsync,
-      ) {
+      AsyncValue<Map<String, dynamic>?> peerAsync) {
     final avatarUrl = peerAsync.when(
       data: (p) {
         final raw = p?['avatarConfig'];
@@ -447,7 +461,7 @@ class _DmConversationScreenState
             _DmAvatarSmall(url: avatarUrl),
             const SizedBox(width: 10),
             Text(
-              '@$username',
+              '@$_peerUsername',
               style: AppTypography.bodyMedium.copyWith(
                 fontFamily: 'DM Sans',
                 fontWeight: FontWeight.w700,
@@ -469,6 +483,304 @@ class _DmConversationScreenState
       a.year == b.year && a.month == b.month && a.day == b.day;
 }
 
+class _SwipeableMessage extends StatefulWidget {
+  final DmMessage msg;
+  final bool isMe;
+  final VoidCallback onLongPress;
+  final VoidCallback onSwipeReply;
+  final Widget child;
+
+  const _SwipeableMessage({
+    required this.msg,
+    required this.isMe,
+    required this.onLongPress,
+    required this.onSwipeReply,
+    required this.child,
+  });
+
+  @override
+  State<_SwipeableMessage> createState() => _SwipeableMessageState();
+}
+
+class _SwipeableMessageState extends State<_SwipeableMessage> {
+  double _dragX = 0;
+  bool _triggered = false;
+  static const double _threshold = 64;
+
+  void _onUpdate(DragUpdateDetails d) {
+    final delta = d.delta.dx;
+    if (widget.isMe && delta > 0) return;
+    if (!widget.isMe && delta < 0) return;
+
+    setState(() {
+      _dragX = (_dragX + delta)
+          .clamp(widget.isMe ? -_threshold : 0.0, widget.isMe ? 0.0 : _threshold);
+    });
+
+    if (_dragX.abs() >= _threshold && !_triggered) {
+      _triggered = true;
+      HapticFeedback.mediumImpact();
+    }
+  }
+
+  void _onEnd(DragEndDetails _) {
+    if (_triggered) widget.onSwipeReply();
+    setState(() {
+      _dragX = 0;
+      _triggered = false;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.msg.isDeleted) {
+      return GestureDetector(
+        onLongPress: widget.onLongPress,
+        child: widget.child,
+      );
+    }
+
+    final progress = (_dragX.abs() / _threshold).clamp(0.0, 1.0);
+    final circleSize = 28.0 + progress * 14;
+    final iconSize = 14.0 + progress * 6;
+
+    return GestureDetector(
+      onLongPress: widget.onLongPress,
+      onHorizontalDragUpdate: _onUpdate,
+      onHorizontalDragEnd: _onEnd,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Positioned.fill(
+            child: Align(
+              alignment: widget.isMe ? Alignment.centerRight : Alignment.centerLeft,
+              child: Padding(
+                padding: EdgeInsets.only(
+                  left: widget.isMe ? 0 : 4,
+                  right: widget.isMe ? 4 : 0,
+                ),
+                child: Opacity(
+                  opacity: progress.clamp(0.0, 1.0),
+                  child: Container(
+                    width: circleSize,
+                    height: circleSize,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: AppColors.accentPrimary.withOpacity(0.12),
+                      border: Border.all(
+                        color: AppColors.accentPrimary.withOpacity(progress * 0.7),
+                        width: 1.5,
+                      ),
+                    ),
+                    child: Icon(
+                      LucideIcons.cornerUpLeft,
+                      size: iconSize,
+                      color: AppColors.accentPrimary.withOpacity(progress),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          Transform.translate(
+            offset: Offset(_dragX, 0),
+            child: widget.child,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MessageBubble extends StatelessWidget {
+  final DmMessage msg;
+  final bool isMe;
+  final bool isHighlighted;
+  final String myId;
+  final String peerUsername;
+  final VoidCallback? onReplyTap;
+
+  const _MessageBubble({
+    required this.msg,
+    required this.isMe,
+    required this.isHighlighted,
+    required this.myId,
+    required this.peerUsername,
+    this.onReplyTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (msg.isDeleted) {
+      return Align(
+        alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+        child: Container(
+          margin: EdgeInsets.only(
+              top: 2, bottom: 2, left: isMe ? 60 : 0, right: isMe ? 0 : 60),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: BoxDecoration(
+            color: const Color(0xFF0D0D0D),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: const Color(0xFF1E1E1E), width: 0.7),
+          ),
+          child: Text(
+            'Message deleted',
+            style: AppTypography.bodySmall.copyWith(
+              fontSize: 13,
+              color: AppColors.hintText,
+              fontStyle: FontStyle.italic,
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Align(
+      alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 300),
+        margin: EdgeInsets.only(
+            top: 2, bottom: 2, left: isMe ? 60 : 0, right: isMe ? 0 : 60),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          color: isHighlighted
+              ? AppColors.accentPrimary.withOpacity(0.18)
+              : isMe
+              ? AppColors.accentPrimary.withOpacity(0.13)
+              : const Color(0xFF111118),
+          borderRadius: BorderRadius.only(
+            topLeft: const Radius.circular(16),
+            topRight: const Radius.circular(16),
+            bottomLeft: Radius.circular(isMe ? 16 : 4),
+            bottomRight: Radius.circular(isMe ? 4 : 16),
+          ),
+          border: Border.all(
+            color: isHighlighted
+                ? AppColors.accentPrimary.withOpacity(0.5)
+                : isMe
+                ? AppColors.accentPrimary.withOpacity(0.2)
+                : const Color(0xFF1E1E2A),
+            width: 0.8,
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment:
+          isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (msg.replyTo != null)
+              GestureDetector(
+                onTap: onReplyTap,
+                child: _ReplyQuote(
+                  replyTo: msg.replyTo!,
+                  myId: myId,
+                  peerUsername: peerUsername,
+                ),
+              ),
+            Text(
+              msg.text,
+              style: AppTypography.bodyMedium.copyWith(
+                fontSize: 14,
+                color: AppColors.textPrimary,
+                height: 1.5,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (msg.isEdited)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 5),
+                    child: Text(
+                      'Edited',
+                      style: AppTypography.bodySmall.copyWith(
+                        fontSize: 10,
+                        color: AppColors.hintText,
+                        fontStyle: FontStyle.italic,
+                      ),
+                    ),
+                  ),
+                Text(
+                  DateFormat('h:mm a').format(msg.createdAt.toLocal()),
+                  style: AppTypography.bodySmall.copyWith(
+                    fontSize: 10,
+                    color: AppColors.hintText,
+                  ),
+                ),
+                if (isMe) ...[
+                  const SizedBox(width: 4),
+                  Icon(
+                    msg.isRead ? LucideIcons.checkCheck : LucideIcons.check,
+                    size: 12,
+                    color: msg.isRead
+                        ? AppColors.accentPrimary
+                        : AppColors.hintText,
+                  ),
+                ],
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ReplyQuote extends StatelessWidget {
+  final DmReplyTo replyTo;
+  final String myId;
+  final String peerUsername;
+
+  const _ReplyQuote({
+    required this.replyTo,
+    required this.myId,
+    required this.peerUsername,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isReplyFromMe = replyTo.senderId == myId;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 6),
+      padding: const EdgeInsets.fromLTRB(8, 5, 8, 5),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.04),
+        borderRadius: BorderRadius.circular(8),
+        border: Border(
+          left: BorderSide(
+            color: AppColors.accentPrimary.withOpacity(0.6),
+            width: 2.5,
+          ),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            isReplyFromMe ? 'You' : '@$peerUsername',
+            style: AppTypography.labelSmall.copyWith(
+              fontSize: 10,
+              color: AppColors.accentPrimary,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            replyTo.text,
+            style: AppTypography.bodySmall.copyWith(
+              fontSize: 12,
+              color: AppColors.textSecondary,
+            ),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _UnreadSeparator extends StatelessWidget {
   const _UnreadSeparator();
 
@@ -480,7 +792,7 @@ class _UnreadSeparator extends StatelessWidget {
         Expanded(
           child: Container(
               height: 1,
-              color: AppColors.accentPrimary.withOpacity(0.5)),
+              color: AppColors.accentPrimary.withOpacity(0.45)),
         ),
         Container(
           margin: const EdgeInsets.symmetric(horizontal: 10),
@@ -490,8 +802,9 @@ class _UnreadSeparator extends StatelessWidget {
             color: AppColors.accentPrimary.withOpacity(0.12),
             borderRadius: BorderRadius.circular(20),
             border: Border.all(
-                color: AppColors.accentPrimary.withOpacity(0.4),
-                width: 0.8),
+              color: AppColors.accentPrimary.withOpacity(0.45),
+              width: 0.8,
+            ),
           ),
           child: Text(
             'New messages',
@@ -505,8 +818,48 @@ class _UnreadSeparator extends StatelessWidget {
         Expanded(
           child: Container(
               height: 1,
-              color: AppColors.accentPrimary.withOpacity(0.5)),
+              color: AppColors.accentPrimary.withOpacity(0.45)),
         ),
+      ],
+    ),
+  );
+}
+
+class _DateDivider extends StatelessWidget {
+  final DateTime date;
+  const _DateDivider(this.date);
+
+  String _label() {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final d = DateTime(date.year, date.month, date.day);
+    if (d == today) return 'Today';
+    if (d == today.subtract(const Duration(days: 1))) return 'Yesterday';
+    return DateFormat('MMM d, yyyy').format(date);
+  }
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 12),
+    child: Row(
+      children: [
+        const Expanded(
+            child:
+            Divider(color: Color(0xFF2A2A2A), thickness: 0.5)),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: Text(
+            _label(),
+            style: AppTypography.bodySmall.copyWith(
+              fontSize: 11,
+              color: AppColors.textSecondary,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ),
+        const Expanded(
+            child:
+            Divider(color: Color(0xFF2A2A2A), thickness: 0.5)),
       ],
     ),
   );
@@ -515,11 +868,13 @@ class _UnreadSeparator extends StatelessWidget {
 class _ReplyPreview extends StatelessWidget {
   final DmReplyTo replyTo;
   final String myId;
+  final String peerUsername;
   final VoidCallback onCancel;
 
   const _ReplyPreview({
     required this.replyTo,
     required this.myId,
+    required this.peerUsername,
     required this.onCancel,
   });
 
@@ -528,11 +883,9 @@ class _ReplyPreview extends StatelessWidget {
     decoration: const BoxDecoration(
       color: Color(0xFF0A0A0A),
       border: Border(
-        top: BorderSide(color: Color(0xFF1E1E1E), width: 0.5),
-      ),
+          top: BorderSide(color: Color(0xFF1E1E1E), width: 0.5)),
     ),
-    padding:
-    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
     child: Row(
       children: [
         Container(
@@ -549,7 +902,7 @@ class _ReplyPreview extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                replyTo.senderId == myId ? 'You' : 'Them',
+                replyTo.senderId == myId ? 'You' : '@$peerUsername',
                 style: AppTypography.labelSmall.copyWith(
                   fontSize: 11,
                   color: AppColors.accentPrimary,
@@ -571,8 +924,11 @@ class _ReplyPreview extends StatelessWidget {
         ),
         GestureDetector(
           onTap: onCancel,
-          child: const Icon(LucideIcons.x,
-              size: 16, color: AppColors.hintText),
+          child: const Padding(
+            padding: EdgeInsets.all(4),
+            child: Icon(LucideIcons.x,
+                size: 16, color: AppColors.hintText),
+          ),
         ),
       ],
     ),
@@ -588,11 +944,9 @@ class _EditingBanner extends StatelessWidget {
     decoration: const BoxDecoration(
       color: Color(0xFF0A0A0A),
       border: Border(
-        top: BorderSide(color: Color(0xFF1E1E1E), width: 0.5),
-      ),
+          top: BorderSide(color: Color(0xFF1E1E1E), width: 0.5)),
     ),
-    padding:
-    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
     child: Row(
       children: [
         const Icon(LucideIcons.pencil,
@@ -610,8 +964,11 @@ class _EditingBanner extends StatelessWidget {
         ),
         GestureDetector(
           onTap: onCancel,
-          child: const Icon(LucideIcons.x,
-              size: 16, color: AppColors.hintText),
+          child: const Padding(
+            padding: EdgeInsets.all(4),
+            child: Icon(LucideIcons.x,
+                size: 16, color: AppColors.hintText),
+          ),
         ),
       ],
     ),
@@ -621,7 +978,6 @@ class _EditingBanner extends StatelessWidget {
 class _MessageOptionsDialog extends StatelessWidget {
   final DmMessage msg;
   final bool isMe;
-  final String myId;
   final VoidCallback onReply;
   final VoidCallback onCopy;
   final VoidCallback? onEdit;
@@ -630,7 +986,6 @@ class _MessageOptionsDialog extends StatelessWidget {
   const _MessageOptionsDialog({
     required this.msg,
     required this.isMe,
-    required this.myId,
     required this.onReply,
     required this.onCopy,
     this.onEdit,
@@ -639,15 +994,11 @@ class _MessageOptionsDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Align(
-      alignment:
-      isMe ? Alignment.centerRight : Alignment.centerLeft,
+    return Center(
       child: Padding(
         padding: EdgeInsets.only(
-          left: isMe ? 60 : 16,
-          right: isMe ? 16 : 60,
-          top: 0,
-          bottom: 0,
+          left: isMe ? 72 : 16,
+          right: isMe ? 16 : 72,
         ),
         child: Material(
           color: Colors.transparent,
@@ -655,8 +1006,8 @@ class _MessageOptionsDialog extends StatelessWidget {
             decoration: BoxDecoration(
               color: const Color(0xFF141420),
               borderRadius: BorderRadius.circular(14),
-              border: Border.all(
-                  color: const Color(0xFF2A2A3A), width: 0.8),
+              border:
+              Border.all(color: const Color(0xFF2A2A3A), width: 0.8),
               boxShadow: [
                 BoxShadow(
                   color: Colors.black.withOpacity(0.5),
@@ -704,10 +1055,7 @@ class _MessageOptionsDialog extends StatelessWidget {
     );
   }
 
-  Widget _divider() => Container(
-    height: 0.5,
-    color: const Color(0xFF1E1E2A),
-  );
+  Widget _divider() => Container(height: 0.5, color: const Color(0xFF1E1E2A));
 }
 
 class _OptionTile extends StatefulWidget {
@@ -732,9 +1080,8 @@ class _OptionTileState extends State<_OptionTile> {
 
   @override
   Widget build(BuildContext context) {
-    final color = widget.isDestructive
-        ? AppColors.errorLight
-        : AppColors.textPrimary;
+    final color =
+    widget.isDestructive ? AppColors.errorLight : AppColors.textPrimary;
 
     return GestureDetector(
       onTapDown: (_) => setState(() => _pressed = true),
@@ -745,7 +1092,8 @@ class _OptionTileState extends State<_OptionTile> {
       onTapCancel: () => setState(() => _pressed = false),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 80),
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 13),
+        padding:
+        const EdgeInsets.symmetric(horizontal: 18, vertical: 13),
         decoration: BoxDecoration(
           color: _pressed
               ? Colors.white.withOpacity(0.04)
@@ -771,284 +1119,6 @@ class _OptionTileState extends State<_OptionTile> {
   }
 }
 
-class _MessageBubble extends StatelessWidget {
-  final DmMessage msg;
-  final bool isMe;
-
-  const _MessageBubble({required this.msg, required this.isMe});
-
-  @override
-  Widget build(BuildContext context) {
-    if (msg.isDeleted) {
-      return Align(
-        alignment:
-        isMe ? Alignment.centerRight : Alignment.centerLeft,
-        child: Container(
-          margin: EdgeInsets.only(
-              top: 2,
-              bottom: 2,
-              left: isMe ? 60 : 0,
-              right: isMe ? 0 : 60),
-          padding:
-          const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-          decoration: BoxDecoration(
-            color: const Color(0xFF0D0D0D),
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(
-                color: const Color(0xFF1E1E1E), width: 0.7),
-          ),
-          child: Text(
-            'Message deleted',
-            style: AppTypography.bodySmall.copyWith(
-              fontSize: 13,
-              color: AppColors.hintText,
-              fontStyle: FontStyle.italic,
-            ),
-          ),
-        ),
-      );
-    }
-
-    return Align(
-      alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
-      child: Container(
-        margin: EdgeInsets.only(
-            top: 2,
-            bottom: 2,
-            left: isMe ? 60 : 0,
-            right: isMe ? 0 : 60),
-        padding:
-        const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        decoration: BoxDecoration(
-          color: isMe
-              ? AppColors.accentPrimary.withOpacity(0.15)
-              : const Color(0xFF111118),
-          borderRadius: BorderRadius.only(
-            topLeft: const Radius.circular(16),
-            topRight: const Radius.circular(16),
-            bottomLeft: Radius.circular(isMe ? 16 : 4),
-            bottomRight: Radius.circular(isMe ? 4 : 16),
-          ),
-          border: Border.all(
-            color: isMe
-                ? AppColors.accentPrimary.withOpacity(0.2)
-                : const Color(0xFF1E1E2A),
-            width: 0.7,
-          ),
-        ),
-        child: Column(
-          crossAxisAlignment:
-          isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (msg.replyTo != null)
-              _ReplyQuote(replyTo: msg.replyTo!, isMe: isMe),
-            Text(
-              msg.text,
-              style: AppTypography.bodyMedium.copyWith(
-                fontSize: 14,
-                color: AppColors.textPrimary,
-                height: 1.5,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (msg.isEdited)
-                  Padding(
-                    padding: const EdgeInsets.only(right: 4),
-                    child: Text(
-                      'Edited',
-                      style: AppTypography.bodySmall.copyWith(
-                        fontSize: 10,
-                        color: AppColors.hintText,
-                        fontStyle: FontStyle.italic,
-                      ),
-                    ),
-                  ),
-                Text(
-                  DateFormat('h:mm a').format(msg.createdAt),
-                  style: AppTypography.bodySmall.copyWith(
-                    fontSize: 10,
-                    color: AppColors.hintText,
-                  ),
-                ),
-                if (isMe) ...[
-                  const SizedBox(width: 4),
-                  Icon(
-                    msg.isRead
-                        ? LucideIcons.checkCheck
-                        : LucideIcons.check,
-                    size: 12,
-                    color: msg.isRead
-                        ? AppColors.accentPrimary
-                        : AppColors.hintText,
-                  ),
-                ],
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ReplyQuote extends StatelessWidget {
-  final DmReplyTo replyTo;
-  final bool isMe;
-
-  const _ReplyQuote({required this.replyTo, required this.isMe});
-
-  @override
-  Widget build(BuildContext context) => Container(
-    margin: const EdgeInsets.only(bottom: 6),
-    padding:
-    const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-    decoration: BoxDecoration(
-      color: Colors.white.withOpacity(0.05),
-      borderRadius: BorderRadius.circular(8),
-      border: Border(
-        left: BorderSide(
-          color: AppColors.accentPrimary.withOpacity(0.6),
-          width: 2.5,
-        ),
-      ),
-    ),
-    child: Text(
-      replyTo.text,
-      style: AppTypography.bodySmall.copyWith(
-        fontSize: 12,
-        color: AppColors.textSecondary,
-      ),
-      maxLines: 2,
-      overflow: TextOverflow.ellipsis,
-    ),
-  );
-}
-
-class _DateDivider extends StatelessWidget {
-  final DateTime date;
-  const _DateDivider(this.date);
-
-  String _label() {
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final d = DateTime(date.year, date.month, date.day);
-    if (d == today) return 'Today';
-    if (d == today.subtract(const Duration(days: 1))) return 'Yesterday';
-    return DateFormat('MMM d, yyyy').format(date);
-  }
-
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.symmetric(vertical: 12),
-    child: Row(
-      children: [
-        const Expanded(
-            child: Divider(
-                color: Color(0xFF2A2A2A), thickness: 0.5)),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          child: Text(
-            _label(),
-            style: AppTypography.bodySmall.copyWith(
-              fontSize: 11,
-              color: AppColors.textSecondary,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-        ),
-        const Expanded(
-            child: Divider(
-                color: Color(0xFF2A2A2A), thickness: 0.5)),
-      ],
-    ),
-  );
-}
-
-class _EmptyConvo extends StatelessWidget {
-  final String username;
-  const _EmptyConvo({required this.username});
-
-  @override
-  Widget build(BuildContext context) => Center(
-    child: Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          width: 56,
-          height: 56,
-          decoration: BoxDecoration(
-            color: const Color(0xFF0D0D0D),
-            shape: BoxShape.circle,
-            border: Border.all(
-                color: const Color(0xFF1E1E1E), width: 0.8),
-          ),
-          child: const Icon(LucideIcons.messageCircle,
-              size: 24, color: AppColors.hintText),
-        ),
-        const SizedBox(height: 16),
-        Text(
-          'Say hi to @$username',
-          style: AppTypography.bodyMedium.copyWith(
-            fontFamily: 'DM Sans',
-            fontWeight: FontWeight.w700,
-            fontSize: 16,
-            color: AppColors.textPrimary,
-          ),
-        ),
-        const SizedBox(height: 6),
-        Text(
-          'This is the beginning of your\nprivate conversation.',
-          textAlign: TextAlign.center,
-          style: AppTypography.bodySmall.copyWith(
-            fontSize: 13,
-            color: AppColors.hintText,
-            height: 1.6,
-          ),
-        ),
-      ],
-    ),
-  );
-}
-
-class _DmAvatarSmall extends StatelessWidget {
-  final String? url;
-  const _DmAvatarSmall({this.url});
-
-  @override
-  Widget build(BuildContext context) => Container(
-    width: 34,
-    height: 34,
-    decoration: BoxDecoration(
-      shape: BoxShape.circle,
-      border: Border.all(
-        color: AppColors.accentPrimary.withOpacity(0.3),
-        width: 1,
-      ),
-    ),
-    child: ClipOval(
-      child: url != null
-          ? CachedNetworkImage(
-        imageUrl: url!,
-        fit: BoxFit.cover,
-        placeholder: (_, __) =>
-            Container(color: const Color(0xFF111111)),
-        errorWidget: (_, __, ___) => _fallback(),
-      )
-          : _fallback(),
-    ),
-  );
-
-  Widget _fallback() => Container(
-    color: const Color(0xFF111111),
-    child: const Icon(LucideIcons.user,
-        size: 16, color: AppColors.hintText),
-  );
-}
-
 class _InputBar extends StatelessWidget {
   final TextEditingController ctrl;
   final FocusNode focusNode;
@@ -1070,13 +1140,11 @@ class _InputBar extends StatelessWidget {
       top: false,
       child: Container(
         decoration: const BoxDecoration(
-          color: AppColors.backgroundMain,
+          color: Color(0xFF050505),
           border: Border(
-            top: BorderSide(color: Color(0xFF1A1A1A), width: 0.5),
-          ),
+              top: BorderSide(color: Color(0xFF1A1A1A), width: 0.5)),
         ),
-        padding:
-        const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
@@ -1140,10 +1208,12 @@ class _SendButton extends StatefulWidget {
   final bool canSend;
   final bool isSending;
   final VoidCallback onTap;
-  const _SendButton(
-      {required this.canSend,
-        required this.isSending,
-        required this.onTap});
+
+  const _SendButton({
+    required this.canSend,
+    required this.isSending,
+    required this.onTap,
+  });
 
   @override
   State<_SendButton> createState() => _SendButtonState();
@@ -1155,9 +1225,7 @@ class _SendButtonState extends State<_SendButton> {
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTapDown: widget.canSend
-          ? (_) => setState(() => _pressed = true)
-          : null,
+      onTapDown: widget.canSend ? (_) => setState(() => _pressed = true) : null,
       onTapUp: widget.canSend
           ? (_) {
         setState(() => _pressed = false);
@@ -1196,4 +1264,85 @@ class _SendButtonState extends State<_SendButton> {
       ),
     );
   }
+}
+
+class _EmptyConvo extends StatelessWidget {
+  final String username;
+  const _EmptyConvo({required this.username});
+
+  @override
+  Widget build(BuildContext context) => Center(
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 56,
+          height: 56,
+          decoration: BoxDecoration(
+            color: const Color(0xFF0D0D0D),
+            shape: BoxShape.circle,
+            border: Border.all(
+              color: const Color(0xFF1E1E1E), width: 0.8),
+          ),
+          child: const Icon(LucideIcons.messageCircle,
+              size: 24, color: AppColors.hintText),
+        ),
+        const SizedBox(height: 16),
+        Text(
+          'Say hi to @$username',
+          style: AppTypography.bodyMedium.copyWith(
+            fontFamily: 'DM Sans',
+            fontWeight: FontWeight.w700,
+            fontSize: 16,
+            color: AppColors.textPrimary,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          'This is the beginning of your\nprivate conversation.',
+          textAlign: TextAlign.center,
+          style: AppTypography.bodySmall.copyWith(
+            fontSize: 13,
+            color: AppColors.hintText,
+            height: 1.6,
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+class _DmAvatarSmall extends StatelessWidget {
+  final String? url;
+  const _DmAvatarSmall({this.url});
+
+  @override
+  Widget build(BuildContext context) => Container(
+    width: 34,
+    height: 34,
+    decoration: BoxDecoration(
+      shape: BoxShape.circle,
+      border: Border.all(
+        color: AppColors.accentPrimary.withOpacity(0.3),
+        width: 1,
+      ),
+    ),
+    child: ClipOval(
+      child: url != null
+          ? CachedNetworkImage(
+        imageUrl: url!,
+        fit: BoxFit.cover,
+        placeholder: (_, __) =>
+            Container(color: const Color(0xFF111111)),
+        errorWidget: (_, __, ___) => _fallback(),
+      )
+          : _fallback(),
+    )
+  );
+
+  Widget _fallback() => Container(
+    color: const Color(0xFF111111),
+    child: const Icon(LucideIcons.user,
+        size: 16, color: AppColors.hintText),
+  );
 }

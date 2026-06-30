@@ -5,6 +5,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
 import '../../core/constants/app_colors.dart';
+import '../../core/models/avatar_config.dart';
+import '../../core/services/local_storage_service.dart';
+import '../../core/widgets/dm_notification_overlay.dart';
 import '../../core/widgets/fess_snackbar.dart';
 import 'feed/feed_screen.dart';
 import 'providers/dm_provider.dart';
@@ -60,8 +63,52 @@ class _HomeScaffoldState extends ConsumerState<HomeScaffold> {
     );
   }
 
+  String? _resolveAvatarUrl(Map<String, dynamic>? profile) {
+    final raw = profile?['avatarConfig'];
+    if (raw == null) return null;
+    try {
+      return AvatarConfig.fromMap(raw as Map<String, dynamic>)
+          .buildUrl(size: 76);
+    } catch (_) {
+      return null;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    ref.listen(dmInboxProvider, (prev, next) {
+      next.whenData((convos) {
+        if (prev?.value == null) return;
+        final prevConvos = prev!.value!;
+        final myId = LocalStorageService.getCachedAnonId() ?? '';
+        for (final convo in convos) {
+          final prevConvo = prevConvos.firstWhere(
+                (c) => c.id == convo.id,
+            orElse: () => convo,
+          );
+          final newUnread = convo.unreadFor(myId);
+          final prevUnread = prevConvo.unreadFor(myId);
+          if (newUnread > prevUnread && convo.lastSenderId != myId) {
+            final peerId = convo.otherParticipant(myId);
+            ref.read(dmPeerProfileProvider(peerId).future).then((profile) {
+              if (!mounted) return;
+              DmNotificationOverlay.show(
+                context,
+                DmNotificationPayload(
+                  peerId: peerId,
+                  username: profile?['username'] as String? ?? 'anon',
+                  avatarUrl: _resolveAvatarUrl(profile),
+                  messagePreview: convo.lastMessage ?? '',
+                ),
+              );
+            });
+          }
+        }
+      });
+    });
+
+    ref.watch(dmInboxProvider);
+
     return Scaffold(
       backgroundColor: AppColors.backgroundMain,
       extendBody: true,
