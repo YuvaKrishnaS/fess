@@ -62,7 +62,10 @@ class _HomeScaffoldState extends ConsumerState<HomeScaffold> {
 
   @override
   Widget build(BuildContext context) {
-    final totalUnread = ref.watch(totalUnreadProvider).value ?? 0;
+    final totalUnread = ValueListenableBuilder<int>(
+      valueListenable: totalUnreadNotifier,
+      builder: (_, val, __) => val,
+    );
 
     return Scaffold(
       backgroundColor: AppColors.backgroundMain,
@@ -102,11 +105,14 @@ class _HomeScaffoldState extends ConsumerState<HomeScaffold> {
           child: AnimatedOpacity(
             opacity: visible ? 1.0 : 0.0,
             duration: const Duration(milliseconds: 200),
-            child: _BottomNav(
-              currentIndex: _currentIndex,
-              items: _navItems,
-              onTap: _onTab,
-              totalUnread: totalUnread,
+            child: ValueListenableBuilder<int>(
+              valueListenable: totalUnreadNotifier,
+              builder: (_, unread, __) => _BottomNav(
+                currentIndex: _currentIndex,
+                items: _navItems,
+                onTap: _onTab,
+                totalUnread: unread,
+              ),
             ),
           ),
         ),

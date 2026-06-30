@@ -36,12 +36,39 @@ class DmConversation {
       participants.firstWhere((p) => p != myId, orElse: () => '');
 }
 
+class DmReplyTo {
+  final String messageId;
+  final String senderId;
+  final String text;
+
+  const DmReplyTo({
+    required this.messageId,
+    required this.senderId,
+    required this.text,
+  });
+
+  factory DmReplyTo.fromMap(Map<String, dynamic> m) => DmReplyTo(
+    messageId: m['messageId'] as String? ?? '',
+    senderId: m['senderId'] as String? ?? '',
+    text: m['text'] as String? ?? '',
+  );
+
+  Map<String, dynamic> toMap() => {
+    'messageId': messageId,
+    'senderId': senderId,
+    'text': text,
+  };
+}
+
 class DmMessage {
   final String id;
   final String senderId;
   final String text;
   final DateTime createdAt;
   final DateTime? readAt;
+  final bool isEdited;
+  final bool isDeleted;
+  final DmReplyTo? replyTo;
 
   const DmMessage({
     required this.id,
@@ -49,18 +76,25 @@ class DmMessage {
     required this.text,
     required this.createdAt,
     this.readAt,
+    this.isEdited = false,
+    this.isDeleted = false,
+    this.replyTo,
   });
 
   bool get isRead => readAt != null;
 
   factory DmMessage.fromFirestore(DocumentSnapshot doc) {
     final d = doc.data() as Map<String, dynamic>;
+    final replyRaw = d['replyTo'] as Map<String, dynamic>?;
     return DmMessage(
       id: doc.id,
       senderId: d['senderId'] as String? ?? '',
       text: d['text'] as String? ?? '',
       createdAt: (d['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
       readAt: (d['readAt'] as Timestamp?)?.toDate(),
+      isEdited: d['isEdited'] as bool? ?? false,
+      isDeleted: d['isDeleted'] as bool? ?? false,
+      replyTo: replyRaw != null ? DmReplyTo.fromMap(replyRaw) : null,
     );
   }
 }

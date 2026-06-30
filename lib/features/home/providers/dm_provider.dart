@@ -8,17 +8,14 @@ import '../../../core/services/firebase_service.dart';
 import '../../../core/services/local_storage_service.dart';
 import 'feed_provider.dart';
 
-// Deterministic conversation ID
-
 String conversationId(String a, String b) {
   final sorted = [a, b]..sort();
   return '${sorted[0]}_${sorted[1]}';
 }
 
-// Inbox: real-time stream of all conversations for current user
+final totalUnreadNotifier = ValueNotifier<int>(0);
 
-final dmInboxProvider =
-StreamProvider<List<DmConversation>>((ref) async* {
+final dmInboxProvider = StreamProvider<List<DmConversation>>((ref) async* {
   final anonId = await ref.watch(currentAnonIdProvider.future);
   if (anonId == null) {
     yield [];
@@ -30,30 +27,13 @@ StreamProvider<List<DmConversation>>((ref) async* {
       .where('participants', arrayContains: anonId)
       .orderBy('lastMessageAt', descending: true)
       .snapshots()
-      .map((snap) =>
-      snap.docs.map(DmConversation.fromFirestore).toList());
+      .map((snap) {
+    final convos = snap.docs.map(DmConversation.fromFirestore).toList();
+    final total = convos.fold<int>(0, (sum, c) => sum + c.unreadFor(anonId));
+    totalUnreadNotifier.value = total;
+    return convos;
+  });
 });
-
-// Total unread count across all conversations
-
-final totalUnreadProvider = StreamProvider<int>((ref) async* {
-  final anonId = await ref.watch(currentAnonIdProvider.future);
-  if (anonId == null) {
-    yield 0;
-    return;
-  }
-  yield* FirebaseService.firestore
-      .collection('conversations')
-      .where('participants', arrayContains: anonId)
-      .snapshots()
-      .map((snap) => snap.docs.fold<int>(0, (sum, doc) {
-    final counts =
-        (doc.data()['unreadCounts'] as Map<String, dynamic>?) ?? {};
-    return sum + ((counts[anonId] as num?)?.toInt() ?? 0);
-  }));
-});
-
-// Single conversation messages: real-time stream
 
 final dmMessagesProvider =
 StreamProvider.family<List<DmMessage>, String>((ref, convoId) {
@@ -62,11 +42,10 @@ StreamProvider.family<List<DmMessage>, String>((ref, convoId) {
       .doc(convoId)
       .collection('messages')
       .orderBy('createdAt', descending: false)
+      .limitToLast(25)
       .snapshots()
       .map((snap) => snap.docs.map(DmMessage.fromFirestore).toList());
 });
-
-// ── Peer profile for conversation header ──────────────────────────────────────
 
 final dmPeerProfileProvider =
 FutureProvider.family<Map<String, dynamic>?, String>((ref, peerId) async {
@@ -83,8 +62,6 @@ FutureProvider.family<Map<String, dynamic>?, String>((ref, peerId) async {
   }
 });
 
-// Send message
-
 class DmSendNotifier extends Notifier<bool> {
   @override
   bool build() => false;
@@ -92,10 +69,10 @@ class DmSendNotifier extends Notifier<bool> {
   Future<bool> send({
     required String peerId,
     required String text,
+    DmReplyTo? replyTo,
   }) async {
     final trimmed = text.trim();
     if (trimmed.isEmpty) return false;
-
     final myId = LocalStorageService.getCachedAnonId();
     if (myId == null) return false;
 
@@ -107,7 +84,6 @@ class DmSendNotifier extends Notifier<bool> {
     try {
       final batch = FirebaseService.firestore.batch();
 
-      // Upsert conversation doc
       batch.set(
         convoRef,
         {
@@ -115,21 +91,25 @@ class DmSendNotifier extends Notifier<bool> {
           'lastMessage': trimmed,
           'lastMessageAt': FieldValue.serverTimestamp(),
           'lastSenderId': myId,
-          // increment peer unread, reset mine to 0
           'unreadCounts.$peerId': FieldValue.increment(1),
           'unreadCounts.$myId': 0,
         },
         SetOptions(merge: true),
       );
 
-      // Add message
       final msgRef = convoRef.collection('messages').doc();
-      batch.set(msgRef, {
+      final msgData = <String, dynamic>{
         'senderId': myId,
         'text': trimmed,
         'createdAt': FieldValue.serverTimestamp(),
         'readAt': null,
-      });
+        'isEdited': false,
+        'isDeleted': false,
+      };
+      if (replyTo != null) {
+        msgData['replyTo'] = replyTo.toMap();
+      }
+      batch.set(msgRef, msgData);
 
       await batch.commit();
       state = false;
@@ -140,12 +120,49 @@ class DmSendNotifier extends Notifier<bool> {
       return false;
     }
   }
+
+  Future<bool> edit({
+    required String convoId,
+    required String messageId,
+    required String newText,
+  }) async {
+    final trimmed = newText.trim();
+    if (trimmed.isEmpty) return false;
+    try {
+      await FirebaseService.firestore
+          .collection('conversations')
+          .doc(convoId)
+          .collection('messages')
+          .doc(messageId)
+          .update({'text': trimmed, 'isEdited': true});
+      return true;
+    } catch (e) {
+      debugPrint('[DmEdit] $e');
+      return false;
+    }
+  }
+
+  Future<bool> delete({
+    required String convoId,
+    required String messageId,
+  }) async {
+    try {
+      await FirebaseService.firestore
+          .collection('conversations')
+          .doc(convoId)
+          .collection('messages')
+          .doc(messageId)
+          .update({'isDeleted': true, 'text': ''});
+      return true;
+    } catch (e) {
+      debugPrint('[DmDelete] $e');
+      return false;
+    }
+  }
 }
 
 final dmSendProvider =
 NotifierProvider<DmSendNotifier, bool>(DmSendNotifier.new);
-
-// Mark conversation as read
 
 Future<void> markConversationRead(String convoId, String myId) async {
   try {
@@ -154,7 +171,6 @@ Future<void> markConversationRead(String convoId, String myId) async {
         .doc(convoId)
         .update({'unreadCounts.$myId': 0});
 
-    // Mark all unread messages from peer as read
     final unread = await FirebaseService.firestore
         .collection('conversations')
         .doc(convoId)
@@ -164,14 +180,33 @@ Future<void> markConversationRead(String convoId, String myId) async {
         .get();
 
     if (unread.docs.isEmpty) return;
-
     final batch = FirebaseService.firestore.batch();
     for (final doc in unread.docs) {
-      batch.update(doc.reference,
-          {'readAt': FieldValue.serverTimestamp()});
+      batch.update(doc.reference, {'readAt': FieldValue.serverTimestamp()});
     }
     await batch.commit();
   } catch (e) {
     debugPrint('[markRead] $e');
+  }
+}
+
+Future<List<DmMessage>> loadOlderMessages({
+  required String convoId,
+  required DocumentSnapshot beforeDoc,
+  int limit = 25,
+}) async {
+  try {
+    final snap = await FirebaseService.firestore
+        .collection('conversations')
+        .doc(convoId)
+        .collection('messages')
+        .orderBy('createdAt', descending: false)
+        .endBeforeDocument(beforeDoc)
+        .limitToLast(limit)
+        .get();
+    return snap.docs.map(DmMessage.fromFirestore).toList();
+  } catch (e) {
+    debugPrint('[loadOlderMessages] $e');
+    return [];
   }
 }

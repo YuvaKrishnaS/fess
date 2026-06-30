@@ -1,4 +1,5 @@
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:fessv2/core/widgets/dm_notification_overlay.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -19,6 +20,37 @@ class DmInboxScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final inboxAsync = ref.watch(dmInboxProvider);
     final myId = LocalStorageService.getCachedAnonId() ?? '';
+
+    ref.listen(dmInboxProvider, (prev, next) {
+      next.whenData((convos) {
+        if (prev?.value == null) return;
+        final prevConvos = prev!.value!;
+        for (final convo in convos) {
+          final prevConvo = prevConvos.firstWhere(
+                (c) => c.id == convo.id,
+            orElse: () => convo,
+          );
+          final myId = LocalStorageService.getCachedAnonId() ?? '';
+          final newUnread = convo.unreadFor(myId);
+          final prevUnread = prevConvo.unreadFor(myId);
+          if (newUnread > prevUnread && convo.lastSenderId != myId) {
+            final peerId = convo.otherParticipant(myId);
+            ref.read(dmPeerProfileProvider(peerId).future).then((profile) {
+              if (!context.mounted) return;
+              DmNotificationOverlay.show(
+                context,
+                DmNotificationPayload(
+                  peerId: peerId,
+                  username: profile?['username'] as String? ?? 'anon',
+                  avatarUrl: _getAvatarUrl(profile),
+                  messagePreview: convo.lastMessage ?? '',
+                ),
+              );
+            });
+          }
+        }
+      });
+    });
 
     return Scaffold(
       backgroundColor: AppColors.backgroundMain,
