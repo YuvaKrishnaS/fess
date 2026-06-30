@@ -1,5 +1,4 @@
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:fessv2/core/widgets/dm_notification_overlay.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -11,7 +10,18 @@ import '../../../core/constants/app_typography.dart';
 import '../../../core/models/avatar_config.dart';
 import '../../../core/models/dm_model.dart';
 import '../../../core/services/local_storage_service.dart';
+import '../../../core/widgets/dm_notification_overlay.dart';
 import '../providers/dm_provider.dart';
+
+String? _resolveAvatarUrl(Map<String, dynamic>? profile) {
+  final raw = profile?['avatarConfig'];
+  if (raw == null) return null;
+  try {
+    return AvatarConfig.fromMap(raw as Map<String, dynamic>).buildUrl(size: 92);
+  } catch (_) {
+    return null;
+  }
+}
 
 class DmInboxScreen extends ConsumerWidget {
   const DmInboxScreen({super.key});
@@ -30,11 +40,11 @@ class DmInboxScreen extends ConsumerWidget {
                 (c) => c.id == convo.id,
             orElse: () => convo,
           );
-          final myId = LocalStorageService.getCachedAnonId() ?? '';
-          final newUnread = convo.unreadFor(myId);
-          final prevUnread = prevConvo.unreadFor(myId);
-          if (newUnread > prevUnread && convo.lastSenderId != myId) {
-            final peerId = convo.otherParticipant(myId);
+          final id = LocalStorageService.getCachedAnonId() ?? '';
+          final newUnread = convo.unreadFor(id);
+          final prevUnread = prevConvo.unreadFor(id);
+          if (newUnread > prevUnread && convo.lastSenderId != id) {
+            final peerId = convo.otherParticipant(id);
             ref.read(dmPeerProfileProvider(peerId).future).then((profile) {
               if (!context.mounted) return;
               DmNotificationOverlay.show(
@@ -42,7 +52,7 @@ class DmInboxScreen extends ConsumerWidget {
                 DmNotificationPayload(
                   peerId: peerId,
                   username: profile?['username'] as String? ?? 'anon',
-                  avatarUrl: _getAvatarUrl(profile),
+                  avatarUrl: _resolveAvatarUrl(profile),
                   messagePreview: convo.lastMessage ?? '',
                 ),
               );
@@ -75,9 +85,9 @@ class DmInboxScreen extends ConsumerWidget {
             color: AppColors.accentPrimary,
           ),
         ),
-        error: (e, _) => _EmptyInbox(),
+        error: (e, _) => const _EmptyInbox(),
         data: (convos) {
-          if (convos.isEmpty) return _EmptyInbox();
+          if (convos.isEmpty) return const _EmptyInbox();
           return ListView.separated(
             padding: const EdgeInsets.symmetric(vertical: 8),
             itemCount: convos.length,
@@ -113,7 +123,7 @@ class _ConvoTile extends ConsumerWidget {
       error: (_, __) => const SizedBox.shrink(),
       data: (profile) {
         final username = profile?['username'] as String? ?? 'anon';
-        final avatarUrl = _avatarUrl(profile);
+        final avatarUrl = _resolveAvatarUrl(profile);
         final lastMsg = convo.lastMessage ?? '';
         final isFromMe = convo.lastSenderId == myId;
 
@@ -215,20 +225,11 @@ class _ConvoTile extends ConsumerWidget {
       },
     );
   }
-
-  String? _avatarUrl(Map<String, dynamic>? profile) {
-    final raw = profile?['avatarConfig'];
-    if (raw == null) return null;
-    try {
-      return AvatarConfig.fromMap(raw as Map<String, dynamic>)
-          .buildUrl(size: 92);
-    } catch (_) {
-      return null;
-    }
-  }
 }
 
 class _EmptyInbox extends StatelessWidget {
+  const _EmptyInbox();
+
   @override
   Widget build(BuildContext context) {
     return Center(

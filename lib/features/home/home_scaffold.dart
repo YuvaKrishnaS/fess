@@ -62,11 +62,6 @@ class _HomeScaffoldState extends ConsumerState<HomeScaffold> {
 
   @override
   Widget build(BuildContext context) {
-    final totalUnread = ValueListenableBuilder<int>(
-      valueListenable: totalUnreadNotifier,
-      builder: (_, val, __) => val,
-    );
-
     return Scaffold(
       backgroundColor: AppColors.backgroundMain,
       extendBody: true,
