@@ -26,21 +26,26 @@ class DmNotificationPayload {
 class DmNotificationOverlay {
   static OverlayEntry? _entry;
   static Timer? _timer;
+  static GlobalKey<_DmNotificationBannerState>? _bannerKey;
 
-  static void show(
-      BuildContext context,
-      DmNotificationPayload payload,
-      ) {
+  static void show(BuildContext context, DmNotificationPayload payload) {
     _timer?.cancel();
-    _entry?.remove();
+
+    if (_entry != null) {
+      _entry!.remove();
+      _entry = null;
+      _bannerKey = null;
+    }
 
     HapticFeedback.lightImpact();
+    _bannerKey = GlobalKey<_DmNotificationBannerState>();
 
     _entry = OverlayEntry(
       builder: (ctx) => _DmNotificationBanner(
+        key: _bannerKey,
         payload: payload,
         onTap: () {
-          _dismiss();
+          _dismissWithAnimation();
           context.push(
             '/dm/${payload.peerId}',
             extra: {
@@ -49,19 +54,27 @@ class DmNotificationOverlay {
             },
           );
         },
-        onDismiss: _dismiss,
+        onDismiss: _dismissWithAnimation,
       ),
     );
 
     Overlay.of(context).insert(_entry!);
-
-    _timer = Timer(const Duration(seconds: 4), _dismiss);
+    _timer = Timer(const Duration(seconds: 4), _dismissWithAnimation);
   }
 
-  static void _dismiss() {
+  static void _dismissWithAnimation() {
     _timer?.cancel();
-    _entry?.remove();
-    _entry = null;
+    if (_bannerKey?.currentState != null) {
+      _bannerKey!.currentState!.animateOut().then((_) {
+        _entry?.remove();
+        _entry = null;
+        _bannerKey = null;
+      });
+    } else {
+      _entry?.remove();
+      _entry = null;
+      _bannerKey = null;
+    }
   }
 }
 
@@ -71,14 +84,14 @@ class _DmNotificationBanner extends StatefulWidget {
   final VoidCallback onDismiss;
 
   const _DmNotificationBanner({
+    super.key,
     required this.payload,
     required this.onTap,
     required this.onDismiss,
   });
 
   @override
-  State<_DmNotificationBanner> createState() =>
-      _DmNotificationBannerState();
+  State<_DmNotificationBanner> createState() => _DmNotificationBannerState();
 }
 
 class _DmNotificationBannerState extends State<_DmNotificationBanner>
@@ -91,12 +104,20 @@ class _DmNotificationBannerState extends State<_DmNotificationBanner>
   void initState() {
     super.initState();
     _ctrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 320));
-    _slide = Tween(begin: const Offset(0, -1.2), end: Offset.zero)
-        .animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeOutCubic));
-    _fade = Tween(begin: 0.0, end: 1.0)
+      vsync: this,
+      duration: const Duration(milliseconds: 260),
+    );
+    _slide = Tween<Offset>(
+      begin: const Offset(0, -1.4),
+      end: Offset.zero,
+    ).animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeOutCubic));
+    _fade = Tween<double>(begin: 0.0, end: 1.0)
         .animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeOut));
     _ctrl.forward();
+  }
+
+  Future<void> animateOut() async {
+    if (mounted) await _ctrl.reverse();
   }
 
   @override
@@ -108,7 +129,6 @@ class _DmNotificationBannerState extends State<_DmNotificationBanner>
   @override
   Widget build(BuildContext context) {
     final topPad = MediaQuery.of(context).padding.top;
-
     return Positioned(
       top: topPad + 8,
       left: 12,
@@ -122,24 +142,24 @@ class _DmNotificationBannerState extends State<_DmNotificationBanner>
             child: Material(
               color: Colors.transparent,
               child: Container(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 14, vertical: 12),
+                padding:
+                const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
                 decoration: BoxDecoration(
                   color: const Color(0xFF141420),
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(
-                      color: const Color(0xFF2A2A3A), width: 0.8),
+                  border:
+                  Border.all(color: const Color(0xFF2A2A3A), width: 0.8),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.5),
-                      blurRadius: 20,
+                      color: Colors.black.withOpacity(0.55),
+                      blurRadius: 22,
                       offset: const Offset(0, 6),
                     ),
                   ],
                 ),
                 child: Row(
                   children: [
-                    _avatar(),
+                    _Avatar(url: widget.payload.avatarUrl),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Column(
@@ -171,8 +191,11 @@ class _DmNotificationBannerState extends State<_DmNotificationBanner>
                     const SizedBox(width: 8),
                     GestureDetector(
                       onTap: widget.onDismiss,
-                      child: const Icon(LucideIcons.x,
-                          size: 16, color: AppColors.hintText),
+                      child: const Padding(
+                        padding: EdgeInsets.all(4),
+                        child: Icon(LucideIcons.x,
+                            size: 16, color: AppColors.hintText),
+                      ),
                     ),
                   ],
                 ),
@@ -183,30 +206,33 @@ class _DmNotificationBannerState extends State<_DmNotificationBanner>
       ),
     );
   }
+}
 
-  Widget _avatar() {
-    final url = widget.payload.avatarUrl;
-    return Container(
-      width: 38,
-      height: 38,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        border: Border.all(
-          color: AppColors.accentPrimary.withOpacity(0.3),
-          width: 1,
-        ),
+class _Avatar extends StatelessWidget {
+  final String? url;
+  const _Avatar({this.url});
+
+  @override
+  Widget build(BuildContext context) => Container(
+    width: 38,
+    height: 38,
+    decoration: BoxDecoration(
+      shape: BoxShape.circle,
+      border: Border.all(
+        color: AppColors.accentSecondary.withOpacity(0.3),
+        width: 1,
       ),
-      child: ClipOval(
-        child: url != null
-            ? CachedNetworkImage(
-          imageUrl: url,
-          fit: BoxFit.cover,
-          errorWidget: (_, __, ___) => _fallback(),
-        )
-            : _fallback(),
-      ),
-    );
-  }
+    ),
+    child: ClipOval(
+      child: url != null
+          ? CachedNetworkImage(
+        imageUrl: url!,
+        fit: BoxFit.cover,
+        errorWidget: (_, __, ___) => _fallback(),
+      )
+          : _fallback(),
+    ),
+  );
 
   Widget _fallback() => Container(
     color: const Color(0xFF111111),

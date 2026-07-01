@@ -6,6 +6,7 @@ import 'package:lucide_icons/lucide_icons.dart';
 
 import '../../core/constants/app_colors.dart';
 import '../../core/models/avatar_config.dart';
+import '../../core/models/dm_model.dart';
 import '../../core/services/local_storage_service.dart';
 import '../../core/widgets/dm_notification_overlay.dart';
 import '../../core/widgets/fess_snackbar.dart';
@@ -76,22 +77,29 @@ class _HomeScaffoldState extends ConsumerState<HomeScaffold> {
 
   @override
   Widget build(BuildContext context) {
+    ref.watch(dmInboxProvider);
+
     ref.listen(dmInboxProvider, (prev, next) {
       next.whenData((convos) {
         if (prev?.value == null) return;
         final prevConvos = prev!.value!;
         final myId = LocalStorageService.getCachedAnonId() ?? '';
+        final currentOpenConvoId = ref.read(activeConversationIdProvider);
+
         for (final convo in convos) {
-          final prevConvo = prevConvos.firstWhere(
-                (c) => c.id == convo.id,
-            orElse: () => convo,
-          );
+          final prevConvo = prevConvos
+              .cast<DmConversation?>()
+              .firstWhere((c) => c?.id == convo.id, orElse: () => null);
+
           final newUnread = convo.unreadFor(myId);
-          final prevUnread = prevConvo.unreadFor(myId);
+          final prevUnread = prevConvo?.unreadFor(myId) ?? 0;
+
           if (newUnread > prevUnread && convo.lastSenderId != myId) {
+            if (convo.id == currentOpenConvoId) continue;
+
             final peerId = convo.otherParticipant(myId);
             ref.read(dmPeerProfileProvider(peerId).future).then((profile) {
-              if (!mounted) return;
+              if (!mounted || !context.mounted) return;
               DmNotificationOverlay.show(
                 context,
                 DmNotificationPayload(
@@ -106,8 +114,6 @@ class _HomeScaffoldState extends ConsumerState<HomeScaffold> {
         }
       });
     });
-
-    ref.watch(dmInboxProvider);
 
     return Scaffold(
       backgroundColor: AppColors.backgroundMain,

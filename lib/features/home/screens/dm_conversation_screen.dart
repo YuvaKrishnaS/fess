@@ -1,7 +1,4 @@
-import 'dart:ui';
-
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -13,7 +10,6 @@ import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_typography.dart';
 import '../../../core/models/avatar_config.dart';
 import '../../../core/models/dm_model.dart';
-import '../../../core/services/firebase_service.dart';
 import '../../../core/services/local_storage_service.dart';
 import '../providers/dm_provider.dart';
 
@@ -42,15 +38,9 @@ class _DmConversationScreenState extends ConsumerState<DmConversationScreen> {
 
   bool _canSend = false;
   bool _loadingMore = false;
-  bool _hasMore = true;
-  bool _initialScrollDone = false;
-
-  List<DmMessage> _olderMessages = [];
-  DocumentSnapshot? _oldestDoc;
 
   String? _firstUnreadMessageId;
   bool _unreadIdCaptured = false;
-
   String? _highlightedMessageId;
 
   DmReplyTo? _replyTo;
@@ -65,6 +55,9 @@ class _DmConversationScreenState extends ConsumerState<DmConversationScreen> {
   void initState() {
     super.initState();
     _peerUsername = widget.initialUsername ?? 'anon';
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(activeConversationIdProvider.notifier).state = _convoId;
+    });
     _ctrl.addListener(() {
       final v = _ctrl.text.trim().isNotEmpty;
       if (v != _canSend) setState(() => _canSend = v);
@@ -74,6 +67,7 @@ class _DmConversationScreenState extends ConsumerState<DmConversationScreen> {
 
   @override
   void dispose() {
+    ref.read(activeConversationIdProvider.notifier).state = null;
     _ctrl.dispose();
     _focusNode.dispose();
     _scrollCtrl.dispose();
@@ -82,54 +76,20 @@ class _DmConversationScreenState extends ConsumerState<DmConversationScreen> {
 
   void _onScroll() {
     if (!_scrollCtrl.hasClients) return;
-    if (_scrollCtrl.position.pixels <= 120 &&
-        !_loadingMore &&
-        _hasMore &&
-        _oldestDoc != null) {
+    if (_scrollCtrl.position.pixels >=
+        _scrollCtrl.position.maxScrollExtent - 160 &&
+        !_loadingMore) {
       _loadMore();
     }
   }
 
   Future<void> _loadMore() async {
-    if (_loadingMore || !_hasMore || _oldestDoc == null) return;
+    if (_loadingMore) return;
     setState(() => _loadingMore = true);
-    final older =
-    await loadOlderMessages(convoId: _convoId, beforeDoc: _oldestDoc!);
-    if (!mounted) return;
-    if (older.isNotEmpty) {
-      final prevPixels = _scrollCtrl.hasClients ? _scrollCtrl.position.pixels : 0.0;
-      setState(() {
-        _olderMessages = [...older, ..._olderMessages];
-        _hasMore = older.length == 25;
-        if (older.isNotEmpty) _oldestDoc = null;
-      });
-      _fetchOldestDoc(older.first.id);
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (_scrollCtrl.hasClients) {
-          final newMax = _scrollCtrl.position.maxScrollExtent;
-          _scrollCtrl.jumpTo((newMax - prevPixels).clamp(0.0, newMax));
-        }
-      });
-    } else {
-      setState(() => _hasMore = false);
-    }
+    final current = ref.read(dmMessageLimitProvider(_convoId));
+    ref.read(dmMessageLimitProvider(_convoId).notifier).state = current + 25;
+    await Future.delayed(const Duration(milliseconds: 600));
     if (mounted) setState(() => _loadingMore = false);
-  }
-
-  void _scrollToBottom({bool animated = true}) {
-    if (!_scrollCtrl.hasClients) return;
-    final max = _scrollCtrl.position.maxScrollExtent;
-    if (animated) {
-      _scrollCtrl.animateTo(max,
-          duration: const Duration(milliseconds: 280), curve: Curves.easeOut);
-    } else {
-      _scrollCtrl.jumpTo(max);
-    }
-  }
-
-  bool get _isNearBottom {
-    if (!_scrollCtrl.hasClients) return true;
-    return (_scrollCtrl.position.maxScrollExtent - _scrollCtrl.position.pixels) < 150;
   }
 
   void _scrollToMessage(String messageId) {
@@ -142,9 +102,8 @@ class _DmConversationScreenState extends ConsumerState<DmConversationScreen> {
       alignment: 0.5,
     );
     setState(() => _highlightedMessageId = messageId);
-    Future.delayed(const Duration(milliseconds: 1400), () {
-      if (mounted) setState(() => _highlightedMessageId = null);
-    });
+    Future.delayed(const Duration(milliseconds: 1400),
+            () => mounted ? setState(() => _highlightedMessageId = null) : null);
   }
 
   Future<void> _send() async {
@@ -163,11 +122,9 @@ class _DmConversationScreenState extends ConsumerState<DmConversationScreen> {
     });
     HapticFeedback.selectionClick();
     _focusNode.requestFocus();
-    await ref.read(dmSendProvider.notifier).send(
-      peerId: widget.peerId,
-      text: text,
-      replyTo: reply,
-    );
+    await ref
+        .read(dmSendProvider.notifier)
+        .send(peerId: widget.peerId, text: text, replyTo: reply);
   }
 
   Future<void> _confirmEdit() async {
@@ -179,11 +136,9 @@ class _DmConversationScreenState extends ConsumerState<DmConversationScreen> {
       _canSend = false;
       _editingMessageId = null;
     });
-    await ref.read(dmSendProvider.notifier).edit(
-      convoId: _convoId,
-      messageId: id,
-      newText: text,
-    );
+    await ref
+        .read(dmSendProvider.notifier)
+        .edit(convoId: _convoId, messageId: id, newText: text);
   }
 
   void _cancelEdit() {
@@ -208,14 +163,13 @@ class _DmConversationScreenState extends ConsumerState<DmConversationScreen> {
   }
 
   void _startReply(DmMessage msg) {
-    final isMe = msg.senderId == _myId;
     setState(() {
       _replyTo = DmReplyTo(
         messageId: msg.id,
         senderId: msg.senderId,
         text: msg.isDeleted ? 'Deleted message' : msg.text,
       );
-      _replyIsFromMe = isMe;
+      _replyIsFromMe = msg.senderId == _myId;
       _editingMessageId = null;
     });
     _focusNode.requestFocus();
@@ -270,18 +224,6 @@ class _DmConversationScreenState extends ConsumerState<DmConversationScreen> {
     );
   }
 
-  void _fetchOldestDoc(String msgId) async {
-    try {
-      final doc = await FirebaseService.firestore
-          .collection('conversations')
-          .doc(_convoId)
-          .collection('messages')
-          .doc(msgId)
-          .get();
-      if (mounted) setState(() => _oldestDoc = doc);
-    } catch (_) {}
-  }
-
   @override
   Widget build(BuildContext context) {
     final messagesAsync = ref.watch(dmMessagesProvider(_convoId));
@@ -291,37 +233,25 @@ class _DmConversationScreenState extends ConsumerState<DmConversationScreen> {
     peerAsync.whenData((p) {
       final name = p?['username'] as String?;
       if (name != null && name != _peerUsername) {
-        WidgetsBinding.instance
-            .addPostFrameCallback((_) => setState(() => _peerUsername = name));
+        WidgetsBinding.instance.addPostFrameCallback(
+                (_) => mounted ? setState(() => _peerUsername = name) : null);
       }
     });
 
     ref.listen(dmMessagesProvider(_convoId), (prev, next) {
       next.whenData((msgs) {
         if (!_unreadIdCaptured && msgs.isNotEmpty) {
-          final firstUnread = msgs
+          final firstUnread = msgs.reversed
               .where((m) => m.senderId != _myId && m.readAt == null)
               .firstOrNull;
           _firstUnreadMessageId = firstUnread?.id;
           _unreadIdCaptured = true;
+        }
+
+        final hasUnreads =
+        msgs.any((m) => m.senderId != _myId && m.readAt == null);
+        if (hasUnreads) {
           markConversationRead(_convoId, _myId);
-        }
-
-        if (!_initialScrollDone && msgs.isNotEmpty) {
-          _initialScrollDone = true;
-          _fetchOldestDoc(msgs.first.id);
-          WidgetsBinding.instance
-              .addPostFrameCallback((_) => _scrollToBottom(animated: false));
-          return;
-        }
-
-        final prevMsgs = prev?.value ?? [];
-        if (msgs.length > prevMsgs.length) {
-          final newest = msgs.last;
-          if (newest.senderId == _myId || _isNearBottom) {
-            WidgetsBinding.instance
-                .addPostFrameCallback((_) => _scrollToBottom());
-          }
         }
       });
     });
@@ -339,24 +269,22 @@ class _DmConversationScreenState extends ConsumerState<DmConversationScreen> {
                     strokeWidth: 2, color: AppColors.accentPrimary),
               ),
               error: (_, __) => _EmptyConvo(username: _peerUsername),
-              data: (realtimeMsgs) {
-                final allMsgs = [..._olderMessages, ...realtimeMsgs];
-                if (allMsgs.isEmpty) {
-                  return _EmptyConvo(username: _peerUsername);
-                }
+              data: (msgs) {
+                if (msgs.isEmpty) return _EmptyConvo(username: _peerUsername);
 
                 return ListView.builder(
                   controller: _scrollCtrl,
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-                  itemCount: allMsgs.length + (_loadingMore ? 1 : 0),
+                  reverse: true,
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                  itemCount: msgs.length + (_loadingMore ? 1 : 0),
                   itemBuilder: (ctx, i) {
-                    if (_loadingMore && i == 0) {
+                    if (i == msgs.length) {
                       return const Padding(
                         padding: EdgeInsets.symmetric(vertical: 12),
                         child: Center(
                           child: SizedBox(
-                            width: 16,
-                            height: 16,
+                            width: 18,
+                            height: 18,
                             child: CircularProgressIndicator(
                                 strokeWidth: 1.5,
                                 color: AppColors.accentPrimary),
@@ -365,13 +293,14 @@ class _DmConversationScreenState extends ConsumerState<DmConversationScreen> {
                       );
                     }
 
-                    final idx = _loadingMore ? i - 1 : i;
-                    final msg = allMsgs[idx];
+                    final msg = msgs[i];
                     _msgKeys[msg.id] ??= GlobalKey();
-
                     final isMe = msg.senderId == _myId;
-                    final showDate = idx == 0 ||
-                        !_sameDay(allMsgs[idx - 1].createdAt, msg.createdAt);
+
+                    final isOldest = i == msgs.length - 1;
+                    final olderMsg = isOldest ? null : msgs[i + 1];
+                    final showDate = isOldest ||
+                        !_sameDay(olderMsg!.createdAt, msg.createdAt);
                     final showUnreadSep = _firstUnreadMessageId != null &&
                         msg.id == _firstUnreadMessageId;
 
@@ -379,12 +308,13 @@ class _DmConversationScreenState extends ConsumerState<DmConversationScreen> {
                       key: _msgKeys[msg.id],
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        if (showDate) _DateDivider(msg.createdAt),
                         if (showUnreadSep) const _UnreadSeparator(),
+                        if (showDate) _DateDivider(msg.createdAt),
                         _SwipeableMessage(
                           msg: msg,
                           isMe: isMe,
-                          onLongPress: () => _showMessageOptions(context, msg),
+                          onLongPress: () =>
+                              _showMessageOptions(context, msg),
                           onSwipeReply: () => _startReply(msg),
                           child: _MessageBubble(
                             msg: msg,
@@ -393,7 +323,8 @@ class _DmConversationScreenState extends ConsumerState<DmConversationScreen> {
                             myId: _myId,
                             peerUsername: _peerUsername,
                             onReplyTap: msg.replyTo != null
-                                ? () => _scrollToMessage(msg.replyTo!.messageId)
+                                ? () =>
+                                _scrollToMessage(msg.replyTo!.messageId)
                                 : null,
                           ),
                         ),
@@ -513,8 +444,10 @@ class _SwipeableMessageState extends State<_SwipeableMessage> {
     if (!widget.isMe && delta < 0) return;
 
     setState(() {
-      _dragX = (_dragX + delta)
-          .clamp(widget.isMe ? -_threshold : 0.0, widget.isMe ? 0.0 : _threshold);
+      _dragX = (_dragX + delta).clamp(
+        widget.isMe ? -_threshold : 0.0,
+        widget.isMe ? 0.0 : _threshold,
+      );
     });
 
     if (_dragX.abs() >= _threshold && !_triggered) {
@@ -553,14 +486,16 @@ class _SwipeableMessageState extends State<_SwipeableMessage> {
         children: [
           Positioned.fill(
             child: Align(
-              alignment: widget.isMe ? Alignment.centerRight : Alignment.centerLeft,
+              alignment: widget.isMe
+                  ? Alignment.centerRight
+                  : Alignment.centerLeft,
               child: Padding(
                 padding: EdgeInsets.only(
                   left: widget.isMe ? 0 : 4,
                   right: widget.isMe ? 4 : 0,
                 ),
                 child: Opacity(
-                  opacity: progress.clamp(0.0, 1.0),
+                  opacity: progress,
                   child: Container(
                     width: circleSize,
                     height: circleSize,
@@ -568,14 +503,16 @@ class _SwipeableMessageState extends State<_SwipeableMessage> {
                       shape: BoxShape.circle,
                       color: AppColors.accentPrimary.withOpacity(0.12),
                       border: Border.all(
-                        color: AppColors.accentPrimary.withOpacity(progress * 0.7),
+                        color:
+                        AppColors.accentPrimary.withOpacity(progress * 0.7),
                         width: 1.5,
                       ),
                     ),
                     child: Icon(
                       LucideIcons.cornerUpLeft,
                       size: iconSize,
-                      color: AppColors.accentPrimary.withOpacity(progress),
+                      color:
+                      AppColors.accentPrimary.withOpacity(progress),
                     ),
                   ),
                 ),
@@ -616,12 +553,17 @@ class _MessageBubble extends StatelessWidget {
         alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
         child: Container(
           margin: EdgeInsets.only(
-              top: 2, bottom: 2, left: isMe ? 60 : 0, right: isMe ? 0 : 60),
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              top: 2,
+              bottom: 2,
+              left: isMe ? 64 : 0,
+              right: isMe ? 0 : 64),
+          padding:
+          const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           decoration: BoxDecoration(
             color: const Color(0xFF0D0D0D),
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: const Color(0xFF1E1E1E), width: 0.7),
+            border:
+            Border.all(color: const Color(0xFF1E1E1E), width: 0.7),
           ),
           child: Text(
             'Message deleted',
@@ -638,9 +580,12 @@ class _MessageBubble extends StatelessWidget {
     return Align(
       alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 300),
+        duration: const Duration(milliseconds: 280),
         margin: EdgeInsets.only(
-            top: 2, bottom: 2, left: isMe ? 60 : 0, right: isMe ? 0 : 60),
+            top: 2,
+            bottom: 2,
+            left: isMe ? 64 : 0,
+            right: isMe ? 0 : 64),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: BoxDecoration(
           color: isHighlighted
@@ -711,7 +656,9 @@ class _MessageBubble extends StatelessWidget {
                 if (isMe) ...[
                   const SizedBox(width: 4),
                   Icon(
-                    msg.isRead ? LucideIcons.checkCheck : LucideIcons.check,
+                    msg.isRead
+                        ? LucideIcons.checkCheck
+                        : LucideIcons.check,
                     size: 12,
                     color: msg.isRead
                         ? AppColors.accentPrimary
@@ -791,8 +738,9 @@ class _UnreadSeparator extends StatelessWidget {
       children: [
         Expanded(
           child: Container(
-              height: 1,
-              color: AppColors.accentPrimary.withOpacity(0.45)),
+            height: 1,
+            color: AppColors.accentPrimary.withOpacity(0.45),
+          ),
         ),
         Container(
           margin: const EdgeInsets.symmetric(horizontal: 10),
@@ -817,8 +765,9 @@ class _UnreadSeparator extends StatelessWidget {
         ),
         Expanded(
           child: Container(
-              height: 1,
-              color: AppColors.accentPrimary.withOpacity(0.45)),
+            height: 1,
+            color: AppColors.accentPrimary.withOpacity(0.45),
+          ),
         ),
       ],
     ),
@@ -840,12 +789,12 @@ class _DateDivider extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.symmetric(vertical: 12),
+    padding: const EdgeInsets.symmetric(vertical: 10),
     child: Row(
       children: [
         const Expanded(
-            child:
-            Divider(color: Color(0xFF2A2A2A), thickness: 0.5)),
+          child: Divider(color: Color(0xFF2A2A2A), thickness: 0.5),
+        ),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12),
           child: Text(
@@ -858,8 +807,8 @@ class _DateDivider extends StatelessWidget {
           ),
         ),
         const Expanded(
-            child:
-            Divider(color: Color(0xFF2A2A2A), thickness: 0.5)),
+          child: Divider(color: Color(0xFF2A2A2A), thickness: 0.5),
+        ),
       ],
     ),
   );
@@ -882,8 +831,8 @@ class _ReplyPreview extends StatelessWidget {
   Widget build(BuildContext context) => Container(
     decoration: const BoxDecoration(
       color: Color(0xFF0A0A0A),
-      border: Border(
-          top: BorderSide(color: Color(0xFF1E1E1E), width: 0.5)),
+      border:
+      Border(top: BorderSide(color: Color(0xFF1E1E1E), width: 0.5)),
     ),
     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
     child: Row(
@@ -943,8 +892,8 @@ class _EditingBanner extends StatelessWidget {
   Widget build(BuildContext context) => Container(
     decoration: const BoxDecoration(
       color: Color(0xFF0A0A0A),
-      border: Border(
-          top: BorderSide(color: Color(0xFF1E1E1E), width: 0.5)),
+      border:
+      Border(top: BorderSide(color: Color(0xFF1E1E1E), width: 0.5)),
     ),
     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
     child: Row(
@@ -1006,8 +955,8 @@ class _MessageOptionsDialog extends StatelessWidget {
             decoration: BoxDecoration(
               color: const Color(0xFF141420),
               borderRadius: BorderRadius.circular(14),
-              border:
-              Border.all(color: const Color(0xFF2A2A3A), width: 0.8),
+              border: Border.all(
+                  color: const Color(0xFF2A2A3A), width: 0.8),
               boxShadow: [
                 BoxShadow(
                   color: Colors.black.withOpacity(0.5),
@@ -1020,23 +969,18 @@ class _MessageOptionsDialog extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 _OptionTile(
-                  icon: LucideIcons.cornerUpLeft,
-                  label: 'Reply',
-                  onTap: onReply,
-                ),
+                    icon: LucideIcons.cornerUpLeft,
+                    label: 'Reply',
+                    onTap: onReply),
                 _divider(),
                 _OptionTile(
-                  icon: LucideIcons.copy,
-                  label: 'Copy',
-                  onTap: onCopy,
-                ),
+                    icon: LucideIcons.copy, label: 'Copy', onTap: onCopy),
                 if (onEdit != null) ...[
                   _divider(),
                   _OptionTile(
-                    icon: LucideIcons.pencil,
-                    label: 'Edit',
-                    onTap: onEdit!,
-                  ),
+                      icon: LucideIcons.pencil,
+                      label: 'Edit',
+                      onTap: onEdit!),
                 ],
                 if (onDelete != null) ...[
                   _divider(),
@@ -1055,7 +999,8 @@ class _MessageOptionsDialog extends StatelessWidget {
     );
   }
 
-  Widget _divider() => Container(height: 0.5, color: const Color(0xFF1E1E2A));
+  Widget _divider() =>
+      Container(height: 0.5, color: const Color(0xFF1E1E2A));
 }
 
 class _OptionTile extends StatefulWidget {
@@ -1080,8 +1025,9 @@ class _OptionTileState extends State<_OptionTile> {
 
   @override
   Widget build(BuildContext context) {
-    final color =
-    widget.isDestructive ? AppColors.errorLight : AppColors.textPrimary;
+    final color = widget.isDestructive
+        ? AppColors.errorLight
+        : AppColors.textPrimary;
 
     return GestureDetector(
       onTapDown: (_) => setState(() => _pressed = true),
@@ -1164,11 +1110,7 @@ class _InputBar extends StatelessWidget {
                   focusNode: focusNode,
                   maxLines: null,
                   maxLength: 500,
-                  buildCounter: (_,
-                      {required currentLength,
-                        required isFocused,
-                        maxLength}) =>
-                  null,
+                  buildCounter: (_, {required currentLength, required isFocused, maxLength}) => null,
                   textInputAction: TextInputAction.newline,
                   keyboardType: TextInputType.multiline,
                   style: AppTypography.bodyMedium.copyWith(
@@ -1225,7 +1167,8 @@ class _SendButtonState extends State<_SendButton> {
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTapDown: widget.canSend ? (_) => setState(() => _pressed = true) : null,
+      onTapDown:
+      widget.canSend ? (_) => setState(() => _pressed = true) : null,
       onTapUp: widget.canSend
           ? (_) {
         setState(() => _pressed = false);
@@ -1282,7 +1225,7 @@ class _EmptyConvo extends StatelessWidget {
             color: const Color(0xFF0D0D0D),
             shape: BoxShape.circle,
             border: Border.all(
-              color: const Color(0xFF1E1E1E), width: 0.8),
+                color: const Color(0xFF1E1E1E), width: 0.8),
           ),
           child: const Icon(LucideIcons.messageCircle,
               size: 24, color: AppColors.hintText),
@@ -1337,7 +1280,7 @@ class _DmAvatarSmall extends StatelessWidget {
         errorWidget: (_, __, ___) => _fallback(),
       )
           : _fallback(),
-    )
+    ),
   );
 
   Widget _fallback() => Container(
