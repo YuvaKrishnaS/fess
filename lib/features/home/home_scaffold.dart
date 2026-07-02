@@ -6,7 +6,6 @@ import 'package:lucide_icons/lucide_icons.dart';
 
 import '../../core/constants/app_colors.dart';
 import '../../core/models/avatar_config.dart';
-import '../../core/models/dm_model.dart';
 import '../../core/services/local_storage_service.dart';
 import '../../core/widgets/dm_notification_overlay.dart';
 import '../../core/widgets/fess_snackbar.dart';
@@ -68,8 +67,7 @@ class _HomeScaffoldState extends ConsumerState<HomeScaffold> {
     final raw = profile?['avatarConfig'];
     if (raw == null) return null;
     try {
-      return AvatarConfig.fromMap(raw as Map<String, dynamic>)
-          .buildUrl(size: 76);
+      return AvatarConfig.fromMap(raw as Map<String, dynamic>).buildUrl(size: 76);
     } catch (_) {
       return null;
     }
@@ -88,15 +86,16 @@ class _HomeScaffoldState extends ConsumerState<HomeScaffold> {
 
         for (final convo in convos) {
           final prevConvo = prevConvos
-              .cast<DmConversation?>()
-              .firstWhere((c) => c?.id == convo.id, orElse: () => null);
+              .cast<dynamic>()
+              .firstWhere((c) => c.id == convo.id, orElse: () => null);
 
-          final newUnread = convo.unreadFor(myId);
-          final prevUnread = prevConvo?.unreadFor(myId) ?? 0;
+          final wasUnread = prevConvo != null ? prevConvo.isUnreadFor(myId) : false;
+          final isNowUnread = convo.isUnreadFor(myId);
 
-          if (newUnread > prevUnread && convo.lastSenderId != myId) {
-            if (convo.id == currentOpenConvoId) continue;
-
+          if (isNowUnread &&
+              !wasUnread &&
+              convo.lastSenderId != myId &&
+              convo.id != currentOpenConvoId) {
             final peerId = convo.otherParticipant(myId);
             ref.read(dmPeerProfileProvider(peerId).future).then((profile) {
               if (!mounted || !context.mounted) return;
@@ -193,9 +192,7 @@ class _BottomNav extends StatelessWidget {
     return Container(
       decoration: const BoxDecoration(
         color: AppColors.backgroundMain,
-        border: Border(
-          top: BorderSide(color: Color(0xFF1A1A1A), width: 0.5),
-        ),
+        border: Border(top: BorderSide(color: Color(0xFF1A1A1A), width: 0.5)),
       ),
       child: SafeArea(
         child: SizedBox(
@@ -291,8 +288,7 @@ class _FabState extends State<_Fab> {
           height: 52,
           decoration: BoxDecoration(
             gradient: const LinearGradient(
-              colors: [Color(0xFF7C4DFF), Color(0xFF1DE9B6)],
-            ),
+                colors: [Color(0xFF7C4DFF), Color(0xFF1DE9B6)]),
             shape: BoxShape.circle,
             boxShadow: [
               BoxShadow(

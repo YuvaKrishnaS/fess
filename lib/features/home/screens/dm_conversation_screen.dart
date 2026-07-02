@@ -1,4 +1,6 @@
+import 'dart:ui';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -10,8 +12,12 @@ import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_typography.dart';
 import '../../../core/models/avatar_config.dart';
 import '../../../core/models/dm_model.dart';
+import '../../../core/services/firebase_service.dart';
 import '../../../core/services/local_storage_service.dart';
+import '../../../core/widgets/fess_snackbar.dart';
 import '../providers/dm_provider.dart';
+
+const _quickEmojis = ['❤️', '😂', '😮', '😢', '🙏', '🔥'];
 
 class DmConversationScreen extends ConsumerStatefulWidget {
   final String peerId;
@@ -38,15 +44,22 @@ class _DmConversationScreenState extends ConsumerState<DmConversationScreen> {
 
   bool _canSend = false;
   bool _loadingMore = false;
+  bool _hasMoreHistory = true;
+  bool _initialCaptureDone = false;
 
+  final List<DmMessage> _historyMessages = [];
+  DocumentSnapshot? _oldestLoadedDoc;
+
+  DateTime? _entryLastRead;
   String? _firstUnreadMessageId;
-  bool _unreadIdCaptured = false;
   String? _highlightedMessageId;
 
   DmReplyTo? _replyTo;
   bool _replyIsFromMe = false;
   String? _editingMessageId;
   String _peerUsername = '';
+
+  bool _isTyping = false;
 
   String get _myId => LocalStorageService.getCachedAnonId() ?? '';
   String get _convoId => conversationId(_myId, widget.peerId);
@@ -58,38 +71,76 @@ class _DmConversationScreenState extends ConsumerState<DmConversationScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(activeConversationIdProvider.notifier).state = _convoId;
     });
-    _ctrl.addListener(() {
-      final v = _ctrl.text.trim().isNotEmpty;
-      if (v != _canSend) setState(() => _canSend = v);
-    });
+    _ctrl.addListener(_onTextChanged);
     _scrollCtrl.addListener(_onScroll);
   }
 
   @override
   void dispose() {
     ref.read(activeConversationIdProvider.notifier).state = null;
+    if (_isTyping) setTypingState(_convoId, _myId, false);
     _ctrl.dispose();
     _focusNode.dispose();
     _scrollCtrl.dispose();
     super.dispose();
   }
 
-  void _onScroll() {
-    if (!_scrollCtrl.hasClients) return;
-    if (_scrollCtrl.position.pixels >=
-        _scrollCtrl.position.maxScrollExtent - 160 &&
-        !_loadingMore) {
-      _loadMore();
+  void _onTextChanged() {
+    final v = _ctrl.text.trim().isNotEmpty;
+    if (v != _canSend) setState(() => _canSend = v);
+
+    if (v && !_isTyping) {
+      _isTyping = true;
+      setTypingState(_convoId, _myId, true);
+    } else if (!v && _isTyping) {
+      _isTyping = false;
+      setTypingState(_convoId, _myId, false);
     }
   }
 
-  Future<void> _loadMore() async {
-    if (_loadingMore) return;
+  void _onScroll() {
+    if (!_scrollCtrl.hasClients) return;
+    if (_scrollCtrl.position.pixels >=
+        _scrollCtrl.position.maxScrollExtent - 200 &&
+        !_loadingMore &&
+        _hasMoreHistory &&
+        _oldestLoadedDoc != null) {
+      _loadMoreHistory();
+    }
+  }
+
+  Future<void> _loadMoreHistory() async {
+    if (_loadingMore || _oldestLoadedDoc == null) return;
     setState(() => _loadingMore = true);
-    final current = ref.read(dmMessageLimitProvider(_convoId));
-    ref.read(dmMessageLimitProvider(_convoId).notifier).state = current + 25;
-    await Future.delayed(const Duration(milliseconds: 600));
-    if (mounted) setState(() => _loadingMore = false);
+    final older = await fetchOlderMessages(
+      convoId: _convoId,
+      afterDoc: _oldestLoadedDoc!,
+    );
+    if (!mounted) return;
+    setState(() {
+      if (older.isNotEmpty) {
+        _historyMessages.addAll(older);
+        _hasMoreHistory = older.length == 25;
+      } else {
+        _hasMoreHistory = false;
+      }
+      _loadingMore = false;
+    });
+    if (older.isNotEmpty) {
+      _fetchOldestDocRef(older.last.id);
+    }
+  }
+
+  Future<void> _fetchOldestDocRef(String msgId) async {
+    try {
+      final doc = await FirebaseService.firestore
+          .collection('conversations')
+          .doc(_convoId)
+          .collection('messages')
+          .doc(msgId)
+          .get();
+      if (mounted) setState(() => _oldestLoadedDoc = doc);
+    } catch (_) {}
   }
 
   void _scrollToMessage(String messageId) {
@@ -120,11 +171,15 @@ class _DmConversationScreenState extends ConsumerState<DmConversationScreen> {
       _replyTo = null;
       _replyIsFromMe = false;
     });
+    _isTyping = false;
+    setTypingState(_convoId, _myId, false);
     HapticFeedback.selectionClick();
     _focusNode.requestFocus();
-    await ref
-        .read(dmSendProvider.notifier)
-        .send(peerId: widget.peerId, text: text, replyTo: reply);
+    await ref.read(dmSendProvider.notifier).send(
+      peerId: widget.peerId,
+      text: text,
+      replyTo: reply,
+    );
   }
 
   Future<void> _confirmEdit() async {
@@ -136,9 +191,13 @@ class _DmConversationScreenState extends ConsumerState<DmConversationScreen> {
       _canSend = false;
       _editingMessageId = null;
     });
-    await ref
+    final ok = await ref
         .read(dmSendProvider.notifier)
         .edit(convoId: _convoId, messageId: id, newText: text);
+    if (!ok && mounted) {
+      FessSnackbar.show(context, 'Couldn\'t update message, try again',
+          type: SnackbarType.error);
+    }
   }
 
   void _cancelEdit() {
@@ -175,28 +234,51 @@ class _DmConversationScreenState extends ConsumerState<DmConversationScreen> {
     _focusNode.requestFocus();
   }
 
-  void _showMessageOptions(BuildContext context, DmMessage msg) {
+  Future<void> _deleteMessage(DmMessage msg) async {
+    final ok = await ref
+        .read(dmSendProvider.notifier)
+        .delete(convoId: _convoId, messageId: msg.id);
+    if (!ok && mounted) {
+      FessSnackbar.show(context, 'Couldn\'t delete message, try again',
+          type: SnackbarType.error);
+    }
+  }
+
+  void _showEmojiBar(BuildContext context, DmMessage msg) {
     if (msg.isDeleted) return;
-    final isMe = msg.senderId == _myId;
     HapticFeedback.mediumImpact();
 
     showGeneralDialog(
       context: context,
       barrierDismissible: true,
       barrierLabel: '',
-      barrierColor: Colors.black.withOpacity(0.55),
-      transitionDuration: const Duration(milliseconds: 180),
+      barrierColor: Colors.black.withOpacity(0.5),
+      transitionDuration: const Duration(milliseconds: 160),
       transitionBuilder: (ctx, anim, _, child) => FadeTransition(
         opacity: CurvedAnimation(parent: anim, curve: Curves.easeOut),
         child: ScaleTransition(
-          scale: Tween(begin: 0.92, end: 1.0).animate(
+          scale: Tween(begin: 0.9, end: 1.0).animate(
               CurvedAnimation(parent: anim, curve: Curves.easeOutCubic)),
           child: child,
         ),
       ),
-      pageBuilder: (ctx, _, __) => _MessageOptionsDialog(
+      pageBuilder: (ctx, _, __) => _MessageActionSheet(
         msg: msg,
-        isMe: isMe,
+        isMe: msg.senderId == _myId,
+        onEmoji: (emoji) {
+          Navigator.of(ctx).pop();
+          final current = msg.reactions[_myId];
+          if (current == emoji) {
+            ref.read(dmSendProvider.notifier).removeReaction(
+                convoId: _convoId, messageId: msg.id, myId: _myId);
+          } else {
+            ref.read(dmSendProvider.notifier).react(
+                convoId: _convoId,
+                messageId: msg.id,
+                myId: _myId,
+                emoji: emoji);
+          }
+        },
         onReply: () {
           Navigator.of(ctx).pop();
           _startReply(msg);
@@ -205,19 +287,16 @@ class _DmConversationScreenState extends ConsumerState<DmConversationScreen> {
           Clipboard.setData(ClipboardData(text: msg.text));
           Navigator.of(ctx).pop();
         },
-        onEdit: isMe
+        onEdit: msg.senderId == _myId
             ? () {
           Navigator.of(ctx).pop();
           _startEdit(msg);
         }
             : null,
-        onDelete: isMe
+        onDelete: msg.senderId == _myId
             ? () {
           Navigator.of(ctx).pop();
-          ref.read(dmSendProvider.notifier).delete(
-            convoId: _convoId,
-            messageId: msg.id,
-          );
+          _deleteMessage(msg);
         }
             : null,
       ),
@@ -226,9 +305,10 @@ class _DmConversationScreenState extends ConsumerState<DmConversationScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final messagesAsync = ref.watch(dmMessagesProvider(_convoId));
+    final liveAsync = ref.watch(dmLiveMessagesProvider(_convoId));
     final peerAsync = ref.watch(dmPeerProfileProvider(widget.peerId));
-    final isSending = ref.watch(dmSendProvider);
+    final convoAsync = ref.watch(dmConversationDocProvider(_convoId));
+    final pendingMsgs = ref.watch(pendingMessagesProvider(_convoId));
 
     peerAsync.whenData((p) {
       final name = p?['username'] as String?;
@@ -238,47 +318,54 @@ class _DmConversationScreenState extends ConsumerState<DmConversationScreen> {
       }
     });
 
-    ref.listen(dmMessagesProvider(_convoId), (prev, next) {
+    ref.listen(dmLiveMessagesProvider(_convoId), (prev, next) {
       next.whenData((msgs) {
-        if (!_unreadIdCaptured && msgs.isNotEmpty) {
+        if (!_initialCaptureDone) {
+          _entryLastRead = convoAsync.value?.lastRead[_myId];
           final firstUnread = msgs.reversed
-              .where((m) => m.senderId != _myId && m.readAt == null)
+              .where((m) =>
+          m.senderId != _myId &&
+              (_entryLastRead == null ||
+                  m.createdAt.isAfter(_entryLastRead!)))
               .firstOrNull;
           _firstUnreadMessageId = firstUnread?.id;
-          _unreadIdCaptured = true;
+          _initialCaptureDone = true;
+          if (msgs.isNotEmpty) {
+            _fetchOldestDocRef(msgs.last.id);
+          }
         }
-
-        final hasUnreads =
-        msgs.any((m) => m.senderId != _myId && m.readAt == null);
-        if (hasUnreads) {
-          markConversationRead(_convoId, _myId);
-        }
+        markConversationRead(_convoId, _myId);
       });
     });
 
     return Scaffold(
       resizeToAvoidBottomInset: true,
       backgroundColor: AppColors.backgroundMain,
-      appBar: _buildAppBar(peerAsync),
+      appBar: _buildAppBar(peerAsync, convoAsync),
       body: Column(
         children: [
           Expanded(
-            child: messagesAsync.when(
+            child: liveAsync.when(
               loading: () => const Center(
                 child: CircularProgressIndicator(
                     strokeWidth: 2, color: AppColors.accentPrimary),
               ),
               error: (_, __) => _EmptyConvo(username: _peerUsername),
-              data: (msgs) {
-                if (msgs.isEmpty) return _EmptyConvo(username: _peerUsername);
+              data: (liveMsgs) {
+                final allMsgs = [...pendingMsgs, ...liveMsgs, ..._historyMessages];
+                if (allMsgs.isEmpty) {
+                  return _EmptyConvo(username: _peerUsername);
+                }
+
+                final peerLastRead = convoAsync.value?.lastRead[widget.peerId];
 
                 return ListView.builder(
                   controller: _scrollCtrl,
                   reverse: true,
                   padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-                  itemCount: msgs.length + (_loadingMore ? 1 : 0),
+                  itemCount: allMsgs.length + (_loadingMore ? 1 : 0),
                   itemBuilder: (ctx, i) {
-                    if (i == msgs.length) {
+                    if (i == allMsgs.length) {
                       return const Padding(
                         padding: EdgeInsets.symmetric(vertical: 12),
                         child: Center(
@@ -293,12 +380,15 @@ class _DmConversationScreenState extends ConsumerState<DmConversationScreen> {
                       );
                     }
 
-                    final msg = msgs[i];
+                    final msg = allMsgs[i];
                     _msgKeys[msg.id] ??= GlobalKey();
                     final isMe = msg.senderId == _myId;
+                    final isLastMe = isMe &&
+                        i ==
+                            allMsgs.indexWhere((m) => m.senderId == _myId);
 
-                    final isOldest = i == msgs.length - 1;
-                    final olderMsg = isOldest ? null : msgs[i + 1];
+                    final isOldest = i == allMsgs.length - 1;
+                    final olderMsg = isOldest ? null : allMsgs[i + 1];
                     final showDate = isOldest ||
                         !_sameDay(olderMsg!.createdAt, msg.createdAt);
                     final showUnreadSep = _firstUnreadMessageId != null &&
@@ -313,8 +403,7 @@ class _DmConversationScreenState extends ConsumerState<DmConversationScreen> {
                         _SwipeableMessage(
                           msg: msg,
                           isMe: isMe,
-                          onLongPress: () =>
-                              _showMessageOptions(context, msg),
+                          onLongPress: () => _showEmojiBar(context, msg),
                           onSwipeReply: () => _startReply(msg),
                           child: _MessageBubble(
                             msg: msg,
@@ -322,9 +411,19 @@ class _DmConversationScreenState extends ConsumerState<DmConversationScreen> {
                             isHighlighted: _highlightedMessageId == msg.id,
                             myId: _myId,
                             peerUsername: _peerUsername,
+                            isSeen: isLastMe &&
+                                msg.isReadBy(peerLastRead) &&
+                                msg.status == DmMessageStatus.sent,
                             onReplyTap: msg.replyTo != null
                                 ? () =>
                                 _scrollToMessage(msg.replyTo!.messageId)
+                                : null,
+                            onRetry: msg.status == DmMessageStatus.failed
+                                ? () => ref.read(dmSendProvider.notifier).retry(
+                              convoId: _convoId,
+                              peerId: widget.peerId,
+                              failedMsg: msg,
+                            )
                                 : null,
                           ),
                         ),
@@ -345,13 +444,11 @@ class _DmConversationScreenState extends ConsumerState<DmConversationScreen> {
                 _replyIsFromMe = false;
               }),
             ),
-          if (_editingMessageId != null)
-            _EditingBanner(onCancel: _cancelEdit),
+          if (_editingMessageId != null) _EditingBanner(onCancel: _cancelEdit),
           _InputBar(
             ctrl: _ctrl,
             focusNode: _focusNode,
             canSend: _canSend,
-            isSending: isSending,
             onSend: _send,
           ),
         ],
@@ -360,7 +457,9 @@ class _DmConversationScreenState extends ConsumerState<DmConversationScreen> {
   }
 
   PreferredSizeWidget _buildAppBar(
-      AsyncValue<Map<String, dynamic>?> peerAsync) {
+      AsyncValue<Map<String, dynamic>?> peerAsync,
+      AsyncValue<DmConversation?> convoAsync,
+      ) {
     final avatarUrl = peerAsync.when(
       data: (p) {
         final raw = p?['avatarConfig'];
@@ -375,6 +474,9 @@ class _DmConversationScreenState extends ConsumerState<DmConversationScreen> {
       loading: () => widget.initialAvatarUrl,
       error: (_, __) => widget.initialAvatarUrl,
     );
+
+    final peerTyping =
+        convoAsync.value?.peerIsTyping(widget.peerId) ?? false;
 
     return AppBar(
       backgroundColor: AppColors.backgroundMain,
@@ -391,14 +493,29 @@ class _DmConversationScreenState extends ConsumerState<DmConversationScreen> {
           children: [
             _DmAvatarSmall(url: avatarUrl),
             const SizedBox(width: 10),
-            Text(
-              '@$_peerUsername',
-              style: AppTypography.bodyMedium.copyWith(
-                fontFamily: 'DM Sans',
-                fontWeight: FontWeight.w700,
-                fontSize: 15,
-                color: AppColors.textPrimary,
-              ),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  '@$_peerUsername',
+                  style: AppTypography.bodyMedium.copyWith(
+                    fontFamily: 'DM Sans',
+                    fontWeight: FontWeight.w700,
+                    fontSize: 15,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                if (peerTyping)
+                  Text(
+                    'typing...',
+                    style: AppTypography.bodySmall.copyWith(
+                      fontSize: 11,
+                      color: AppColors.accentPrimary,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+              ],
             ),
           ],
         ),
@@ -486,9 +603,8 @@ class _SwipeableMessageState extends State<_SwipeableMessage> {
         children: [
           Positioned.fill(
             child: Align(
-              alignment: widget.isMe
-                  ? Alignment.centerRight
-                  : Alignment.centerLeft,
+              alignment:
+              widget.isMe ? Alignment.centerRight : Alignment.centerLeft,
               child: Padding(
                 padding: EdgeInsets.only(
                   left: widget.isMe ? 0 : 4,
@@ -503,16 +619,15 @@ class _SwipeableMessageState extends State<_SwipeableMessage> {
                       shape: BoxShape.circle,
                       color: AppColors.accentPrimary.withOpacity(0.12),
                       border: Border.all(
-                        color:
-                        AppColors.accentPrimary.withOpacity(progress * 0.7),
+                        color: AppColors.accentPrimary
+                            .withOpacity(progress * 0.7),
                         width: 1.5,
                       ),
                     ),
                     child: Icon(
                       LucideIcons.cornerUpLeft,
                       size: iconSize,
-                      color:
-                      AppColors.accentPrimary.withOpacity(progress),
+                      color: AppColors.accentPrimary.withOpacity(progress),
                     ),
                   ),
                 ),
@@ -535,7 +650,9 @@ class _MessageBubble extends StatelessWidget {
   final bool isHighlighted;
   final String myId;
   final String peerUsername;
+  final bool isSeen;
   final VoidCallback? onReplyTap;
+  final VoidCallback? onRetry;
 
   const _MessageBubble({
     required this.msg,
@@ -543,7 +660,9 @@ class _MessageBubble extends StatelessWidget {
     required this.isHighlighted,
     required this.myId,
     required this.peerUsername,
+    required this.isSeen,
     this.onReplyTap,
+    this.onRetry,
   });
 
   @override
@@ -553,17 +672,12 @@ class _MessageBubble extends StatelessWidget {
         alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
         child: Container(
           margin: EdgeInsets.only(
-              top: 2,
-              bottom: 2,
-              left: isMe ? 64 : 0,
-              right: isMe ? 0 : 64),
-          padding:
-          const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              top: 2, bottom: 2, left: isMe ? 64 : 0, right: isMe ? 0 : 64),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           decoration: BoxDecoration(
             color: const Color(0xFF0D0D0D),
             borderRadius: BorderRadius.circular(14),
-            border:
-            Border.all(color: const Color(0xFF1E1E1E), width: 0.7),
+            border: Border.all(color: const Color(0xFF1E1E1E), width: 0.7),
           ),
           child: Text(
             'Message deleted',
@@ -577,98 +691,146 @@ class _MessageBubble extends StatelessWidget {
       );
     }
 
+    final isSending = msg.status == DmMessageStatus.sending;
+    final isFailed = msg.status == DmMessageStatus.failed;
+
     return Align(
       alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 280),
-        margin: EdgeInsets.only(
-            top: 2,
-            bottom: 2,
-            left: isMe ? 64 : 0,
-            right: isMe ? 0 : 64),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        decoration: BoxDecoration(
-          color: isHighlighted
-              ? AppColors.accentPrimary.withOpacity(0.18)
-              : isMe
-              ? AppColors.accentPrimary.withOpacity(0.13)
-              : const Color(0xFF111118),
-          borderRadius: BorderRadius.only(
-            topLeft: const Radius.circular(16),
-            topRight: const Radius.circular(16),
-            bottomLeft: Radius.circular(isMe ? 16 : 4),
-            bottomRight: Radius.circular(isMe ? 4 : 16),
-          ),
-          border: Border.all(
-            color: isHighlighted
-                ? AppColors.accentPrimary.withOpacity(0.5)
-                : isMe
-                ? AppColors.accentPrimary.withOpacity(0.2)
-                : const Color(0xFF1E1E2A),
-            width: 0.8,
-          ),
-        ),
-        child: Column(
-          crossAxisAlignment:
-          isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (msg.replyTo != null)
-              GestureDetector(
-                onTap: onReplyTap,
-                child: _ReplyQuote(
-                  replyTo: msg.replyTo!,
-                  myId: myId,
-                  peerUsername: peerUsername,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          AnimatedOpacity(
+            duration: const Duration(milliseconds: 200),
+            opacity: isSending ? 0.55 : 1.0,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 280),
+              margin: EdgeInsets.only(
+                  top: 2,
+                  bottom: msg.reactions.isNotEmpty ? 12 : 2,
+                  left: isMe ? 64 : 0,
+                  right: isMe ? 0 : 64),
+              padding:
+              const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              decoration: BoxDecoration(
+                color: isHighlighted
+                    ? AppColors.accentPrimary.withOpacity(0.18)
+                    : isMe
+                    ? AppColors.accentPrimary.withOpacity(0.13)
+                    : const Color(0xFF111118),
+                borderRadius: BorderRadius.only(
+                  topLeft: const Radius.circular(16),
+                  topRight: const Radius.circular(16),
+                  bottomLeft: Radius.circular(isMe ? 16 : 4),
+                  bottomRight: Radius.circular(isMe ? 4 : 16),
+                ),
+                border: Border.all(
+                  color: isFailed
+                      ? AppColors.errorLight.withOpacity(0.5)
+                      : isHighlighted
+                      ? AppColors.accentPrimary.withOpacity(0.5)
+                      : isMe
+                      ? AppColors.accentPrimary.withOpacity(0.2)
+                      : const Color(0xFF1E1E2A),
+                  width: 0.8,
                 ),
               ),
-            Text(
-              msg.text,
-              style: AppTypography.bodyMedium.copyWith(
-                fontSize: 14,
-                color: AppColors.textPrimary,
-                height: 1.5,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (msg.isEdited)
-                  Padding(
-                    padding: const EdgeInsets.only(right: 5),
-                    child: Text(
-                      'Edited',
-                      style: AppTypography.bodySmall.copyWith(
-                        fontSize: 10,
-                        color: AppColors.hintText,
-                        fontStyle: FontStyle.italic,
+              child: Column(
+                crossAxisAlignment:
+                isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (msg.replyTo != null)
+                    GestureDetector(
+                      onTap: onReplyTap,
+                      child: _ReplyQuote(
+                        replyTo: msg.replyTo!,
+                        myId: myId,
+                        peerUsername: peerUsername,
                       ),
                     ),
+                  Text(
+                    msg.text,
+                    style: AppTypography.bodyMedium.copyWith(
+                      fontSize: 14,
+                      color: AppColors.textPrimary,
+                      height: 1.5,
+                    ),
                   ),
-                Text(
-                  DateFormat('h:mm a').format(msg.createdAt.toLocal()),
-                  style: AppTypography.bodySmall.copyWith(
-                    fontSize: 10,
-                    color: AppColors.hintText,
-                  ),
-                ),
-                if (isMe) ...[
-                  const SizedBox(width: 4),
-                  Icon(
-                    msg.isRead
-                        ? LucideIcons.checkCheck
-                        : LucideIcons.check,
-                    size: 12,
-                    color: msg.isRead
-                        ? AppColors.accentPrimary
-                        : AppColors.hintText,
+                  const SizedBox(height: 4),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (isFailed)
+                        GestureDetector(
+                          onTap: onRetry,
+                          child: Padding(
+                            padding: const EdgeInsets.only(right: 5),
+                            child: Icon(LucideIcons.refreshCw,
+                                size: 12, color: AppColors.errorLight),
+                          ),
+                        )
+                      else if (isSending)
+                        Padding(
+                          padding: const EdgeInsets.only(right: 5),
+                          child: Icon(LucideIcons.clock,
+                              size: 11, color: AppColors.hintText),
+                        ),
+                      if (msg.isEdited)
+                        Padding(
+                          padding: const EdgeInsets.only(right: 5),
+                          child: Text(
+                            'Edited',
+                            style: AppTypography.bodySmall.copyWith(
+                              fontSize: 10,
+                              color: AppColors.hintText,
+                              fontStyle: FontStyle.italic,
+                            ),
+                          ),
+                        ),
+                      Text(
+                        DateFormat('h:mm a').format(msg.createdAt.toLocal()),
+                        style: AppTypography.bodySmall.copyWith(
+                          fontSize: 10,
+                          color: AppColors.hintText,
+                        ),
+                      ),
+                      if (isMe && !isSending && !isFailed) ...[
+                        const SizedBox(width: 4),
+                        Icon(
+                          isSeen ? LucideIcons.checkCheck : LucideIcons.check,
+                          size: 12,
+                          color: isSeen
+                              ? AppColors.accentPrimary
+                              : AppColors.hintText,
+                        ),
+                      ],
+                    ],
                   ),
                 ],
-              ],
+              ),
             ),
-          ],
-        ),
+          ),
+          if (msg.reactions.isNotEmpty)
+            Positioned(
+              bottom: -8,
+              right: isMe ? 60 : null,
+              left: isMe ? null : 60,
+              child: Container(
+                padding:
+                const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF141420),
+                  borderRadius: BorderRadius.circular(10),
+                  border:
+                  Border.all(color: const Color(0xFF2A2A3A), width: 0.8),
+                ),
+                child: Text(
+                  msg.reactions.values.toSet().join(' '),
+                  style: const TextStyle(fontSize: 12),
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -696,9 +858,7 @@ class _ReplyQuote extends StatelessWidget {
         borderRadius: BorderRadius.circular(8),
         border: Border(
           left: BorderSide(
-            color: AppColors.accentPrimary.withOpacity(0.6),
-            width: 2.5,
-          ),
+              color: AppColors.accentPrimary.withOpacity(0.6), width: 2.5),
         ),
       ),
       child: Column(
@@ -737,11 +897,9 @@ class _UnreadSeparator extends StatelessWidget {
     child: Row(
       children: [
         Expanded(
-          child: Container(
-            height: 1,
-            color: AppColors.accentPrimary.withOpacity(0.45),
-          ),
-        ),
+            child: Container(
+                height: 1,
+                color: AppColors.accentPrimary.withOpacity(0.45))),
         Container(
           margin: const EdgeInsets.symmetric(horizontal: 10),
           padding:
@@ -750,9 +908,8 @@ class _UnreadSeparator extends StatelessWidget {
             color: AppColors.accentPrimary.withOpacity(0.12),
             borderRadius: BorderRadius.circular(20),
             border: Border.all(
-              color: AppColors.accentPrimary.withOpacity(0.45),
-              width: 0.8,
-            ),
+                color: AppColors.accentPrimary.withOpacity(0.45),
+                width: 0.8),
           ),
           child: Text(
             'New messages',
@@ -764,11 +921,9 @@ class _UnreadSeparator extends StatelessWidget {
           ),
         ),
         Expanded(
-          child: Container(
-            height: 1,
-            color: AppColors.accentPrimary.withOpacity(0.45),
-          ),
-        ),
+            child: Container(
+                height: 1,
+                color: AppColors.accentPrimary.withOpacity(0.45))),
       ],
     ),
   );
@@ -790,26 +945,31 @@ class _DateDivider extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Padding(
     padding: const EdgeInsets.symmetric(vertical: 10),
-    child: Row(
-      children: [
-        const Expanded(
-          child: Divider(color: Color(0xFF2A2A2A), thickness: 0.5),
-        ),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          child: Text(
-            _label(),
-            style: AppTypography.bodySmall.copyWith(
-              fontSize: 11,
-              color: AppColors.textSecondary,
-              fontWeight: FontWeight.w500,
+    child: Center(
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(20),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+          child: Container(
+            padding:
+            const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.06),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                  color: Colors.white.withOpacity(0.08), width: 0.6),
+            ),
+            child: Text(
+              _label(),
+              style: AppTypography.bodySmall.copyWith(
+                fontSize: 11,
+                color: AppColors.textSecondary,
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ),
         ),
-        const Expanded(
-          child: Divider(color: Color(0xFF2A2A2A), thickness: 0.5),
-        ),
-      ],
+      ),
     ),
   );
 }
@@ -862,9 +1022,7 @@ class _ReplyPreview extends StatelessWidget {
               Text(
                 replyTo.text,
                 style: AppTypography.bodySmall.copyWith(
-                  fontSize: 12,
-                  color: AppColors.textSecondary,
-                ),
+                    fontSize: 12, color: AppColors.textSecondary),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
@@ -875,8 +1033,8 @@ class _ReplyPreview extends StatelessWidget {
           onTap: onCancel,
           child: const Padding(
             padding: EdgeInsets.all(4),
-            child: Icon(LucideIcons.x,
-                size: 16, color: AppColors.hintText),
+            child:
+            Icon(LucideIcons.x, size: 16, color: AppColors.hintText),
           ),
         ),
       ],
@@ -915,8 +1073,8 @@ class _EditingBanner extends StatelessWidget {
           onTap: onCancel,
           child: const Padding(
             padding: EdgeInsets.all(4),
-            child: Icon(LucideIcons.x,
-                size: 16, color: AppColors.hintText),
+            child:
+            Icon(LucideIcons.x, size: 16, color: AppColors.hintText),
           ),
         ),
       ],
@@ -924,17 +1082,19 @@ class _EditingBanner extends StatelessWidget {
   );
 }
 
-class _MessageOptionsDialog extends StatelessWidget {
+class _MessageActionSheet extends StatelessWidget {
   final DmMessage msg;
   final bool isMe;
+  final ValueChanged<String> onEmoji;
   final VoidCallback onReply;
   final VoidCallback onCopy;
   final VoidCallback? onEdit;
   final VoidCallback? onDelete;
 
-  const _MessageOptionsDialog({
+  const _MessageActionSheet({
     required this.msg,
     required this.isMe,
+    required this.onEmoji,
     required this.onReply,
     required this.onCopy,
     this.onEdit,
@@ -945,62 +1105,95 @@ class _MessageOptionsDialog extends StatelessWidget {
   Widget build(BuildContext context) {
     return Center(
       child: Padding(
-        padding: EdgeInsets.only(
-          left: isMe ? 72 : 16,
-          right: isMe ? 16 : 72,
-        ),
+        padding: EdgeInsets.only(left: isMe ? 40 : 16, right: isMe ? 16 : 40),
         child: Material(
           color: Colors.transparent,
-          child: Container(
-            decoration: BoxDecoration(
-              color: const Color(0xFF141420),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(
-                  color: const Color(0xFF2A2A3A), width: 0.8),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.5),
-                  blurRadius: 24,
-                  offset: const Offset(0, 8),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment:
+            isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+            children: [
+              Container(
+                padding:
+                const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF141420),
+                  borderRadius: BorderRadius.circular(30),
+                  border: Border.all(
+                      color: const Color(0xFF2A2A3A), width: 0.8),
+                  boxShadow: [
+                    BoxShadow(
+                        color: Colors.black.withOpacity(0.5),
+                        blurRadius: 20,
+                        offset: const Offset(0, 6)),
+                  ],
                 ),
-              ],
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _OptionTile(
-                    icon: LucideIcons.cornerUpLeft,
-                    label: 'Reply',
-                    onTap: onReply),
-                _divider(),
-                _OptionTile(
-                    icon: LucideIcons.copy, label: 'Copy', onTap: onCopy),
-                if (onEdit != null) ...[
-                  _divider(),
-                  _OptionTile(
-                      icon: LucideIcons.pencil,
-                      label: 'Edit',
-                      onTap: onEdit!),
-                ],
-                if (onDelete != null) ...[
-                  _divider(),
-                  _OptionTile(
-                    icon: LucideIcons.trash2,
-                    label: 'Delete',
-                    onTap: onDelete!,
-                    isDestructive: true,
-                  ),
-                ],
-              ],
-            ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: _quickEmojis
+                      .map((e) => GestureDetector(
+                    onTap: () => onEmoji(e),
+                    child: Padding(
+                      padding:
+                      const EdgeInsets.symmetric(horizontal: 6),
+                      child:
+                      Text(e, style: const TextStyle(fontSize: 22)),
+                    ),
+                  ))
+                      .toList(),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Container(
+                decoration: BoxDecoration(
+                  color: const Color(0xFF141420),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                      color: const Color(0xFF2A2A3A), width: 0.8),
+                  boxShadow: [
+                    BoxShadow(
+                        color: Colors.black.withOpacity(0.5),
+                        blurRadius: 24,
+                        offset: const Offset(0, 8)),
+                  ],
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _OptionTile(
+                        icon: LucideIcons.cornerUpLeft,
+                        label: 'Reply',
+                        onTap: onReply),
+                    _divider(),
+                    _OptionTile(
+                        icon: LucideIcons.copy, label: 'Copy', onTap: onCopy),
+                    if (onEdit != null) ...[
+                      _divider(),
+                      _OptionTile(
+                          icon: LucideIcons.pencil,
+                          label: 'Edit',
+                          onTap: onEdit!),
+                    ],
+                    if (onDelete != null) ...[
+                      _divider(),
+                      _OptionTile(
+                        icon: LucideIcons.trash2,
+                        label: 'Delete',
+                        onTap: onDelete!,
+                        isDestructive: true,
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
           ),
         ),
       ),
     );
   }
 
-  Widget _divider() =>
-      Container(height: 0.5, color: const Color(0xFF1E1E2A));
+  Widget _divider() => Container(height: 0.5, color: const Color(0xFF1E1E2A));
 }
 
 class _OptionTile extends StatefulWidget {
@@ -1025,9 +1218,8 @@ class _OptionTileState extends State<_OptionTile> {
 
   @override
   Widget build(BuildContext context) {
-    final color = widget.isDestructive
-        ? AppColors.errorLight
-        : AppColors.textPrimary;
+    final color =
+    widget.isDestructive ? AppColors.errorLight : AppColors.textPrimary;
 
     return GestureDetector(
       onTapDown: (_) => setState(() => _pressed = true),
@@ -1038,12 +1230,10 @@ class _OptionTileState extends State<_OptionTile> {
       onTapCancel: () => setState(() => _pressed = false),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 80),
-        padding:
-        const EdgeInsets.symmetric(horizontal: 18, vertical: 13),
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 13),
         decoration: BoxDecoration(
-          color: _pressed
-              ? Colors.white.withOpacity(0.04)
-              : Colors.transparent,
+          color:
+          _pressed ? Colors.white.withOpacity(0.04) : Colors.transparent,
           borderRadius: BorderRadius.circular(14),
         ),
         child: Row(
@@ -1069,14 +1259,12 @@ class _InputBar extends StatelessWidget {
   final TextEditingController ctrl;
   final FocusNode focusNode;
   final bool canSend;
-  final bool isSending;
   final VoidCallback onSend;
 
   const _InputBar({
     required this.ctrl,
     required this.focusNode,
     required this.canSend,
-    required this.isSending,
     required this.onSend,
   });
 
@@ -1087,8 +1275,8 @@ class _InputBar extends StatelessWidget {
       child: Container(
         decoration: const BoxDecoration(
           color: Color(0xFF050505),
-          border: Border(
-              top: BorderSide(color: Color(0xFF1A1A1A), width: 0.5)),
+          border:
+          Border(top: BorderSide(color: Color(0xFF1A1A1A), width: 0.5)),
         ),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         child: Row(
@@ -1096,21 +1284,24 @@ class _InputBar extends StatelessWidget {
           children: [
             Expanded(
               child: Container(
-                constraints: const BoxConstraints(maxHeight: 120),
+                constraints: const BoxConstraints(maxHeight: 130),
                 decoration: BoxDecoration(
                   color: const Color(0xFF0A0A0A),
                   borderRadius: BorderRadius.circular(22),
-                  border: Border.all(
-                    color: const Color(0xFF1E1E1E),
-                    width: 0.8,
-                  ),
+                  border:
+                  Border.all(color: const Color(0xFF1E1E1E), width: 0.8),
                 ),
                 child: TextField(
                   controller: ctrl,
                   focusNode: focusNode,
-                  maxLines: null,
+                  maxLines: 6,
+                  minLines: 1,
                   maxLength: 500,
-                  buildCounter: (_, {required currentLength, required isFocused, maxLength}) => null,
+                  buildCounter: (_,
+                      {required currentLength,
+                        required isFocused,
+                        maxLength}) =>
+                  null,
                   textInputAction: TextInputAction.newline,
                   keyboardType: TextInputType.multiline,
                   style: AppTypography.bodyMedium.copyWith(
@@ -1121,12 +1312,10 @@ class _InputBar extends StatelessWidget {
                   decoration: InputDecoration(
                     hintText: 'Message...',
                     hintStyle: AppTypography.bodyMedium.copyWith(
-                      fontSize: 15,
-                      color: AppColors.hintText,
-                    ),
+                        fontSize: 15, color: AppColors.hintText),
                     border: InputBorder.none,
-                    contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 10),
+                    contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                     isDense: true,
                   ),
                   cursorColor: AppColors.accentPrimary,
@@ -1134,11 +1323,7 @@ class _InputBar extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 8),
-            _SendButton(
-              canSend: canSend && !isSending,
-              isSending: isSending,
-              onTap: onSend,
-            ),
+            _SendButton(canSend: canSend, onTap: onSend),
           ],
         ),
       ),
@@ -1148,14 +1333,9 @@ class _InputBar extends StatelessWidget {
 
 class _SendButton extends StatefulWidget {
   final bool canSend;
-  final bool isSending;
   final VoidCallback onTap;
 
-  const _SendButton({
-    required this.canSend,
-    required this.isSending,
-    required this.onTap,
-  });
+  const _SendButton({required this.canSend, required this.onTap});
 
   @override
   State<_SendButton> createState() => _SendButtonState();
@@ -1167,8 +1347,7 @@ class _SendButtonState extends State<_SendButton> {
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTapDown:
-      widget.canSend ? (_) => setState(() => _pressed = true) : null,
+      onTapDown: widget.canSend ? (_) => setState(() => _pressed = true) : null,
       onTapUp: widget.canSend
           ? (_) {
         setState(() => _pressed = false);
@@ -1189,19 +1368,7 @@ class _SendButtonState extends State<_SendButton> {
               color: AppColors.accentPrimary,
               shape: BoxShape.circle,
             ),
-            child: widget.isSending
-                ? const Center(
-              child: SizedBox(
-                width: 16,
-                height: 16,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: Colors.black,
-                ),
-              ),
-            )
-                : const Icon(LucideIcons.arrowUp,
-                size: 18, color: Colors.black),
+            child: const Icon(LucideIcons.arrowUp, size: 18, color: Colors.black),
           ),
         ),
       ),
@@ -1224,8 +1391,7 @@ class _EmptyConvo extends StatelessWidget {
           decoration: BoxDecoration(
             color: const Color(0xFF0D0D0D),
             shape: BoxShape.circle,
-            border: Border.all(
-                color: const Color(0xFF1E1E1E), width: 0.8),
+            border: Border.all(color: const Color(0xFF1E1E1E), width: 0.8),
           ),
           child: const Icon(LucideIcons.messageCircle,
               size: 24, color: AppColors.hintText),
@@ -1245,10 +1411,7 @@ class _EmptyConvo extends StatelessWidget {
           'This is the beginning of your\nprivate conversation.',
           textAlign: TextAlign.center,
           style: AppTypography.bodySmall.copyWith(
-            fontSize: 13,
-            color: AppColors.hintText,
-            height: 1.6,
-          ),
+              fontSize: 13, color: AppColors.hintText, height: 1.6),
         ),
       ],
     ),
@@ -1266,9 +1429,7 @@ class _DmAvatarSmall extends StatelessWidget {
     decoration: BoxDecoration(
       shape: BoxShape.circle,
       border: Border.all(
-        color: AppColors.accentPrimary.withOpacity(0.3),
-        width: 1,
-      ),
+          color: AppColors.accentPrimary.withOpacity(0.3), width: 1),
     ),
     child: ClipOval(
       child: url != null
@@ -1285,7 +1446,7 @@ class _DmAvatarSmall extends StatelessWidget {
 
   Widget _fallback() => Container(
     color: const Color(0xFF111111),
-    child: const Icon(LucideIcons.user,
-        size: 16, color: AppColors.hintText),
+    child:
+    const Icon(LucideIcons.user, size: 16, color: AppColors.hintText),
   );
 }
