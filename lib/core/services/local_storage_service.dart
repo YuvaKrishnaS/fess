@@ -11,7 +11,7 @@ class LocalStorageService {
   static Box? _appBox;
   static Box? _userBox;
 
-  // -- Initialization -----------------------------─────────────────────────────
+  // Initialization
 
   static Future<void> initialize() async {
     await Hive.initFlutter();
@@ -19,7 +19,7 @@ class LocalStorageService {
     _userBox = await Hive.openBox(_userBoxName);
   }
 
-  // ── Box accessors ───────────────────────────────────────────────────────────
+  // Box accessors
 
   static Box get appBox {
     if (_appBox == null || !_appBox!.isOpen) {
@@ -35,7 +35,7 @@ class LocalStorageService {
     return _userBox!;
   }
 
-  // ── Onboarding ──────────────────────────────────────────────────────────────
+  // Onboarding
 
   static Future<void> setHasSeenOnboarding(bool value) async {
     await appBox.put('has_seen_onboarding', value);
@@ -45,7 +45,7 @@ class LocalStorageService {
     return appBox.get('has_seen_onboarding', defaultValue: false) as bool;
   }
 
-  // ── Cached anonId ───────────────────────────────────────────────────────────
+  // Cached anonId
   // Avoids hitting Firestore on every launch.
 
   static Future<void> setCachedAnonId(String anonId) async {
@@ -58,7 +58,7 @@ class LocalStorageService {
     return null;
   }
 
-  // ── World chat mood (per-day) ───────────────────────────────────────────────
+  // World chat mood (per-day)
   // Mood is stored with today's date string so it auto-expires the next day.
 
   /// Returns the mood the user picked today, or null if not yet picked today.
@@ -78,8 +78,6 @@ class LocalStorageService {
     await userBox.put(_kWorldMoodKey, mood);
   }
 
-  // ── Clear ───────────────────────────────────────────────────────────────────
-
   /// Clears only user-specific data (called on sign out).
   static Future<void> clearUserData() async {
     await userBox.clear();
@@ -89,5 +87,29 @@ class LocalStorageService {
   static Future<void> clearAllData() async {
     await appBox.clear();
     await userBox.clear();
+  }
+
+  static Future setNotificationsEnabled(bool value) async {
+    await appBox.put('notif_master_enabled', value);
+  }
+
+  static bool getNotificationsEnabled() {
+    return appBox.get('notif_master_enabled', defaultValue: true) as bool;
+  }
+
+  static Future setChatNotificationsEnabled(bool value) async {
+    await appBox.put('notif_chat_enabled', value);
+  }
+
+  static bool getChatNotificationsEnabled() {
+    return appBox.get('notif_chat_enabled', defaultValue: true) as bool;
+  }
+
+  static Future setStreakNotificationsEnabled(bool value) async {
+    await appBox.put('notif_streak_enabled', value);
+  }
+
+  static bool getStreakNotificationsEnabled() {
+    return appBox.get('notif_streak_enabled', defaultValue: true) as bool;
   }
 }
