@@ -1,3 +1,5 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -7,10 +9,13 @@ import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_typography.dart';
+import '../../../core/services/support_links.dart';
 import '../../../core/widgets/app_dialog.dart';
+import '../../../core/widgets/fess_snackbar.dart';
+import '../providers/notification_settings_provider.dart';
 import '../providers/profile_provider.dart';
 
-final appVersionProvider = FutureProvider<String>((ref) async {
+final appVersionProvider = FutureProvider((ref) async {
   try {
     final info = await PackageInfo.fromPlatform();
     return '${info.version} (${info.buildNumber})';
@@ -25,6 +30,8 @@ class ProfileSettingsPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final versionAsync = ref.watch(appVersionProvider);
+    final notifSettings = ref.watch(notificationSettingsProvider);
+    final notifNotifier = ref.read(notificationSettingsProvider.notifier);
 
     return Scaffold(
       backgroundColor: AppColors.backgroundMain,
@@ -64,29 +71,7 @@ class ProfileSettingsPage extends ConsumerWidget {
                   _SettingsTile(
                     icon: LucideIcons.userCircle2,
                     title: 'Edit Persona',
-                    subtitle: 'Update your avatar across the app',
                     onTap: () => context.push('/persona/edit'),
-                  ),
-                ],
-              ),
-            ),
-            SliverToBoxAdapter(
-              child: _Section(
-                title: 'Privacy & Safety',
-                children: [
-                  _SettingsTile(
-                    icon: LucideIcons.shield,
-                    title: 'Blocked Users',
-                    subtitle: 'Manage people you blocked',
-                    badge: 'Soon',
-                    onTap: () {},
-                  ),
-                  _SettingsTile(
-                    icon: LucideIcons.eyeOff,
-                    title: 'Privacy Controls',
-                    subtitle: 'Control future visibility options',
-                    badge: 'Soon',
-                    onTap: () {},
                   ),
                 ],
               ),
@@ -95,12 +80,25 @@ class ProfileSettingsPage extends ConsumerWidget {
               child: _Section(
                 title: 'Notifications',
                 children: [
-                  _SettingsTile(
+                  _SwitchTile(
                     icon: LucideIcons.bell,
-                    title: 'Push Notifications',
-                    subtitle: 'Likes, replies and updates',
-                    badge: 'Soon',
-                    onTap: () {},
+                    title: 'Notifications',
+                    value: notifSettings.masterEnabled,
+                    onChanged: (v) => notifNotifier.setMaster(v),
+                  ),
+                  _SwitchTile(
+                    icon: LucideIcons.messageCircle,
+                    title: 'Chat Messages',
+                    value: notifSettings.chatEnabled,
+                    enabled: notifSettings.masterEnabled,
+                    onChanged: (v) => notifNotifier.setChat(v),
+                  ),
+                  _SwitchTile(
+                    icon: LucideIcons.flame,
+                    title: 'Streak Reminders',
+                    value: notifSettings.streakEnabled,
+                    enabled: notifSettings.masterEnabled,
+                    onChanged: (v) => notifNotifier.setStreak(v),
                   ),
                 ],
               ),
@@ -111,19 +109,41 @@ class ProfileSettingsPage extends ConsumerWidget {
                 children: [
                   _SettingsTile(
                     icon: LucideIcons.badgeHelp,
-                    title: 'Help & Feedback',
-                    subtitle: 'Report issues and share feedback',
-                    onTap: () {},
+                    title: 'Help Center',
+                    onTap: () => context.push('/settings/help'),
                   ),
                   _SettingsTile(
-                    icon: LucideIcons.fileText,
-                    title: 'Privacy Policy',
-                    onTap: () {},
+                    icon: LucideIcons.flag,
+                    title: 'Report a Problem',
+                    onTap: () async {
+                      final ok = await SupportLinks.openReportProblem();
+                      if (!ok && context.mounted) {
+                        FessSnackbar.show(
+                          context,
+                          'Could not open mail app',
+                          type: SnackbarType.error,
+                        );
+                      }
+                    },
+                  ),
+                  _SettingsTile(
+                    icon: LucideIcons.mail,
+                    title: 'Contact Us',
+                    onTap: () async {
+                      final ok = await SupportLinks.openContactUs();
+                      if (!ok && context.mounted) {
+                        FessSnackbar.show(
+                          context,
+                          'Could not open mail app',
+                          type: SnackbarType.error,
+                        );
+                      }
+                    },
                   ),
                   _SettingsTile(
                     icon: LucideIcons.scrollText,
-                    title: 'Terms of Service',
-                    onTap: () {},
+                    title: 'Community Guidelines',
+                    onTap: () => context.push('/settings/guidelines'),
                   ),
                 ],
               ),
@@ -262,8 +282,6 @@ class _Section extends StatelessWidget {
 class _SettingsTile extends StatefulWidget {
   final IconData icon;
   final String title;
-  final String? subtitle;
-  final String? badge;
   final VoidCallback onTap;
   final Color? titleColor;
   final Color? iconColor;
@@ -271,8 +289,6 @@ class _SettingsTile extends StatefulWidget {
   const _SettingsTile({
     required this.icon,
     required this.title,
-    this.subtitle,
-    this.badge,
     required this.onTap,
     this.titleColor,
     this.iconColor,
@@ -309,56 +325,71 @@ class _SettingsTileState extends State<_SettingsTile> {
             ),
             const SizedBox(width: 14),
             Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    widget.title,
-                    style: AppTypography.bodyMedium.copyWith(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: widget.titleColor ?? AppColors.textPrimary,
-                    ),
-                  ),
-                  if (widget.subtitle != null) ...[
-                    const SizedBox(height: 2),
-                    Text(
-                      widget.subtitle!,
-                      style: AppTypography.bodySmall.copyWith(
-                        fontSize: 11,
-                        color: AppColors.textSecondary,
-                        height: 1.45,
-                      ),
-                    ),
-                  ],
-                ],
+              child: Text(
+                widget.title,
+                style: AppTypography.bodyMedium.copyWith(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: widget.titleColor ?? AppColors.textPrimary,
+                ),
               ),
             ),
-            if (widget.badge != null)
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: AppColors.accentPrimary.withOpacity(0.12),
-                  borderRadius: BorderRadius.circular(7),
-                  border: Border.all(
-                    color: AppColors.accentPrimary.withOpacity(0.2),
-                  ),
-                ),
-                child: Text(
-                  widget.badge!,
-                  style: AppTypography.labelSmall.copyWith(
-                    fontSize: 10,
-                    color: AppColors.accentPrimary,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              )
-            else if (widget.titleColor == null)
+            if (widget.titleColor == null)
               const Icon(
                 LucideIcons.chevronRight,
                 size: 16,
                 color: AppColors.hintText,
               ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SwitchTile extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final bool value;
+  final bool enabled;
+  final ValueChanged<bool> onChanged;
+
+  const _SwitchTile({
+    required this.icon,
+    required this.title,
+    required this.value,
+    required this.onChanged,
+    this.enabled = true,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Opacity(
+      opacity: enabled ? 1.0 : 0.4,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+        child: Row(
+          children: [
+            Icon(icon, size: 18, color: AppColors.textSecondary),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Text(
+                title,
+                style: AppTypography.bodyMedium.copyWith(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+            ),
+            Switch(
+              value: value,
+              onChanged: enabled ? onChanged : null,
+              activeColor: AppColors.accentPrimary,
+              activeTrackColor: AppColors.accentPrimary.withOpacity(0.3),
+              inactiveThumbColor: AppColors.hintText,
+              inactiveTrackColor: const Color(0xFF262626),
+            ),
           ],
         ),
       ),

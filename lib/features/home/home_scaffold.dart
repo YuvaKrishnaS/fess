@@ -5,13 +5,17 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
 import '../../core/constants/app_colors.dart';
+import '../../core/models/avatar_config.dart';
+import '../../core/services/local_storage_service.dart';
+import '../../core/widgets/dm_notification_overlay.dart';
 import '../../core/widgets/fess_snackbar.dart';
 import 'feed/feed_screen.dart';
-import 'tea/tea_screen.dart';
-import 'world/world_screen.dart';            // ← CHANGED (was world_placeholder_screen.dart)
-import 'chat/chat_placeholder_screen.dart';
-import 'widgets/create_confession_sheet.dart';
+import 'providers/dm_provider.dart';
 import 'providers/scroll_visibility_provider.dart';
+import 'screens/dm_inbox_screen.dart';
+import 'tea/tea_screen.dart';
+import 'widgets/create_confession_sheet.dart';
+import 'world/world_screen.dart';
 
 class HomeScaffold extends ConsumerStatefulWidget {
   const HomeScaffold({super.key});
@@ -26,8 +30,8 @@ class _HomeScaffoldState extends ConsumerState<HomeScaffold> {
   final List<Widget> _screens = const [
     FeedScreen(),
     TeaScreen(),
-    WorldScreen(),              // ← CHANGED (was WorldPlaceholderScreen())
-    ChatPlaceholderScreen(),
+    WorldScreen(),
+    DmInboxScreen(),
   ];
 
   static const List<_NavItem> _navItems = [
@@ -45,16 +49,10 @@ class _HomeScaffoldState extends ConsumerState<HomeScaffold> {
   }
 
   void _openCreate() {
-    // ← CHANGED: was `if (_currentIndex > 1) show "Coming soon"`.
-    // Now World (index 2) is live, only Chat (index 3) is still coming soon.
-    if (_currentIndex == 3) {
+    if (_currentIndex > 1) {
       FessSnackbar.show(context, 'Coming soon', type: SnackbarType.info);
       return;
     }
-    // World tab (index 2) has no FAB — so we just hide the FAB for it entirely
-    // via the `floatingActionButton` condition below. This guard is a safety net.
-    if (_currentIndex == 2) return;
-
     HapticFeedback.mediumImpact();
     showModalBottomSheet(
       context: context,
@@ -65,8 +63,57 @@ class _HomeScaffoldState extends ConsumerState<HomeScaffold> {
     );
   }
 
+  String? _resolveAvatarUrl(Map<String, dynamic>? profile) {
+    final raw = profile?['avatarConfig'];
+    if (raw == null) return null;
+    try {
+      return AvatarConfig.fromMap(raw as Map<String, dynamic>).buildUrl(size: 76);
+    } catch (_) {
+      return null;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    ref.watch(dmInboxProvider);
+
+    ref.listen(dmInboxProvider, (prev, next) {
+      next.whenData((convos) {
+        if (prev?.value == null) return;
+        final prevConvos = prev!.value!;
+        final myId = LocalStorageService.getCachedAnonId() ?? '';
+        final currentOpenConvoId = ref.read(activeConversationIdProvider);
+
+        for (final convo in convos) {
+          final prevConvo = prevConvos
+              .cast<dynamic>()
+              .firstWhere((c) => c.id == convo.id, orElse: () => null);
+
+          final wasUnread = prevConvo != null ? prevConvo.isUnreadFor(myId) : false;
+          final isNowUnread = convo.isUnreadFor(myId);
+
+          if (isNowUnread &&
+              !wasUnread &&
+              convo.lastSenderId != myId &&
+              convo.id != currentOpenConvoId) {
+            final peerId = convo.otherParticipant(myId);
+            ref.read(dmPeerProfileProvider(peerId).future).then((profile) {
+              if (!mounted || !context.mounted) return;
+              DmNotificationOverlay.show(
+                context,
+                DmNotificationPayload(
+                  peerId: peerId,
+                  username: profile?['username'] as String? ?? 'anon',
+                  avatarUrl: _resolveAvatarUrl(profile),
+                  messagePreview: convo.lastMessage ?? '',
+                ),
+              );
+            });
+          }
+        }
+      });
+    });
+
     return Scaffold(
       backgroundColor: AppColors.backgroundMain,
       extendBody: true,
@@ -81,7 +128,6 @@ class _HomeScaffoldState extends ConsumerState<HomeScaffold> {
           child: _screens[_currentIndex],
         ),
       ),
-      // FAB only on Home (0) and Tea/Spill (1) — not on World or Chat
       floatingActionButton: _currentIndex <= 1
           ? ValueListenableBuilder<bool>(
         valueListenable: scrollVisibilityNotifier,
@@ -106,10 +152,14 @@ class _HomeScaffoldState extends ConsumerState<HomeScaffold> {
           child: AnimatedOpacity(
             opacity: visible ? 1.0 : 0.0,
             duration: const Duration(milliseconds: 200),
-            child: _BottomNav(
-              currentIndex: _currentIndex,
-              items: _navItems,
-              onTap: _onTab,
+            child: ValueListenableBuilder<int>(
+              valueListenable: totalUnreadNotifier,
+              builder: (_, unread, __) => _BottomNav(
+                currentIndex: _currentIndex,
+                items: _navItems,
+                onTap: _onTab,
+                totalUnread: unread,
+              ),
             ),
           ),
         ),
@@ -128,11 +178,13 @@ class _BottomNav extends StatelessWidget {
   final int currentIndex;
   final List<_NavItem> items;
   final ValueChanged<int> onTap;
+  final int totalUnread;
 
   const _BottomNav({
     required this.currentIndex,
     required this.items,
     required this.onTap,
+    required this.totalUnread,
   });
 
   @override
@@ -140,9 +192,7 @@ class _BottomNav extends StatelessWidget {
     return Container(
       decoration: const BoxDecoration(
         color: AppColors.backgroundMain,
-        border: Border(
-          top: BorderSide(color: Color(0xFF1A1A1A), width: 0.5),
-        ),
+        border: Border(top: BorderSide(color: Color(0xFF1A1A1A), width: 0.5)),
       ),
       child: SafeArea(
         child: SizedBox(
@@ -150,6 +200,7 @@ class _BottomNav extends StatelessWidget {
           child: Row(
             children: List.generate(items.length, (i) {
               final active = i == currentIndex;
+              final showBadge = i == 3 && totalUnread > 0 && !active;
               return Expanded(
                 child: GestureDetector(
                   onTap: () => onTap(i),
@@ -157,17 +208,45 @@ class _BottomNav extends StatelessWidget {
                   child: SizedBox(
                     height: 52,
                     child: Center(
-                      child: AnimatedScale(
-                        scale: active ? 1.12 : 1.0,
-                        duration: const Duration(milliseconds: 180),
-                        curve: Curves.easeOut,
-                        child: Icon(
-                          items[i].icon,
-                          size: 22,
-                          color: active
-                              ? AppColors.textPrimary
-                              : AppColors.textSecondary,
-                        ),
+                      child: Stack(
+                        clipBehavior: Clip.none,
+                        children: [
+                          AnimatedScale(
+                            scale: active ? 1.12 : 1.0,
+                            duration: const Duration(milliseconds: 180),
+                            curve: Curves.easeOut,
+                            child: Icon(
+                              items[i].icon,
+                              size: 22,
+                              color: active
+                                  ? AppColors.textPrimary
+                                  : AppColors.textSecondary,
+                            ),
+                          ),
+                          if (showBadge)
+                            Positioned(
+                              top: -4,
+                              right: -6,
+                              child: Container(
+                                width: 16,
+                                height: 16,
+                                decoration: const BoxDecoration(
+                                  color: AppColors.accentPrimary,
+                                  shape: BoxShape.circle,
+                                ),
+                                child: Center(
+                                  child: Text(
+                                    totalUnread > 9 ? '9+' : '$totalUnread',
+                                    style: const TextStyle(
+                                      fontSize: 9,
+                                      fontWeight: FontWeight.w800,
+                                      color: Colors.black,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ],
                       ),
                     ),
                   ),
@@ -209,8 +288,7 @@ class _FabState extends State<_Fab> {
           height: 52,
           decoration: BoxDecoration(
             gradient: const LinearGradient(
-              colors: [Color(0xFF7C4DFF), Color(0xFF1DE9B6)],
-            ),
+                colors: [Color(0xFF7C4DFF), Color(0xFF1DE9B6)]),
             shape: BoxShape.circle,
             boxShadow: [
               BoxShadow(

@@ -1,3 +1,5 @@
+// lib/features/home/screens/profile_page.dart
+
 import 'dart:ui';
 
 import 'package:cached_network_image/cached_network_image.dart';
@@ -59,8 +61,6 @@ class _ProfilePageState extends ConsumerState<ProfilePage>
       error: (_, __) =>
       const _PageScaffold(child: _PageError(msg: 'Could not load profile.')),
       data: (myId) {
-        debugPrint(
-            '[ProfilePage] myId=$myId | viewing anonId=${widget.anonId} | isOwn=${widget.anonId == myId}');
         final isOwn = widget.anonId == myId;
         return _ProfilePageBody(
           anonId: widget.anonId,
@@ -82,6 +82,8 @@ class _PageScaffold extends StatelessWidget {
     return Scaffold(backgroundColor: AppColors.backgroundMain, body: child);
   }
 }
+
+// ─── Body ─────────────────────────────────────────────────────────────────────
 
 class _ProfilePageBody extends ConsumerWidget {
   final String anonId;
@@ -116,7 +118,11 @@ class _ProfilePageBody extends ConsumerWidget {
                     if (profile == null) {
                       return const _PageError(msg: 'Profile not found.');
                     }
-                    return _FullProfileHeader(profile: profile);
+                    return _FullProfileHeader(
+                      profile: profile,
+                      isOwn: isOwn,
+                      myId: myId,
+                    );
                   },
                 ),
                 const SizedBox(height: 4),
@@ -163,7 +169,7 @@ class _ProfilePageBody extends ConsumerWidget {
   }
 }
 
-// ─── App Bar ──────────────────────────────────────────────────────────────────
+// App Bar
 
 class _ProfileAppBar extends ConsumerWidget {
   final String anonId;
@@ -205,20 +211,34 @@ class _ProfileAppBar extends ConsumerWidget {
 
 class _FullProfileHeader extends StatelessWidget {
   final ProfileData profile;
+  final bool isOwn;
+  final String? myId;
 
-  const _FullProfileHeader({required this.profile});
+  const _FullProfileHeader({
+    required this.profile,
+    required this.isOwn,
+    required this.myId,
+  });
+
+  String? _avatarUrl() {
+    if (profile.avatarConfig.isEmpty) return null;
+    try {
+      return AvatarConfig.fromMap(profile.avatarConfig).buildUrl(size: 200);
+    } catch (_) {
+      return null;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    final avatarUrl = profile.avatarConfig.isNotEmpty
-        ? AvatarConfig.fromMap(profile.avatarConfig).buildUrl(size: 200)
-        : null;
+    final avatarUrl = _avatarUrl();
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // ── Avatar
           Container(
             width: 80,
             height: 80,
@@ -242,6 +262,8 @@ class _FullProfileHeader extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 14),
+
+          // ── Username
           Text(
             '@${profile.username}',
             style: AppTypography.h2.copyWith(
@@ -251,6 +273,8 @@ class _FullProfileHeader extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 4),
+
+          // ── Anon ID (long-press to copy)
           GestureDetector(
             onLongPress: () {
               Clipboard.setData(ClipboardData(text: profile.anonId));
@@ -271,6 +295,8 @@ class _FullProfileHeader extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 20),
+
+          // ── Stats
           Row(
             children: [
               _StatBlock(label: 'Spills', value: profile.totalPostCount),
@@ -279,11 +305,93 @@ class _FullProfileHeader extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 20),
+
+          // ── Action buttons (only on other people's profiles)
+          if (!isOwn) ...[
+            _ProfileActions(
+              profile: profile,
+              myId: myId,
+            ),
+            const SizedBox(height: 8),
+          ],
         ],
       ),
     );
   }
 }
+
+// ─── Profile Action Buttons ───────────────────────────────────────────────────
+// Shown only on other people's profiles: Message button
+
+class _ProfileActions extends StatelessWidget {
+  final ProfileData profile;
+  final String? myId;
+
+  const _ProfileActions({required this.profile, required this.myId});
+
+  String? _avatarUrl() {
+    if (profile.avatarConfig.isEmpty) return null;
+    try {
+      return AvatarConfig.fromMap(profile.avatarConfig).buildUrl(size: 92);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        // ── Message button
+        GestureDetector(
+          onTap: () {
+            HapticFeedback.selectionClick();
+            context.push(
+              '/dm/${profile.anonId}',
+              extra: {
+                'username': profile.username,
+                'avatarUrl': _avatarUrl(),
+              },
+            );
+          },
+          child: Container(
+            height: 36,
+            padding: const EdgeInsets.symmetric(horizontal: 18),
+            decoration: BoxDecoration(
+              color: const Color(0xFF0D0D0D),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: const Color(0xFF2A2A3A),
+                width: 0.8,
+              ),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(
+                  LucideIcons.messageCircle,
+                  size: 14,
+                  color: AppColors.textSecondary,
+                ),
+                const SizedBox(width: 7),
+                Text(
+                  'Message',
+                  style: AppTypography.labelSmall.copyWith(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ─── Stat block ───────────────────────────────────────────────────────────────
 
 class _StatBlock extends StatelessWidget {
   final String label;
@@ -361,14 +469,11 @@ class _SpillsTab extends ConsumerWidget {
               onTap: () => Navigator.of(ctx).push(
                 postDetailHeroRoute(post.postId, initialPost: post),
               ),
-              //   FutureProvider has no notifier — use forYouFeedProvider for likes
-              onLike: () => ref
-                  .read(forYouFeedProvider.notifier)
-                  .toggleLike(post.postId),
+              onLike: () =>
+                  ref.read(forYouFeedProvider.notifier).toggleLike(post.postId),
               onAuthorTap: post.authorId != myId
                   ? () => context.push('/profile/${post.authorId}')
                   : null,
-              //   invalidate re-fetches the list after delete
               onDelete: () => ref.invalidate(mySpillsProvider(anonId)),
             );
           },
@@ -413,10 +518,8 @@ class _TeaTab extends ConsumerWidget {
               onTap: () => Navigator.of(ctx).push(
                 postDetailHeroRoute(post.postId, initialPost: post),
               ),
-              //   same — forYouFeedProvider is the writable notifier for likes
-              onLike: () => ref
-                  .read(forYouFeedProvider.notifier)
-                  .toggleLike(post.postId),
+              onLike: () =>
+                  ref.read(forYouFeedProvider.notifier).toggleLike(post.postId),
               onAuthorTap: post.authorId != myId
                   ? () => context.push('/profile/${post.authorId}')
                   : null,
@@ -481,12 +584,11 @@ class _EasterEgg extends StatelessWidget {
         children: [
           Opacity(
             opacity: 0.25,
-            child:
-            Image.asset('assets/images/logo.png', width: 48, height: 48),
+            child: Image.asset('assets/images/logo.png', width: 48, height: 48),
           ),
           const SizedBox(height: 16),
           Text(
-            "You reached the end of the posts! go touch some grass ;P",
+            'You reached the end of the posts! go touch some grass ;P',
             textAlign: TextAlign.center,
             style: AppTypography.bodyMedium.copyWith(
               fontSize: 13,
