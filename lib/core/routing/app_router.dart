@@ -9,6 +9,7 @@ import '../../features/home/screens/dm_conversation_screen.dart';
 import '../../features/home/screens/help_center_screen.dart';
 import '../../features/home/screens/profile_page.dart';
 import '../../features/home/screens/profile_settings_page.dart';
+import '../../features/notifications/screens/notification_history_screen.dart';
 import '../../features/onboarding/onboarding_screen.dart';
 import '../../features/persona/avatar_builder_screen.dart';
 import '../../features/persona/edit_persona_screen.dart';
@@ -94,6 +95,10 @@ class AppRouter {
       GoRoute(
         path: '/settings/guidelines',
         builder: (context, state) => const CommunityGuidelinesScreen(),
+      ),
+      GoRoute(
+        path: '/notifications/history',
+        builder: (context, state) => const NotificationHistoryScreen(),
       ),
     ],
     errorBuilder: (context, state) => Scaffold(
