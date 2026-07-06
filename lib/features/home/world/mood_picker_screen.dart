@@ -9,9 +9,7 @@ import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_typography.dart';
 import 'providers/world_provider.dart';
 
-// ---------------------------------------------------------------------------
-// data
-// ---------------------------------------------------------------------------
+// dat
 
 class _MoodData {
   final String id;

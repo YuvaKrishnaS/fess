@@ -7,10 +7,10 @@ import '../../../core/services/firebase_service.dart';
 import '../../../core/services/local_storage_service.dart';
 import 'feed_provider.dart';
 
-// ─── State (reuse FeedState from feed_provider) ───────────────────────────────
+//  State (reuse FeedState from feed_provider)
 // We just reuse FeedState directly. No new state class needed.
 
-// ─── My Spills ────────────────────────────────────────────────────────────────
+//My Spills
 
 class _MySpillsNotifier extends AsyncNotifier<FeedState> {
   static const _limit = 15;
@@ -102,7 +102,7 @@ AsyncNotifierProvider.family<_MySpillsNotifier, FeedState, String>(
       (anonId) => _MySpillsNotifier(anonId),
 );
 
-// ─── My Tea ───────────────────────────────────────────────────────────────────
+//My Tea
 
 class _MyTeaNotifier extends AsyncNotifier<FeedState> {
   static const _limit = 15;
@@ -254,7 +254,7 @@ AsyncNotifierProvider.family<_MyTeaNotifier, FeedState, String>(
       (anonId) => _MyTeaNotifier(anonId),
 );
 
-// ─── Enrichment (same logic as _enrich in feed_provider) ─────────────────────
+// Enrichment (same logic as _enrich in feed_provider)
 
 Future<List<PostModel>> _enrichProfilePosts(
     List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,

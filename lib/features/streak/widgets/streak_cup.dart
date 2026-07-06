@@ -60,7 +60,6 @@ class StreakCupButton extends ConsumerWidget {
   }
 }
 
-// ─── Cup States ───────────────────────────────────────────────────────────────
 
 enum CupState { hot, warm, cold, cracked, broken }
 
@@ -96,7 +95,6 @@ extension CupStateX on CupState {
   }
 }
 
-// ─── Tap target wrapper ───────────────────────────────────────────────────────
 
 class _CupTapTarget extends StatelessWidget {
   final CupState state;
@@ -189,7 +187,7 @@ class _StreakCupSvgState extends State<StreakCupSvg>
   }
 }
 
-// ─── CustomPainter — draws the cup in all 5 states ───────────────────────────
+// CustomPainter — draws the cup in all 5 states
 
 class _CupPainter extends CustomPainter {
   final CupState state;

@@ -1,7 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 class DmConversationModel {
-  final String conversationId;       // "{smallerId}_{largerId}" — deterministic
+  final String conversationId;       // "{smallerId}_{largerId}" - deterministic
   final List<String> participantIds; // exactly 2 anonIds
   final Map<String, dynamic> participantProfiles;
   // ^ shape: { anonId: { username: "...", avatarConfig: {...} } }
@@ -25,7 +25,7 @@ class DmConversationModel {
     this.createdAt,
   });
 
-  // -- Firestore deserialization ---------────────────────────────────────────
+  //  Firestore deserialization
 
   factory DmConversationModel.fromFirestore(
       DocumentSnapshot<Map<String, dynamic>> doc,
@@ -52,7 +52,7 @@ class DmConversationModel {
     );
   }
 
-  // ── Firestore serialization ───────────────────────────────────────────────
+  // Firestore serialization
 
   Map<String, dynamic> toFirestore() {
     return {
@@ -66,7 +66,7 @@ class DmConversationModel {
     };
   }
 
-  // ── copyWith ─────────────────────────────────────────────────────────────
+  // copyWith
 
   DmConversationModel copyWith({
     String? lastMessage,
@@ -89,7 +89,7 @@ class DmConversationModel {
     );
   }
 
-  // ── Helpers ───────────────────────────────────────────────────────────────
+  // Helpers
 
   /// Build deterministic conversation ID from any two anonIds.
   static String buildId(String anonIdA, String anonIdB) {

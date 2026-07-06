@@ -83,8 +83,6 @@ class _PageScaffold extends StatelessWidget {
   }
 }
 
-// ─── Body ─────────────────────────────────────────────────────────────────────
-
 class _ProfilePageBody extends ConsumerWidget {
   final String anonId;
   final String? myId;
@@ -207,8 +205,6 @@ class _ProfileAppBar extends ConsumerWidget {
   }
 }
 
-// ─── Profile Header ───────────────────────────────────────────────────────────
-
 class _FullProfileHeader extends StatelessWidget {
   final ProfileData profile;
   final bool isOwn;
@@ -320,7 +316,6 @@ class _FullProfileHeader extends StatelessWidget {
   }
 }
 
-// ─── Profile Action Buttons ───────────────────────────────────────────────────
 // Shown only on other people's profiles: Message button
 
 class _ProfileActions extends StatelessWidget {
@@ -391,8 +386,6 @@ class _ProfileActions extends StatelessWidget {
   }
 }
 
-// ─── Stat block ───────────────────────────────────────────────────────────────
-
 class _StatBlock extends StatelessWidget {
   final String label;
   final int value;
@@ -431,7 +424,6 @@ class _StatBlock extends StatelessWidget {
   }
 }
 
-// ─── Tabs ─────────────────────────────────────────────────────────────────────
 
 class _SpillsTab extends ConsumerWidget {
   final String anonId;
@@ -532,7 +524,6 @@ class _TeaTab extends ConsumerWidget {
   }
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 class _StickyTabBarDelegate extends SliverPersistentHeaderDelegate {
   final TabBar tabBar;

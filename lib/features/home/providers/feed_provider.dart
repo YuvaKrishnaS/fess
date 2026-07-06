@@ -6,7 +6,7 @@ import '../../../core/services/firebase_service.dart';
 import '../../../core/services/local_storage_service.dart';
 import '../../../core/services/storage_service.dart';
 
-// ─── Current anonId ───────────────────────────────────────────────────────────
+// Current anonId
 
 final currentAnonIdProvider = FutureProvider<String?>((ref) async {
   final cached = LocalStorageService.getCachedAnonId();
@@ -29,7 +29,7 @@ final currentAnonIdProvider = FutureProvider<String?>((ref) async {
   }
 });
 
-// ─── Current profile (for app bar avatar) ────────────────────────────────────
+// Current profile (for app bar avatar)
 
 final currentProfileProvider =
 FutureProvider<Map<String, dynamic>?>((ref) async {
@@ -47,7 +47,7 @@ FutureProvider<Map<String, dynamic>?>((ref) async {
   }
 });
 
-// ─── Witnessing IDs ───────────────────────────────────────────────────────────
+// Witnessing IDs
 
 final witnessingIdsProvider = FutureProvider<List<String>>((ref) async {
   final anonId = await ref.watch(currentAnonIdProvider.future);
@@ -68,7 +68,7 @@ final witnessingIdsProvider = FutureProvider<List<String>>((ref) async {
   }
 });
 
-// ─── Feed state ───────────────────────────────────────────────────────────────
+// Feed state
 
 class FeedState {
   final List<PostModel> posts;
@@ -106,7 +106,7 @@ class FeedState {
       );
 }
 
-// ─── For You feed ─────────────────────────────────────────────────────────────
+// For You feed
 
 class ForYouFeedNotifier extends AsyncNotifier<FeedState> {
   static const int _limit = 15;
@@ -259,7 +259,7 @@ final forYouFeedProvider =
 AsyncNotifierProvider<ForYouFeedNotifier, FeedState>(
     ForYouFeedNotifier.new);
 
-// ─── Following feed ───────────────────────────────────────────────────────────
+// Following feed
 
 class FollowingFeedNotifier extends AsyncNotifier<FeedState> {
   static const int _limit = 15;
@@ -524,7 +524,7 @@ class CreatePostNotifier extends Notifier<bool> {
 final createPostProvider =
 NotifierProvider<CreatePostNotifier, bool>(CreatePostNotifier.new);
 
-// ─── Enrichment helper ────────────────────────────────────────────────────────
+// Enrichment helper
 
 Future<List<PostModel>> _enrich(List<QueryDocumentSnapshot> docs) async {
   if (docs.isEmpty) return [];

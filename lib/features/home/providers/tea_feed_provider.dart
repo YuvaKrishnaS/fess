@@ -5,7 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/models/tea_post_model.dart';
 import 'feed_provider.dart'; // for currentAnonIdProvider
 
-// ── Feed State ────────────────────────────────────────────────────────────────
+// Feed State
 
 class TeaFeedState {
   final List<TeaPost> posts;
@@ -43,7 +43,7 @@ class TeaFeedState {
       );
 }
 
-// ── Tea Feed Notifier ─────────────────────────────────────────────────────────
+// Tea Feed Notifier
 
 class TeaFeedNotifier extends AsyncNotifier<TeaFeedState> {
   static const int _pageSize = 15;
@@ -159,7 +159,7 @@ class TeaFeedNotifier extends AsyncNotifier<TeaFeedState> {
     }
   }
 
-  // ── Helper ──────────────────────────────────────────────────────────────────
+  // Helper
 
   Future<List<TeaPost>> _hydratePosts(
       List<QueryDocumentSnapshot> docs,
@@ -213,7 +213,7 @@ class TeaFeedNotifier extends AsyncNotifier<TeaFeedState> {
 final teaFeedProvider =
 AsyncNotifierProvider<TeaFeedNotifier, TeaFeedState>(TeaFeedNotifier.new);
 
-// ── Create Tea Provider ───────────────────────────────────────────────────────
+// Create Tea Provider
 
 class CreateTeaNotifier extends Notifier<bool> {
   @override
@@ -235,7 +235,7 @@ class CreateTeaNotifier extends Notifier<bool> {
         anonId: anonId,
       );
 
-      // ✅ body written to Firestore only when non-null/non-empty
+      // body written to Firestore only when non-null/non-empty
       await FirebaseFirestore.instance.collection('posts').add({
         'type': 'tea',
         'authorId': anonId,

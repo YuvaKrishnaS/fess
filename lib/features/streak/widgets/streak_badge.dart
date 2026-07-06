@@ -64,7 +64,6 @@ class _SmallBadge extends StatelessWidget {
   }
 }
 
-// ── Large badge — for profile stats ──────────────────────────────────────────
 
 class _LargeBadge extends StatelessWidget {
   final int count;

@@ -19,7 +19,7 @@ import '../../../core/services/audio_service.dart';
 import '../../../core/widgets/fess_snackbar.dart';
 import '../providers/post_detail_provider.dart';
 
-// ─── Route helper ─────────────────────────────────────────────────────────────
+// Route helper
 
 Route<void> postDetailHeroRoute(String postId, {PostModel? initialPost}) {
   return PageRouteBuilder(
@@ -47,7 +47,7 @@ Route<void> postDetailHeroRoute(String postId, {PostModel? initialPost}) {
   );
 }
 
-// ─── Screen ───────────────────────────────────────────────────────────────────
+// Screen
 
 class PostDetailScreen extends ConsumerStatefulWidget {
   final String postId;
@@ -206,7 +206,7 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
   }
 }
 
-// ─── App Bar ──────────────────────────────────────────────────────────────────
+// App Bar
 
 class _DetailAppBar extends StatelessWidget {
   final PostModel? post;
@@ -256,7 +256,7 @@ class _DetailAppBar extends StatelessWidget {
   }
 }
 
-// ─── Post Body ────────────────────────────────────────────────────────────────
+// Post Body
 
 class _PostBody extends ConsumerWidget {
   final PostModel post;
@@ -364,7 +364,7 @@ class _PostBody extends ConsumerWidget {
   }
 }
 
-// ─── Avatar Ring ──────────────────────────────────────────────────────────────
+// Avatar Ring
 
 class _AvatarRing extends StatelessWidget {
   final String? url;
@@ -410,7 +410,7 @@ class _AvatarRing extends StatelessWidget {
   );
 }
 
-// ─── Image Grid ───────────────────────────────────────────────────────────────
+// Image Grid
 
 class _ImageGrid extends StatelessWidget {
   final List<String> urls;
@@ -467,7 +467,7 @@ class _ImgTile extends StatelessWidget {
   );
 }
 
-// ─── Voice Player ─────────────────────────────────────────────────────────────
+// Voice Player
 
 class _VoicePlayer extends StatefulWidget {
   final String audioUrl;
@@ -636,7 +636,7 @@ class _VoicePlayerState extends State<_VoicePlayer> {
   }
 }
 
-// ─── Post Reactions ───────────────────────────────────────────────────────────
+// Post Reactions
 
 class _PostReactions extends StatefulWidget {
   final PostModel post;
@@ -723,7 +723,7 @@ class _PostReactionsState extends State<_PostReactions>
   );
 }
 
-// ─── Comments Header ──────────────────────────────────────────────────────────
+// Comments Header
 
 class _CommentsHeader extends StatelessWidget {
   final int count;
@@ -762,7 +762,7 @@ class _CommentsHeader extends StatelessWidget {
   );
 }
 
-// ─── Empty Comments ───────────────────────────────────────────────────────────
+// Empty Comments
 
 class _EmptyComments extends StatelessWidget {
   @override
@@ -846,7 +846,7 @@ class _CommentTile extends StatelessWidget {
   }
 }
 
-// ─── Comment Like Button ──────────────────────────────────────────────────────
+//Comment Like Button
 
 class _CommentLikeBtn extends StatefulWidget {
   final CommentModel comment;
@@ -920,8 +920,6 @@ class _CommentLikeBtnState extends State<_CommentLikeBtn>
   );
 }
 
-// ─── Comments Shimmer ─────────────────────────────────────────────────────────
-
 class _CommentsShimmer extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Column(
@@ -968,7 +966,7 @@ class _Bone extends StatelessWidget {
   );
 }
 
-// ─── Comment Input ────────────────────────────────────────────────────────────
+// Comment Input
 
 class _CommentInput extends StatelessWidget {
   final TextEditingController controller;

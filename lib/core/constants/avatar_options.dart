@@ -1,7 +1,7 @@
 class AvatarOptions {
   AvatarOptions._();
 
-  // --- Skin Colors (hex values only) -------------------------
+  // Skin Colors (hex values only)
   static const List<String> skinColors = [
     '614335', // deep brown
     'ae5d29', // medium brown
@@ -12,7 +12,7 @@ class AvatarOptions {
     'ffdbb4', // very light
   ];
 
-  // ─── Hair Styles (top param) ------──────────
+  // Hair Styles (top param)
   static const List<String> hairStyles = [
     'bigHair',
     'bob',
@@ -50,7 +50,7 @@ class AvatarOptions {
     'winterHat04',
   ];
 
-  // ─── Hair Colors (hex values only) ────────────────────────────────────────
+  // Hair Colors (hex values only)
   static const List<String> hairColors = [
     '2c1b18', // near black
     '4a312c', // very dark brown
@@ -64,7 +64,7 @@ class AvatarOptions {
     'f59797', // pinkish
   ];
 
-  // ─── Eyes ─────────────────────────────────────────────────────────────────
+  // Eyes
   static const List<String> eyes = [
     'closed',
     'cry',
@@ -80,7 +80,7 @@ class AvatarOptions {
     'xDizzy',
   ];
 
-  // ─── Eyebrows ─────────────────────────────────────────────────────────────
+  // Eyebrows
   static const List<String> eyebrows = [
     'angry',
     'angryNatural',
@@ -97,7 +97,7 @@ class AvatarOptions {
     'upDownNatural',
   ];
 
-  // ─── Mouth ────────────────────────────────────────────────────────────────
+  // Mouth
   static const List<String> mouths = [
     'concerned',
     'default',
@@ -113,7 +113,7 @@ class AvatarOptions {
     'vomit',
   ];
 
-  // ─── Accessories / Glasses ────────────────────────────────────────────────
+  // Accessories / Glasses
   static const List<String> glasses = [
     'eyepatch',
     'kurt',
@@ -124,7 +124,7 @@ class AvatarOptions {
     'wayfarers',
   ];
 
-  // ─── Accessories Colors ───────────────────────────────────────────────────
+  // Accessories Colors
   static const List<String> accessoriesColors = [
     '262e33',
     '3c4f5c',
@@ -143,7 +143,7 @@ class AvatarOptions {
     'ffffb1',
   ];
 
-  // ─── Clothing ─────────────────────────────────────────────────────────────
+  // Clothing
   static const List<String> clothing = [
     'blazerAndShirt',
     'blazerAndSweater',
@@ -156,7 +156,7 @@ class AvatarOptions {
     'shirtVNeck',
   ];
 
-  // ─── Clothing Colors ──────────────────────────────────────────────────────
+  // Clothing Colors
   static const List<String> clothingColors = [
     '262e33',
     '3c4f5c',
@@ -175,7 +175,7 @@ class AvatarOptions {
     'ffffb1',
   ];
 
-  // ─── Clothing Graphics (only used when clothing = 'graphicShirt') ─────────
+  // Clothing Graphics (only used when clothing = 'graphicShirt')
   static const List<String> clothingGraphics = [
     'bat',
     'bear',
@@ -189,7 +189,7 @@ class AvatarOptions {
     'skullOutline',
   ];
 
-  // ─── Facial Hair ─────────────────────────────────────────────────────────
+  // Facial Hair
   static const List<String> facialHair = [
     'beardLight',
     'beardMajestic',
@@ -198,7 +198,7 @@ class AvatarOptions {
     'moustacheMagnum',
   ];
 
-  // ─── Facial Hair Colors ───────────────────────────────────────────────────
+  // Facial Hair Colors
   static const List<String> facialHairColors = [
     '2c1b18',
     '4a312c',
@@ -212,7 +212,7 @@ class AvatarOptions {
     'f59797',
   ];
 
-  // ─── Hat Colors (for winterHat* and hat tops) ─────────────────────────────
+  // Hat Colors (for winterHat* and hat tops)
   static const List<String> hatColors = [
     '262e33',
     '3c4f5c',
@@ -235,10 +235,10 @@ class AvatarOptions {
   static List<String> get mouthStyles => mouths;
   static List<String> get glassesStyles => glasses;
 
-  // avataaars doesn't support earrings — return empty so builder renders nothing
+  // avataaars doesn't support earrings - return empty so builder renders nothing
   static const List<String> earringStyles = [];
 
-  // avataaars doesn't have a standalone 'features' list — map to empty
+  // avataaars doesn't have a standalone 'features' list - map to empty
   // builder will skip rendering this tab gracefully
   static const List<String> featureStyles = [];
 }

@@ -8,7 +8,7 @@ import '../../../core/services/local_storage_service.dart';
 import '../../auth/providers/auth_provider.dart';
 import 'feed_provider.dart';
 
-// ─── ProfileData ──────────────────────────────────────────────────────────────
+// ProfileData
 
 class ProfileData {
   final String anonId;
@@ -41,7 +41,7 @@ class ProfileData {
   }
 }
 
-// ─── ProfileFeedState ─────────────────────────────────────────────────────────
+//  ProfileFeedState
 
 class ProfileFeedState {
   final List<PostModel> posts;
@@ -79,14 +79,14 @@ class ProfileFeedState {
   }
 }
 
-// ─── currentAnonIdProvider (single source of truth) ──────────────────────────
+// currentAnonIdProvider (single source of truth)
 
 // NOTE: Do NOT redeclare currentAnonIdProvider here if feed_provider.dart
 // already exports it. This file imports it from there via 'feed_provider.dart'.
 // If your project had a duplicate here, REMOVE this and only use the one from
 // feed_provider.dart. Keeping one here only if feed_provider doesn't have it.
 
-// ─── currentProfileProvider ───────────────────────────────────────────────────
+// currentProfileProvider
 
 final currentProfileProvider =
 FutureProvider<ProfileData?>((ref) async {
@@ -95,7 +95,7 @@ FutureProvider<ProfileData?>((ref) async {
   return ref.watch(profileDataProvider(anonId).future);
 });
 
-// ─── profileDataProvider ──────────────────────────────────────────────────────
+// profileDataProvider
 
 final profileDataProvider =
 FutureProvider.family<ProfileData?, String>((ref, anonId) async {
@@ -118,7 +118,7 @@ FutureProvider.family<ProfileData?, String>((ref, anonId) async {
   }
 });
 
-// ─── mySpillsProvider ─────────────────────────────────────────────────────────
+// mySpillsProvider
 // Uses ONLY where(authorId) + orderBy(createdAt), then filters type in Dart.
 // This matches the existing Firestore index and mirrors forYouFeedProvider.
 
@@ -165,7 +165,7 @@ FutureProvider.family<ProfileFeedState, String>((ref, anonId) async {
   }
 });
 
-// ─── myTeaProvider ────────────────────────────────────────────────────────────
+// myTeaProvider
 // Same safe pattern — where(authorId).orderBy(createdAt), filter type in Dart.
 
 final myTeaProvider =
@@ -210,7 +210,6 @@ FutureProvider.family<ProfileFeedState, String>((ref, anonId) async {
   }
 });
 
-// ─── myLikedProvider (kept for backward compat, not used in new tabs) ─────────
 
 final myLikedProvider =
 FutureProvider.family<ProfileFeedState, String>((ref, anonId) async {
@@ -274,7 +273,6 @@ FutureProvider.family<ProfileFeedState, String>((ref, anonId) async {
   }
 });
 
-// ─── _enrichPosts helper ──────────────────────────────────────────────────────
 
 Future<List<PostModel>> _enrichPosts(
     List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
@@ -344,7 +342,6 @@ Future<List<PostModel>> _enrichPosts(
   }).toList();
 }
 
-// ─── signOutProvider ──────────────────────────────────────────────────────────
 
 final signOutProvider = Provider<Future<void> Function()>((ref) {
   return () async {

@@ -103,7 +103,7 @@ class ChatMessageModel {
   /// Whether this message has been seen by a given user
   bool isReadBy(String anonId) => readBy.contains(anonId);
 
-  /// Relative timestamp string — "just now", "2m ago", "3h ago", "Mon"
+  /// Relative timestamp string - "just now", "2m ago", "3h ago", "Mon"
   String get timeAgo {
     final diff = DateTime.now().difference(createdAt);
     if (diff.inSeconds < 60) return 'just now';

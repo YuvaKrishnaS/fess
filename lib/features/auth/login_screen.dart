@@ -183,7 +183,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   }
 }
 
-// ─── Google button ─────────────────────────────────────────────────────────────
+// Google button
 class _GoogleButton extends StatefulWidget {
   final VoidCallback? onPressed;
   final bool isLoading;

@@ -7,7 +7,7 @@ class AvatarConfig {
   final String eyebrows;    // e.g. 'default'
   final String mouth;       // e.g. 'smile'
   final String? glasses;    // accessories param: e.g. 'prescription01'
-  final String? earrings;   // not supported in avataaars — ignored safely
+  final String? earrings;   // not supported in avataaars - ignored safely
   final List<String> features;
 
   const AvatarConfig({
@@ -99,9 +99,9 @@ class AvatarConfig {
   }
 
   static const AvatarConfig initial = AvatarConfig(
-    skinColor: 'edb98a',   // valid hex — medium skin
+    skinColor: 'edb98a',   // valid hex - medium skin
     hair: 'shortFlat',     // valid 'top' value
-    hairColor: '2c1b18',   // valid hex — dark brown
+    hairColor: '2c1b18',   // valid hex - dark brown
     eyes: 'default',       // valid eyes value
     eyebrows: 'default',   // valid eyebrows value
     mouth: 'smile',        // valid mouth value

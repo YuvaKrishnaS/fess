@@ -18,7 +18,7 @@ class AuthService {
   final GoogleSignIn _googleSignIn = GoogleSignIn();
   final FirebaseFirestore _firestore = FirebaseService.firestore;
 
-  // ── Google sign-in ─────────────────────────────────────────────────────────
+  // Google sign-in
   Future<SignInResult> signInWithGoogle() async {
     try {
       final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
@@ -39,7 +39,7 @@ class AuthService {
     }
   }
 
-  // ── Check if persona exists ────────────────────────────────────────────────
+  // Check if persona exists
   Future<String?> getAnonId() async {
     final user = _auth.currentUser;
     if (user == null) return null;
@@ -65,7 +65,7 @@ class AuthService {
     return null;
   }
 
-  // ── Sign out ───────────────────────────────────────────────────────────────
+  // Sign out
   Future<void> signOut() async {
     await _googleSignIn.signOut();
     await _auth.signOut();
