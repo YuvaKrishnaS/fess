@@ -1,7 +1,7 @@
 <h1 align="center">Fess</h1>
 
 <p align="center">
-  <img src="assets/images/fess_thumbnail.png" alt="FessThumbnail" width="70%" />
+  <img src="assets/images/fess_thumbnail.png" alt="FessThumbnail" width="100%" />
 </p>
 
 <p align="center">
@@ -34,7 +34,7 @@ This was also my first real attempt at building a full app from scratch: real-ti
 ## Screenshots
 
 <p align="center">
-  <img src="assets/images/screenshots_colg.png.png" width="70%" />
+  <img src="assets/images/screenshots_collg.png.png" width="70%" />
 </p>
 
 ## Built with
