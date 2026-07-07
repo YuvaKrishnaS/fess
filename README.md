@@ -57,14 +57,12 @@ You will need Flutter installed on your machine.
    `flutter pub get
 `
 
-3. Create your own Firebase project at [firebase.google.com](https://firebase.google.com), enable Firestore and Anonymous Authentication, and download your own `google-services.json` file. Place it inside `android/app/`. This file is intentionally left out of the repo since it contains project-specific keys.
-
 4. Run the app on a connected device or emulator:
    `flutter run`
 
 ## Building a release APK
 
-If you just want to try the app without setting up, download the ready-made APK from the [Releases page](https://github.com/YuvaKrishnaS/fess) instead of building from source.
+If you just want to try the app without setting up, download the ready-made APK from the [Releases page](https://github.com/YuvaKrishnaS/fess/releases) instead of building from source.
 
 To build it yourself:
 `flutter build apk --release
@@ -78,7 +76,3 @@ This is still a work in progress. Some of the stuff i need to still work on and 
 - The World matchmaking flow needs more edge-case handling, also it is not also too realtime till now, gonna make it work well soon
 - Push notifications are the lungs for the app, in app notifications work. I need to work on system notifications to engage users
 - Improving security rules, measures, and i also need to refine some of the ui too
-
-## License
-
-This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
