@@ -34,7 +34,7 @@ This was also my first real attempt at building a full app from scratch: real-ti
 ## Screenshots
 
 <p align="center">
-  <img src="assets/images/screenshots_collg.png.png" width="70%" />
+  <img src="assets/images/screenshots_colg.png" width="100%" />
 </p>
 
 ## Built with
