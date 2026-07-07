@@ -50,7 +50,7 @@ This was also my first real attempt at building a full app from scratch: real-ti
 You will need Flutter installed on your machine.
 
 1. Clone the repo:
-   `git clone https://github.com/yourusername/fess.git
+   `git clone https://github.com/YuvaKrishnaS/fess.git
    cd fess`
 
 2. Install dependencies:
@@ -64,7 +64,7 @@ You will need Flutter installed on your machine.
 
 ## Building a release APK
 
-If you just want to try the app without setting up, download the ready-made APK from the [Releases page](https://github.com/yuvakrishnas/fess/releases) instead of building from source.
+If you just want to try the app without setting up, download the ready-made APK from the [Releases page](https://github.com/YuvaKrishnaS/fess) instead of building from source.
 
 To build it yourself:
 `flutter build apk --release
